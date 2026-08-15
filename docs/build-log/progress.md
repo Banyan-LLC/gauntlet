@@ -342,3 +342,40 @@ NEXT (pre-authorised by the user, conditional on the event being usable - it is)
 GATES NOW SATISFIED for Task 11: amended unit suite PASSES (397) and one live shipped-schema
   run PASSES. Per user direction, TASK 11 (live security battery) IS THE NEXT STEP.
   Task 13 remains paused; its authorization boundaries are recorded above.
+
+=== RELOCATED TO ITS OWN REPO (2026-08-15) ===
+  Now at C:\Users\geoff\Documents\Projects\Banyan\spec-plan-review, branch main, remote
+  git@github.com:Banyan-LLC/spec-plan-review.git (NOT pushed yet - outward-facing, awaiting call).
+  Layout: skills at repo root (codex-review/, codex-reviewed-dev/, tests/, install.ps1);
+  docs/design.md + docs/implementation-plan.md are the controlling documents; docs/build-log/
+  holds this ledger and every task report. Relative paths were preserved (tests remains a
+  sibling of codex-review), so nothing needed rewriting.
+  VERIFIED IN THE NEW LOCATION: 380 unit tests (composer 34, discovery 27, invoke 183,
+  policy 15, publish 51, schema 9, state 61) + live schema gate 8/8.
+  The cavu.photo worktree branch claude/reusable-spec-plan-review-8fcff9 at 51b2c71 is
+  UNCHANGED - nothing was deleted there. Remove it once satisfied with this repo.
+  NOTE: the build log lived in cavu.photo/.git/worktrees/<name>/sdd/ and would have been
+  destroyed by worktree pruning; it is now tracked here.
+
+=== PLAN SYNC + PARAM SAFETY (commits 37aa69c, 51b2c71 in the source worktree) ===
+  Plan doc synced to the live-evidence design: single schema, acceptance-time usage gate,
+  create-only usage artifact, operational byte cap, live schema gate, real event taxonomy,
+  CODEX_HOME+SystemRoot. Four-premise/tokenizer/base-overhead procedure removed.
+  PREMISE MANIFEST DECISION: kept Test-PremiseManifest/premises.json/calibrate-premises.ps1 for
+  their STACK-IDENTITY binding (CLI hash/version, schema, AGENTS.md, invocation profile) so a
+  changed reviewer stack still invalidates prior results; DROPPED the four numeric premises,
+  tokenizer_evidence and the 0.75x inequality, which the usage gate now proves on real usage.
+  calibrate-premises.ps1 no longer makes a live model call, so the unobtainable-evidence
+  blocker is GONE rather than papered over - the production path can run.
+  Suite 397 -> 374 (-23 numeric-premise assertions) -> 380 (+6 param regressions).
+  Three Mandatory [string[]] params fixed by CONTRACT CHANGE (not a safety proof):
+  Mandatory dropped + Assert-NoEmptyStringElements terminating throw, each regression proven
+  red against a reverted old-contract copy.
+  OUTSTANDING (final triage): FOUR more identically-shaped params left unfixed -
+    Get-InvocationAudit -ExpectedDisable, Get-InvocationProfileHash -DisableSet,
+    Invoke-CodexProcess -CodexArgs, Invoke-Gh -GhArgs.
+  OUTSTANDING: test-invoke.ps1 is not safe to run concurrently with itself (races on the shared
+    real premises.json). Pre-existing, found incidentally.
+
+NEXT: Task 11 (live security battery). Task 13 stays paused until Task 11 and its
+  capability-class gates pass.
