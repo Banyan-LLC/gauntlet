@@ -302,7 +302,23 @@ Assert-True (-not $pmWrongHash.Valid -and $pmWrongHash.Reason -match 'Codex CLI 
 Remove-Item Env:\CODEX_TEST_CANARY
 
 # ---- invoke-codex.ps1 entry behavior ----
-$entry = "$PSScriptRoot\..\codex-review\scripts\invoke-codex.ps1"
+# Run against a TEMPORARY COPY of the skill root, never the real codex-review/premises.json.
+# This section used to write and restore that single real (gitignored) file around every
+# invoke-codex.ps1 call: two test processes running at once raced on it and corrupted each
+# other's state, and a crash between the write and the restore could leave a shim-bound test
+# manifest behind as the machine's real one (see task-14-report.md). Copying scripts+schemas
+# into a GUID-named temp directory (a subdirectory of $tmp, already GUID-named above) and
+# pointing the entry script at the COPY closes both: invoke-codex.ps1 resolves its own
+# -SkillRoot as `Split-Path $PSScriptRoot -Parent` -- wherever it actually lives -- so
+# premises.json is read and written exclusively inside the copy, never the real path.
+$realManifestPath = "$PSScriptRoot\..\codex-review\premises.json"
+$realManifestBefore = if (Test-Path $realManifestPath) { Get-Content -Raw $realManifestPath } else { $null }
+
+$copyRoot = Join-Path $tmp 'entry-skillroot'
+New-Item -ItemType Directory -Force $copyRoot | Out-Null
+Copy-Item -Recurse "$PSScriptRoot\..\codex-review" $copyRoot
+$copySkillRoot = Join-Path $copyRoot 'codex-review'
+$entry = Join-Path $copySkillRoot 'scripts\invoke-codex.ps1'
 $repo = "$tmp\repo"; git init -q $repo; git -C $repo -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 $goodExecHelp = ($script:RequiredExecFlags -join '  ')
 $goodResumeHelp = 'unused-by-this-design'
@@ -314,26 +330,19 @@ $promptFile = "$tmp\prompt.txt"; Set-Content $promptFile -Value ("review this`n"
 # The manifest gate applies to unit tests too, so each test binds a manifest to the FAKE binary
 # it will actually select. This is also what makes the A/B mismatch reachable and testable.
 #
-# These tests WRITE the real skill's premises.json, so the operator's calibrated manifest is
-# saved here and restored in the finally block at the end of this file. Never leave a test
-# manifest (bound to a shim that will not exist tomorrow) behind as the machine's real one.
-$realManifestPath = "$PSScriptRoot\..\codex-review\premises.json"
-$realManifest = if (Test-Path $realManifestPath) { Get-Content -Raw $realManifestPath } else { $null }
-try {
-
+# Writes into the TEMPORARY COPY's premises.json (see above), never the real one.
 function Set-TestManifest([string]$ShimPath) {
     # Stack-identity fields only (see task-14-report.md): the numeric budget premises this
     # manifest used to also carry are gone, superseded by the acceptance-time usage gate.
     $probe = Test-CodexCandidate -Path $ShimPath -AllowWrapper
-    $skillRoot = "$PSScriptRoot\..\codex-review"
     $agentsPath = "$env:USERPROFILE\.codex\AGENTS.md"
     @{ version=1; model='gpt-5.6-sol'
        cli_path=$probe.Path; cli_sha256=$probe.Sha256; cli_version=$probe.Version
-       schema_sha256=(Get-FileHash -Algorithm SHA256 "$skillRoot\schemas\verdict.schema.json").Hash.ToLowerInvariant()
+       schema_sha256=(Get-FileHash -Algorithm SHA256 "$copySkillRoot\schemas\verdict.schema.json").Hash.ToLowerInvariant()
        agents_md_sha256=$(if (Test-Path $agentsPath) { (Get-FileHash -Algorithm SHA256 $agentsPath).Hash.ToLowerInvariant() } else { 'absent' })
        invocation_profile_sha256=(Get-InvocationProfileHash -DisableSet (Get-DisableSet -FeatureNames $probe.FeatureNames))
        recorded_utc=(Get-Date -AsUTC -Format o) } |
-        ConvertTo-Json -Depth 4 | Set-Content (Join-Path $skillRoot 'premises.json') -Encoding utf8
+        ConvertTo-Json -Depth 4 | Set-Content (Join-Path $copySkillRoot 'premises.json') -Encoding utf8
 }
 Set-TestManifest $shim2
 
@@ -773,11 +782,15 @@ $results = $jobs | Wait-Job | Receive-Job
 Assert-Eq (@($results | Where-Object { $_ -eq 'won' }).Count) 1 "exactly one concurrent writer creates the file"
 $jobs | Remove-Job
 
-} finally {
-    # Restore the operator's real manifest. A shim-bound test manifest left behind would point
-    # at a binary that will not exist tomorrow, breaking every later invocation at exit 12.
-    if ($realManifest) { $realManifest | Set-Content $realManifestPath -Encoding utf8 }
-    elseif (Test-Path $realManifestPath) { Remove-Item $realManifestPath -Force }
-}
+# =====================================================================================
+# The real (gitignored) codex-review/premises.json must never be created, modified, or
+# deleted by this offline suite (see task-14-report.md). Every invoke-codex.ps1 call above ran
+# against the TEMPORARY COPY's skill root instead (see $copySkillRoot above), so this holds
+# trivially by construction; asserted explicitly so a future regression back to the real path
+# fails loudly here instead of silently corrupting another concurrently-running test process's
+# state, the exact failure mode this fix removes.
+# =====================================================================================
+$realManifestAfter = if (Test-Path $realManifestPath) { Get-Content -Raw $realManifestPath } else { $null }
+Assert-Eq $realManifestAfter $realManifestBefore "the real codex-review/premises.json is byte-identical before and after this entire test run"
 
 Write-TestResult
