@@ -14,7 +14,7 @@ Previous revisions: 5 addressed round 3, 4 addressed round 2, 3 addressed round 
 
 **Goal:** Build the two personal Claude Code skills specified in `docs/superpowers/specs/2026-08-09-codex-review-loop-design.md` (revision 10, approved): a `codex-review` primitive that runs bounded, hermetic Codex review loops, and a `codex-reviewed-dev` orchestrator that wraps the superpowers lifecycle with Codex review gates.
 
-**Architecture:** Skill source lives in-repo at `tools/claude-skills/` (versioned, PR-reviewable) with an installer that copies to `~/.claude/skills/`. All logic is in a dot-sourceable PowerShell library (`lib.ps1`) consumed by two thin entry scripts, so every function is unit-testable without live Codex or GitHub. Tests are plain PowerShell assertion scripts plus a live battery run against the real CLI.
+**Architecture:** Skill source lives in-repo at the repository root (versioned, PR-reviewable) with an installer that copies to `~/.claude/skills/`. All logic is in a dot-sourceable PowerShell library (`lib.ps1`) consumed by two thin entry scripts, so every function is unit-testable without live Codex or GitHub. Tests are plain PowerShell assertion scripts plus a live battery run against the real CLI.
 
 **Tech Stack:** PowerShell 7 (pwsh), Codex CLI (`codex exec`), GitHub REST via `gh api`, JSON Schema (draft-07) via `Test-Json`.
 
@@ -82,7 +82,7 @@ auditable).
 ## File Structure
 
 ```
-tools/claude-skills/
+.
 ├── install.ps1
 ├── codex-review/
 │   ├── SKILL.md
@@ -119,17 +119,17 @@ tools/claude-skills/
 ### Task 1: Scaffolding, schemas, test harness
 
 **Files:**
-- Create: `tools/claude-skills/codex-review/schemas/verdict.schema.json`
-- Create: `tools/claude-skills/tests/helpers.ps1`
-- Create: `tools/claude-skills/tests/run-tests.ps1`
-- Test: `tools/claude-skills/tests/test-schema.ps1`
+- Create: `codex-review/schemas/verdict.schema.json`
+- Create: `tests/helpers.ps1`
+- Create: `tests/run-tests.ps1`
+- Test: `tests/test-schema.ps1`
 
 **Interfaces:**
 - Produces: the schema; `Assert-True`/`Assert-Eq`/`Assert-Throws`/`Write-TestResult`; `New-FakeCodexShim` (fake CLI whose `.cmd` wrapper calls pwsh **by absolute path**, so it works under a PATH-less child environment); `run-tests.ps1`.
 
 - [ ] **Step 1: Write the failing test**
 
-`tools/claude-skills/tests/test-schema.ps1` (amended, live-evidence round 2026-08-12 — see the "One schema now" note above the file structure for why the plan's originally-given dual-schema version of this test no longer applies; this is the current content):
+`tests/test-schema.ps1` (amended, live-evidence round 2026-08-12 — see the "One schema now" note above the file structure for why the plan's originally-given dual-schema version of this test no longer applies; this is the current content):
 
 ```powershell
 . "$PSScriptRoot\helpers.ps1"
@@ -178,7 +178,7 @@ Write-TestResult
 
 Even with this local suite green, `Test-Json` is more permissive than the real Structured Outputs API: it happily validated the ORIGINAL two-schema design's `if`/`then` clause, which the API rejected outright. `tests/live/live-schema-gate.ps1` (Task 14) exists specifically to catch that class of gap by sending one small live round against the exact shipped schema — see the "One schema now" note above the file structure.
 
-`tools/claude-skills/tests/helpers.ps1`:
+`tests/helpers.ps1`:
 
 ```powershell
 $script:Failures = [System.Collections.Generic.List[string]]::new()
@@ -269,7 +269,7 @@ function Set-FakeCodexBehavior {
 }
 ```
 
-`tools/claude-skills/tests/run-tests.ps1`:
+`tests/run-tests.ps1`:
 
 ```powershell
 $failed = @()
@@ -284,7 +284,7 @@ Write-Host "ALL TEST FILES PASSED" -ForegroundColor Green
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pwsh -NoProfile -File tools/claude-skills/tests/test-schema.ps1`
+Run: `pwsh -NoProfile -File tests/test-schema.ps1`
 Expected: FAIL — schema files missing.
 
 - [ ] **Step 3: Write the schema**
@@ -329,7 +329,7 @@ cannot be, since the API rejects the `if`/`then` that would express it. It is en
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `pwsh -NoProfile -File tools/claude-skills/tests/test-schema.ps1`
+Run: `pwsh -NoProfile -File tests/test-schema.ps1`
 Expected: `9 passed, 0 failed`. This local pass is necessary but not sufficient: `Test-Json`
 happily validated the ORIGINAL `if`/`then` clause that the real API rejected outright, which is
 exactly the gap `tests/live/live-schema-gate.ps1` (Task 14) exists to catch with one small live
@@ -338,7 +338,7 @@ round against the exact shipped schema.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tools/claude-skills
+git add codex-review codex-reviewed-dev tests install.ps1
 git commit -m "feat(codex-review): scaffold, single schema, PATH-independent test harness"
 ```
 
@@ -347,8 +347,8 @@ git commit -m "feat(codex-review): scaffold, single schema, PATH-independent tes
 ### Task 2: CLI discovery, wrapper handling, compatibility probe
 
 **Files:**
-- Create: `tools/claude-skills/codex-review/scripts/lib.ps1`
-- Test: `tools/claude-skills/tests/test-discovery.ps1`
+- Create: `codex-review/scripts/lib.ps1`
+- Test: `tests/test-discovery.ps1`
 
 **Interfaces:**
 - Produces:
@@ -360,7 +360,7 @@ git commit -m "feat(codex-review): scaffold, single schema, PATH-independent tes
 
 - [ ] **Step 1: Write the failing test**
 
-`tools/claude-skills/tests/test-discovery.ps1`:
+`tests/test-discovery.ps1`:
 
 ```powershell
 . "$PSScriptRoot\helpers.ps1"
@@ -434,7 +434,7 @@ Write-TestResult
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pwsh -NoProfile -File tools/claude-skills/tests/test-discovery.ps1`
+Run: `pwsh -NoProfile -File tests/test-discovery.ps1`
 Expected: FAIL — `lib.ps1` missing.
 
 - [ ] **Step 3: Implement in `lib.ps1`**
@@ -568,13 +568,13 @@ function Select-CodexCli {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `pwsh -NoProfile -File tools/claude-skills/tests/test-discovery.ps1`
+Run: `pwsh -NoProfile -File tests/test-discovery.ps1`
 Expected: all pass, exit 0.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tools/claude-skills
+git add codex-review codex-reviewed-dev tests install.ps1
 git commit -m "feat(codex-review): discovery with wrapper resolution and fail-closed probe"
 ```
 
@@ -583,15 +583,15 @@ git commit -m "feat(codex-review): discovery with wrapper resolution and fail-cl
 ### Task 3: Default-deny feature policy
 
 **Files:**
-- Modify: `tools/claude-skills/codex-review/scripts/lib.ps1` (append)
-- Test: `tools/claude-skills/tests/test-policy.ps1`
+- Modify: `codex-review/scripts/lib.ps1` (append)
+- Test: `tests/test-policy.ps1`
 
 **Interfaces:**
 - Produces: `Get-DisableSet([string[]]$FeatureNames) -> [string[]]` — sorted, deduped; every enumerated name not on the allowlist, state ignored.
 
 - [ ] **Step 1: Write the failing test**
 
-`tools/claude-skills/tests/test-policy.ps1`:
+`tests/test-policy.ps1`:
 
 ```powershell
 . "$PSScriptRoot\helpers.ps1"
@@ -614,7 +614,7 @@ Write-TestResult
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pwsh -NoProfile -File tools/claude-skills/tests/test-policy.ps1` → FAIL (`Get-DisableSet` missing).
+Run: `pwsh -NoProfile -File tests/test-policy.ps1` → FAIL (`Get-DisableSet` missing).
 
 - [ ] **Step 3: Implement (append to `lib.ps1`)**
 
@@ -632,7 +632,7 @@ function Get-DisableSet {
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tools/claude-skills
+git add codex-review codex-reviewed-dev tests install.ps1
 git commit -m "feat(codex-review): default-deny feature policy"
 ```
 
@@ -641,8 +641,8 @@ git commit -m "feat(codex-review): default-deny feature policy"
 ### Task 4: Composer, mode-aware exact audit, verdict normalization
 
 **Files:**
-- Modify: `tools/claude-skills/codex-review/scripts/lib.ps1` (append)
-- Test: `tools/claude-skills/tests/test-composer.ps1`
+- Modify: `codex-review/scripts/lib.ps1` (append)
+- Test: `tests/test-composer.ps1`
 
 **Interfaces:**
 - Produces:
@@ -652,7 +652,7 @@ git commit -m "feat(codex-review): default-deny feature policy"
 
 - [ ] **Step 1: Write the failing test**
 
-`tools/claude-skills/tests/test-composer.ps1`:
+`tests/test-composer.ps1`:
 
 ```powershell
 . "$PSScriptRoot\helpers.ps1"
@@ -845,7 +845,7 @@ function Test-Verdict {
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tools/claude-skills
+git add codex-review codex-reviewed-dev tests install.ps1
 git commit -m "feat(codex-review): exact mode-aware audit and canonical verdict normalization"
 ```
 
@@ -854,8 +854,8 @@ git commit -m "feat(codex-review): exact mode-aware audit and canonical verdict 
 ### Task 5: One bounded process runner for everything
 
 **Files:**
-- Modify: `tools/claude-skills/codex-review/scripts/lib.ps1` (append)
-- Test: `tools/claude-skills/tests/test-invoke.ps1`
+- Modify: `codex-review/scripts/lib.ps1` (append)
+- Test: `tests/test-invoke.ps1`
 
 **Interfaces:**
 - Produces:
@@ -868,7 +868,7 @@ git commit -m "feat(codex-review): exact mode-aware audit and canonical verdict 
 
 - [ ] **Step 1: Write the failing test**
 
-`tools/claude-skills/tests/test-invoke.ps1`:
+`tests/test-invoke.ps1`:
 
 ```powershell
 . "$PSScriptRoot\helpers.ps1"
@@ -1163,7 +1163,7 @@ Because `Invoke-CodexProcess` unconditionally merges `$script:RequiredChildEnv` 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add tools/claude-skills docs/superpowers/specs
+git add codex-review codex-reviewed-dev tests install.ps1 docs/superpowers/specs
 git commit -m "feat(codex-review): deadlock-free runner with tree-kill timeout and minimal child env"
 ```
 
@@ -1172,8 +1172,8 @@ git commit -m "feat(codex-review): deadlock-free runner with tree-kill timeout a
 ### Task 6: Harness placement, validated state paths, versioned merge-state
 
 **Files:**
-- Modify: `tools/claude-skills/codex-review/scripts/lib.ps1` (append)
-- Test: `tools/claude-skills/tests/test-state.ps1`
+- Modify: `codex-review/scripts/lib.ps1` (append)
+- Test: `tests/test-state.ps1`
 
 **Interfaces:**
 - Produces:
@@ -1186,7 +1186,7 @@ git commit -m "feat(codex-review): deadlock-free runner with tree-kill timeout a
 
 - [ ] **Step 1: Write the failing test**
 
-`tools/claude-skills/tests/test-state.ps1`:
+`tests/test-state.ps1`:
 
 ```powershell
 . "$PSScriptRoot\helpers.ps1"
@@ -1515,7 +1515,7 @@ function ConvertTo-CarryOverText {
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tools/claude-skills
+git add codex-review codex-reviewed-dev tests install.ps1
 git commit -m "feat(codex-review): outside-repo harness, validated state paths, versioned merge-state"
 ```
 
@@ -1524,8 +1524,8 @@ git commit -m "feat(codex-review): outside-repo harness, validated state paths, 
 ### Task 7: `invoke-codex.ps1` — bounded state machine in code
 
 **Files:**
-- Create: `tools/claude-skills/codex-review/scripts/invoke-codex.ps1`
-- Test: extend `tools/claude-skills/tests/test-invoke.ps1` (append before `Write-TestResult`)
+- Create: `codex-review/scripts/invoke-codex.ps1`
+- Test: extend `tests/test-invoke.ps1` (append before `Write-TestResult`)
 
 **Interfaces:**
 - Consumes: Tasks 2–6. Produces the entry with parameters:
@@ -2071,13 +2071,13 @@ exit 0
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `pwsh -NoProfile -File tools/claude-skills/tests/test-invoke.ps1` → all pass.
-Run: `pwsh -NoProfile -File tools/claude-skills/tests/run-tests.ps1` → `ALL TEST FILES PASSED`
+Run: `pwsh -NoProfile -File tests/test-invoke.ps1` → all pass.
+Run: `pwsh -NoProfile -File tests/run-tests.ps1` → `ALL TEST FILES PASSED`
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tools/claude-skills
+git add codex-review codex-reviewed-dev tests install.ps1
 git commit -m "feat(codex-review): entry with coded round cap, generations, normalized persistence"
 ```
 
@@ -2086,10 +2086,10 @@ git commit -m "feat(codex-review): entry with coded round cap, generations, norm
 ### Task 8: Publication, dismissal, handoff freshness
 
 **Files:**
-- Modify: `tools/claude-skills/codex-review/scripts/lib.ps1` (append)
-- Create: `tools/claude-skills/codex-review/scripts/publish-review.ps1`
-- Create: `tools/claude-skills/codex-review/scripts/calibrate-premises.ps1`
-- Test: `tools/claude-skills/tests/test-publish.ps1`
+- Modify: `codex-review/scripts/lib.ps1` (append)
+- Create: `codex-review/scripts/publish-review.ps1`
+- Create: `codex-review/scripts/calibrate-premises.ps1`
+- Test: `tests/test-publish.ps1`
 
 **Interfaces:**
 - Produces (lib):
@@ -2102,7 +2102,7 @@ git commit -m "feat(codex-review): entry with coded round cap, generations, norm
 
 - [ ] **Step 1: Write the failing test**
 
-`tools/claude-skills/tests/test-publish.ps1`:
+`tests/test-publish.ps1`:
 
 ```powershell
 . "$PSScriptRoot\helpers.ps1"
@@ -2476,7 +2476,7 @@ function Test-HandoffFresh {
 }
 ```
 
-`tools/claude-skills/codex-review/scripts/calibrate-premises.ps1` — the ONLY path that runs without a manifest. **Amended, live-evidence round 2026-08-12: it no longer takes any premise parameters and makes NO live model call at all.** The plan originally specified this script to require `-ContextWindowTokens`/`-MaxOutputTokens`/`-TokenizerFamily`/`-TokenizerSource`/`-TokenizerStatement`, sample the real CLI several times with a fixed minimal prompt, and measure base overhead — which is exactly the design this task's blocker (recorded in the revision-9 self-review) could never clear: no authoritative source was ever found establishing gpt-5.6-sol's tokenizer encoding, so this script could never be run to completion, and the production entry (Task 7) would refuse forever at exit 12. The acceptance-time usage gate (Task 7) subsumes the numeric premises entirely, so this script's only remaining job is re-deriving the stack-identity bindings (`Test-PremiseManifest`'s remaining fields) via the same compatibility probe every review round already performs — no review, no sampling, nothing to measure. This is the current, shipped content:
+`codex-review/scripts/calibrate-premises.ps1` — the ONLY path that runs without a manifest. **Amended, live-evidence round 2026-08-12: it no longer takes any premise parameters and makes NO live model call at all.** The plan originally specified this script to require `-ContextWindowTokens`/`-MaxOutputTokens`/`-TokenizerFamily`/`-TokenizerSource`/`-TokenizerStatement`, sample the real CLI several times with a fixed minimal prompt, and measure base overhead — which is exactly the design this task's blocker (recorded in the revision-9 self-review) could never clear: no authoritative source was ever found establishing gpt-5.6-sol's tokenizer encoding, so this script could never be run to completion, and the production entry (Task 7) would refuse forever at exit 12. The acceptance-time usage gate (Task 7) subsumes the numeric premises entirely, so this script's only remaining job is re-deriving the stack-identity bindings (`Test-PremiseManifest`'s remaining fields) via the same compatibility probe every review round already performs — no review, no sampling, nothing to measure. This is the current, shipped content:
 
 ```powershell
 #Requires -Version 7
@@ -2492,9 +2492,9 @@ function Test-HandoffFresh {
    That whole procedure is GONE: the live-evidence round found the real CLI's terminal
    turn.completed event reports the EXACT usage.input_tokens for the request that was just
    made, so invoke-codex.ps1's acceptance-time usage gate (Get-RunUsage in lib.ps1) checks the
-   real measurement on every round instead of predicting it in advance -- see
-   docs/superpowers/specs/2026-08-09-codex-review-loop-design.md's "Live-evidence round
-   (2026-08-12)" entry. This script therefore makes NO live model call: it only re-derives the
+   real measurement on every round instead of predicting it in advance -- see docs/design.md's
+   "Live-evidence round (2026-08-12)" entry. This script therefore makes NO live model call: it
+   only re-derives the
    stack-identity bindings below via the same compatibility probe every review round already
    performs, so recording or refreshing the manifest costs nothing to run.
 
@@ -2578,10 +2578,10 @@ try {
 
 - [ ] **Step 5: Run full suite and commit**
 
-Run: `pwsh -NoProfile -File tools/claude-skills/tests/run-tests.ps1` → `ALL TEST FILES PASSED`
+Run: `pwsh -NoProfile -File tests/run-tests.ps1` → `ALL TEST FILES PASSED`
 
 ```bash
-git add tools/claude-skills
+git add codex-review codex-reviewed-dev tests install.ps1
 git commit -m "feat(codex-review): publication with full exit map, dismissal, handoff freshness"
 ```
 
@@ -2590,7 +2590,7 @@ git commit -m "feat(codex-review): publication with full exit map, dismissal, ha
 ### Task 9: `codex-review/SKILL.md`
 
 **Files:**
-- Create: `tools/claude-skills/codex-review/SKILL.md`
+- Create: `codex-review/SKILL.md`
 
 - [ ] **Step 1: Write the skill document** (exact content):
 
@@ -2688,12 +2688,12 @@ Before each pr round (author side, geoffroth token):
 Handoff: `Test-HandoffFresh` from `lib.ps1` must return `Fresh` before notifying the human.
 ```
 
-- [ ] **Step 2: Verify frontmatter** — `pwsh -NoProfile -Command "$c = Get-Content -Raw tools/claude-skills/codex-review/SKILL.md; if ($c -match '(?s)^---.*?name: codex-review.*?---') { 'OK' } else { exit 1 }"` → `OK`
+- [ ] **Step 2: Verify frontmatter** — `pwsh -NoProfile -Command "$c = Get-Content -Raw codex-review/SKILL.md; if ($c -match '(?s)^---.*?name: codex-review.*?---') { 'OK' } else { exit 1 }"` → `OK`
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add tools/claude-skills/codex-review/SKILL.md
+git add codex-review codex-reviewed-dev tests install.ps1/codex-review/SKILL.md
 git commit -m "feat(codex-review): SKILL.md protocol with untrusted PR metadata and recovery paths"
 ```
 
@@ -2702,11 +2702,11 @@ git commit -m "feat(codex-review): SKILL.md protocol with untrusted PR metadata 
 ### Task 10: Live smoke battery
 
 **Files:**
-- Create: `tools/claude-skills/tests/live/live-smoke.ps1`
+- Create: `tests/live/live-smoke.ps1`
 
 - [ ] **Step 1: Write the live battery**
 
-`tools/claude-skills/tests/live/live-smoke.ps1`:
+`tests/live/live-smoke.ps1`:
 
 ```powershell
 # LIVE: real CLI, no GitHub effects. Mechanical event-stream assertions throughout.
@@ -2934,13 +2934,13 @@ Write-TestResult
 
 - [ ] **Step 2: Run and calibrate**
 
-Run: `pwsh -NoProfile -File tools/claude-skills/tests/live/live-smoke.ps1`
+Run: `pwsh -NoProfile -File tests/live/live-smoke.ps1`
 Calibration points to fix-and-rerun if hit: features-list row parse; `-c` TOML quoting; the tool-event taxonomy in `$toolEventPattern` and every per-class detector pattern (replace with the event types actually observed in `round-1-attempt-1-events.jsonl` and in each control's output — broad for the denylist, class-specific for the controls; the confirmed real taxonomy is `thread.started`/`turn.started`/`item.completed`/`turn.completed`/`error`, none of which is tool/shell-shaped). The 50,000-byte default is documented as an operational input bound, not a value to calibrate upward — the guarantee is the acceptance-time usage gate on real `usage.input_tokens` (section 5), which needs no premise recording to hold.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add tools/claude-skills docs/superpowers/specs
+git add codex-review codex-reviewed-dev tests install.ps1 docs/superpowers/specs
 git commit -m "test(codex-review): live smoke green - AGENTS.md boundary, canaries, near-limit usage gate"
 ```
 
@@ -2949,11 +2949,11 @@ git commit -m "test(codex-review): live smoke green - AGENTS.md boundary, canari
 ### Task 11: Live security battery — positive-control pairs
 
 **Files:**
-- Create: `tools/claude-skills/tests/live/live-security.ps1`
+- Create: `tests/live/live-security.ps1`
 
 - [ ] **Step 1: Write the battery**
 
-`tools/claude-skills/tests/live/live-security.ps1`:
+`tests/live/live-security.ps1`:
 
 ```powershell
 # LIVE security battery. Every negative claim is control-backed: for each capability class we
@@ -3138,13 +3138,13 @@ Write-TestResult
 
 - [ ] **Step 2: Run, calibrate patterns, record**
 
-Run: `pwsh -NoProfile -File tools/claude-skills/tests/live/live-security.ps1`
+Run: `pwsh -NoProfile -File tests/live/live-security.ps1`
 Calibrate `$toolEventPattern`/`$webEventPattern` from the positive-control outputs (the controls print the real event taxonomy). **Build a positive control for every class in `$requiredClasses` and add it to `$verifiedClasses` only once it genuinely fires.** The battery fails while any class is unverified; the only alternative to fixing a control is narrowing the hermeticity claim in the spec and SKILL.md, which is a deliberate scope decision — not a note in a file.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add tools/claude-skills
+git add codex-review codex-reviewed-dev tests install.ps1
 git commit -m "test(codex-review): control-backed live security battery"
 ```
 
@@ -3153,8 +3153,8 @@ git commit -m "test(codex-review): control-backed live security battery"
 ### Task 12: Orchestrator skill + installer
 
 **Files:**
-- Create: `tools/claude-skills/codex-reviewed-dev/SKILL.md`
-- Create: `tools/claude-skills/install.ps1`
+- Create: `codex-reviewed-dev/SKILL.md`
+- Create: `install.ps1`
 
 - [ ] **Step 1: Write the orchestrator SKILL.md** (exact content):
 
@@ -3242,12 +3242,12 @@ if (-not (Test-Path $claudeMd) -or -not ((Get-Content -Raw $claudeMd) -match [re
 
 - [ ] **Step 3: Install and verify idempotence**
 
-Run `pwsh -NoProfile -File tools/claude-skills/install.ps1` **twice**; second run must print "pointer already present" and not duplicate the line.
+Run `pwsh -NoProfile -File install.ps1` **twice**; second run must print "pointer already present" and not duplicate the line.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add tools/claude-skills
+git add codex-review codex-reviewed-dev tests install.ps1
 git commit -m "feat(codex-reviewed-dev): orchestrator skill and idempotent installer"
 ```
 
@@ -3276,10 +3276,10 @@ git commit -m "feat(codex-reviewed-dev): orchestrator skill and idempotent insta
 
 - [ ] **Step 3: Record results**
 
-Create `tools/claude-skills/README.md` with `## Verification results`: date, CLI version+SHA, unit suite result, live-smoke result (incl. observed usage-gate headroom on the near-limit probe and the confirmed event taxonomy), live-security result (incl. any control-gap entries), env-minimality outcome (Task 5 step 5), activation checklist, e2e outcomes with PR link.
+Create `README.md` with `## Verification results`: date, CLI version+SHA, unit suite result, live-smoke result (incl. observed usage-gate headroom on the near-limit probe and the confirmed event taxonomy), live-security result (incl. any control-gap entries), env-minimality outcome (Task 5 step 5), activation checklist, e2e outcomes with PR link.
 
 ```bash
-git add tools/claude-skills
+git add codex-review codex-reviewed-dev tests install.ps1
 git commit -m "docs(claude-skills): verification results"
 ```
 
@@ -3287,7 +3287,7 @@ git commit -m "docs(claude-skills): verification results"
 
 ### Task 14: Final coverage sweep
 
-- [ ] **Step 1: Run everything** — `pwsh -NoProfile -File tools/claude-skills/tests/run-tests.ps1` → `ALL TEST FILES PASSED`, plus `tests/live/live-schema-gate.ps1` and both live batteries green.
+- [ ] **Step 1: Run everything** — `pwsh -NoProfile -File tests/run-tests.ps1` → `ALL TEST FILES PASSED`, plus `tests/live/live-schema-gate.ps1` and both live batteries green.
 
 **Hard gates — the plan is not complete while any of these is open:**
 1. Every capability class in `$requiredClasses` (Task 11) has a positive control that fires, **or** the hermeticity claim has been narrowed in the spec and SKILL.md to exactly what was proven.
@@ -3308,7 +3308,7 @@ round-3 plan-review findings → attempt cap enforced in code with an exhaustion
 - [ ] **Step 3: Commit**
 
 ```bash
-git add -A tools/claude-skills
+git add -A codex-review codex-reviewed-dev tests install.ps1
 git commit -m "chore(claude-skills): final coverage sweep"
 ```
 

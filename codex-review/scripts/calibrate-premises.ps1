@@ -11,9 +11,9 @@
    That whole procedure is GONE: the live-evidence round found the real CLI's terminal
    turn.completed event reports the EXACT usage.input_tokens for the request that was just
    made, so invoke-codex.ps1's acceptance-time usage gate (Get-RunUsage in lib.ps1) checks the
-   real measurement on every round instead of predicting it in advance -- see
-   docs/superpowers/specs/2026-08-09-codex-review-loop-design.md's "Live-evidence round
-   (2026-08-12)" entry. This script therefore makes NO live model call: it only re-derives the
+   real measurement on every round instead of predicting it in advance -- see docs/design.md's
+   "Live-evidence round (2026-08-12)" entry. This script therefore makes NO live model call: it
+   only re-derives the
    stack-identity bindings below via the same compatibility probe every review round already
    performs, so recording or refreshing the manifest costs nothing to run.
 
