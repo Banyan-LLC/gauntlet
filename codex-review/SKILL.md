@@ -5,7 +5,7 @@ description: Run a bounded, hermetic Codex (gpt-5.6-sol xhigh) review loop over 
 
 # Codex Review Loop (primitive)
 
-One artifact, one bounded loop. Modes: `doc` (spec/plan) and `pr`. The reviewer is hermetic: no user config, no MCP, no shell, no file access, no web; all material embedded in the prompt over stdin; harness lives OUTSIDE any repository.
+One artifact, one bounded loop. Modes: `doc` (spec/plan) and `pr`. The reviewer is hermetic: no user config, no MCP, no shell, no file access, no web; all material embedded in the prompt over stdin; harness lives OUTSIDE any repository. Every enumerated feature is disabled unless allowlisted (default-deny), which also covers computer-use, skill-search, and multi-agent spawning — but on the CLI version live-tested for Task 11 (0.147.0-alpha.6.6), those three specifically could not be independently CONTROL-VERIFIED as distinct, isolatable capabilities the way shell/web/apps/MCP/plugins were (no observable effect distinguishes the feature enabled from disabled in headless `exec` mode). They are configured off, not control-proven off. See `docs/design.md`'s "Live security battery round" amendment and `docs/build-log/task-11-report.md` for the evidence.
 
 ## Invariants
 

@@ -21,6 +21,14 @@ review material is embedded in the prompt and delivered over stdin, and the work
 single-use, unpredictably-named harness that is verified empty before every run — the reviewer has
 no way to reach anything it was not handed.
 
+A live security battery (`tests/live/live-security.ps1`) makes this claim control-verified, not
+just configured: shell, web, MCP, apps, and plugins are each proven with a positive control that
+fires when that one capability is enabled and stays silent under the real disable set. Two of the
+CLI's remaining feature-gated classes — computer-use and skill-search — and multi-agent spawning
+produced no distinguishing effect on this CLI version even when independently enabled, so those
+three are configured off by the same default-deny sweep but not independently control-proven;
+see `docs/design.md` and `docs/build-log/task-11-report.md`.
+
 Everything the loop promises is **enforced rather than documented**:
 
 - **Bounded** — 10 rounds per phase, 2 attempts per round, checked before any process starts, so a
