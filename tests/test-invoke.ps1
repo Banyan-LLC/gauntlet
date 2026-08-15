@@ -19,6 +19,15 @@ Assert-True ($receipt.stdinBytes -gt 33000) "over 32 KiB delivered"
 Assert-True (($receipt.args -join ' ') -notmatch 'A{100}') "prompt not in argv"
 Assert-True ([string]::IsNullOrEmpty($receipt.env_CANARY)) "canary invisible to child"
 
+# Parameter-contract safety: Invoke-CodexProcess -CodexArgs is deliberately NOT
+# [Parameter(Mandatory)] (see Assert-NoEmptyStringElements in lib.ps1) -- Mandatory would let an
+# array containing an empty string silently defeat the caller instead of failing closed. See
+# Test-EmptyElementFailsClosed in helpers.ps1 for the full rationale and how this was verified to
+# fail against the old [Parameter(Mandatory)][string[]] contract.
+Test-EmptyElementFailsClosed -LibPath "$PSScriptRoot\..\codex-review\scripts\lib.ps1" `
+    -CallExpression "Invoke-CodexProcess -CliPath 'C:\fake-codex.exe' -CodexArgs @('exec', '') -PromptText 'x' -HarnessDir 'C:\h'" `
+    -Name 'Invoke-CodexProcess -CodexArgs'
+
 # The child environment is a CONTRACT: exactly CODEX_HOME plus the empirically-proven additions,
 # nothing more, and nothing sensitive. SystemRoot is required because Windows name resolution
 # will not initialise without it — a CODEX_HOME-only child cannot resolve DNS, so every real
@@ -153,6 +162,15 @@ try {
 } finally {
     ${function:New-CodexArgs} = $savedNewCodexArgsForHash
 }
+
+# Parameter-contract safety: Get-InvocationProfileHash -DisableSet is deliberately NOT
+# [Parameter(Mandatory)] (see Assert-NoEmptyStringElements in lib.ps1) -- same non-terminating
+# bind-error shape as the other parameters given this treatment. See Test-EmptyElementFailsClosed
+# in helpers.ps1 for the full rationale and how this was verified to fail against the old
+# [Parameter(Mandatory)][string[]] contract.
+Test-EmptyElementFailsClosed -LibPath "$PSScriptRoot\..\codex-review\scripts\lib.ps1" `
+    -CallExpression "Get-InvocationProfileHash -DisableSet @('apps', '')" `
+    -Name 'Get-InvocationProfileHash -DisableSet'
 
 # =====================================================================================
 # Test-PremiseManifest: fail-closed gate over premises.json.

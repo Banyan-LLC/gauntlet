@@ -266,4 +266,16 @@ $oldPath2 = $env:PATH; $env:PATH = $ghDir2   # ONLY the shim dir, same isolation
 $fwdExit = $LASTEXITCODE; $env:PATH = $oldPath2
 Assert-Eq $fwdExit 5 "non-default -Reviewer is forwarded end-to-end (clears the identity gate under the custom name, then fails later — not exit 12)"
 
+# Parameter-contract safety: Invoke-Gh -GhArgs is deliberately NOT [Parameter(Mandatory)] (see
+# Assert-NoEmptyStringElements in lib.ps1) -- Mandatory would let an array containing an empty
+# string silently defeat the caller instead of failing closed. This test targets the REAL
+# lib.ps1 Invoke-Gh, not this file's own in-process shadow (defined near the top, above) --
+# Test-EmptyElementFailsClosed always runs in a fresh CHILD process that dot-sources lib.ps1
+# itself, so the shadow in THIS process's scope never comes into it. See
+# Test-EmptyElementFailsClosed in helpers.ps1 for the full rationale and how this was verified to
+# fail against the old [Parameter(Mandatory)][string[]] contract.
+Test-EmptyElementFailsClosed -LibPath "$PSScriptRoot\..\codex-review\scripts\lib.ps1" `
+    -CallExpression "Invoke-Gh -Token 'faketoken' -GhArgs @('pr', '')" `
+    -Name 'Invoke-Gh -GhArgs'
+
 Write-TestResult

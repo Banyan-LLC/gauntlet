@@ -228,11 +228,16 @@ function Assert-NoEmptyStringElements {
        caller's own `if (-not $result.Ok)`-shaped guard can silently fail to evaluate, skipping
        BOTH branches and defeating the check entirely with no error ever surfaced (this already
        shipped once, in Get-RunUsage's -EventLines -- see its own comment for the full
-       repro). The three parameters given this treatment (Get-InvocationAudit -CodexArgs,
-       Get-DisableSet -FeatureNames, New-CodexArgs -DisableSet) are all currently unreachable
-       with a genuinely empty element -- every real caller's array is regex- or code-derived and
-       provably non-empty -- but "currently unreachable" is not "provably safe for every future
-       caller", and each is exactly the same shape as the bug that already shipped once. #>
+       repro). The seven parameters given this treatment (Get-InvocationAudit -CodexArgs,
+       Get-InvocationAudit -ExpectedDisable, Get-DisableSet -FeatureNames, New-CodexArgs
+       -DisableSet, Get-InvocationProfileHash -DisableSet, Invoke-CodexProcess -CodexArgs,
+       Invoke-Gh -GhArgs) are all currently unreachable with a genuinely empty element -- every
+       real caller's array is either regex- or code-derived and provably non-empty, or (Invoke-Gh)
+       built from hand-written string literals and already-validated values -- but "currently
+       unreachable" is not "provably safe for every future caller", and each is exactly the same
+       shape as the bug that already shipped once. The last four were identified but deliberately
+       left out of the first fix (see task-14-report.md): flagged rather than expanded into
+       unilaterally, then actioned here once asked for by name. #>
     param([Parameter(Mandatory)][string]$FunctionName, [Parameter(Mandatory)][string]$ParameterName, [string[]]$Values)
     if ($null -eq $Values) { throw "${FunctionName}: -$ParameterName is required" }
     $bad = @($Values | Where-Object { [string]::IsNullOrEmpty($_) })
@@ -284,21 +289,23 @@ function Get-InvocationAudit {
        a wrong -C, a wrong model, a duplicate conflicting -c, or an appended `--enable shell_tool`
        all contain the "required" tokens. Layer 2 rebuilds the canonical array from the same
        declared inputs and demands exact ordinal equality, so ANY deviation fails.
-       -CodexArgs is deliberately NOT [Parameter(Mandatory)]: see Assert-NoEmptyStringElements
-       (defined above Get-DisableSet). Required-ness and the no-empty-element check are enforced
-       explicitly below instead of relying on PowerShell's Mandatory binder — an audit function
-       whose whole job is to catch a tampered/adversarial argument array is exactly the wrong
-       place to let a malformed input silently defeat the check instead of loudly failing it. #>
+       -CodexArgs and -ExpectedDisable are both deliberately NOT [Parameter(Mandatory)]: see
+       Assert-NoEmptyStringElements (defined above Get-DisableSet). Required-ness and the
+       no-empty-element check are enforced explicitly below instead of relying on PowerShell's
+       Mandatory binder — an audit function whose whole job is to catch a tampered/adversarial
+       argument array is exactly the wrong place to let a malformed input silently defeat the
+       check instead of loudly failing it. #>
     param(
         [string[]]$CodexArgs,
         [Parameter(Mandatory)][string]$HarnessDir,
         [Parameter(Mandatory)][string]$SchemaPath,
         [Parameter(Mandatory)][string]$VerdictPath,
-        [Parameter(Mandatory)][string[]]$ExpectedDisable,
+        [string[]]$ExpectedDisable,
         [string]$Model = 'gpt-5.6-sol',
         [string]$Effort = 'xhigh'
     )
     Assert-NoEmptyStringElements -FunctionName 'Get-InvocationAudit' -ParameterName 'CodexArgs' -Values $CodexArgs
+    Assert-NoEmptyStringElements -FunctionName 'Get-InvocationAudit' -ParameterName 'ExpectedDisable' -Values $ExpectedDisable
     # --- Layer 1: hard invariants on parsed pairs.
     foreach ($b in @('--enable','--dangerously-bypass-approvals-and-sandbox','--dangerously-bypass-hook-trust','--oss')) {
         if ($CodexArgs -contains $b) { throw "audit: banned argument '$b'" }
@@ -424,9 +431,15 @@ function Get-InvocationProfileHash {
        context — sandbox mode, the ignore flags, web_search, the environment policy, model,
        effort, the complete disable set — and enumerating "the ones that matter" is exactly the
        kind of list that rots. Deriving the hash from New-CodexArgs means any future argument
-       automatically becomes part of the binding. #>
-    param([Parameter(Mandatory)][string[]]$DisableSet,
+       automatically becomes part of the binding.
+
+       -DisableSet is deliberately NOT [Parameter(Mandatory)]: see Assert-NoEmptyStringElements
+       (defined above Get-DisableSet). A Mandatory [string[]] rejects an array containing an
+       empty-string element as a non-terminating bind error instead of a clean throw — exactly
+       the shape that already shipped one fail-open bug (Get-RunUsage's -EventLines). #>
+    param([string[]]$DisableSet,
           [string]$Model = 'gpt-5.6-sol', [string]$Effort = 'xhigh')
+    Assert-NoEmptyStringElements -FunctionName 'Get-InvocationProfileHash' -ParameterName 'DisableSet' -Values $DisableSet
     $canon = New-CodexArgs -HarnessDir '<HARNESS>' -SchemaPath '<SCHEMA>' -VerdictPath '<VERDICT>' `
         -DisableSet $DisableSet -Model $Model -Effort $Effort
     $material = ($canon -join "`u{001f}")
@@ -499,13 +512,18 @@ function Test-PremiseManifest {
 
 function Invoke-CodexProcess {
     # Thin, hermetic wrapper over the bounded runner.
+    #
+    # -CodexArgs is deliberately NOT [Parameter(Mandatory)]: see Assert-NoEmptyStringElements
+    # (defined above Get-DisableSet). Same non-terminating-bind-error shape as the other
+    # parameters given this treatment; enforced explicitly below instead.
     param(
         [Parameter(Mandatory)][string]$CliPath,
-        [Parameter(Mandatory)][string[]]$CodexArgs,
+        [string[]]$CodexArgs,
         [Parameter(Mandatory)][string]$PromptText,
         [Parameter(Mandatory)][string]$HarnessDir,
         [ValidateRange(1, 86400)][int]$TimeoutSec = 1800
     )
+    Assert-NoEmptyStringElements -FunctionName 'Invoke-CodexProcess' -ParameterName 'CodexArgs' -Values $CodexArgs
     $inv = Resolve-CliInvocation -Path $CliPath
     $childEnv = @{ CODEX_HOME = "$env:USERPROFILE\.codex" }
     foreach ($k in $script:RequiredChildEnv.Keys) { $childEnv[$k] = $script:RequiredChildEnv[$k] }
@@ -893,8 +911,13 @@ function Resolve-GhInvocation {
 function Invoke-Gh {
     # Bounded like everything else — a hung gh must not wedge the pipeline. The token is
     # injected into the CHILD environment only: never argv, never the caller's env, never logs.
-    param([Parameter(Mandatory)][string]$Token, [Parameter(Mandatory)][string[]]$GhArgs,
+    #
+    # -GhArgs is deliberately NOT [Parameter(Mandatory)]: see Assert-NoEmptyStringElements
+    # (defined above Get-DisableSet). Same non-terminating-bind-error shape as the other
+    # parameters given this treatment; enforced explicitly below instead.
+    param([Parameter(Mandatory)][string]$Token, [string[]]$GhArgs,
           [string]$InputFile, [ValidateRange(1,3600)][int]$TimeoutSec = 120)
+    Assert-NoEmptyStringElements -FunctionName 'Invoke-Gh' -ParameterName 'GhArgs' -Values $GhArgs
     $argList = [System.Collections.Generic.List[string]]::new()
     foreach ($a in $GhArgs) { $argList.Add($a) }
     if ($InputFile) { $argList.Add('--input'); $argList.Add($InputFile) }

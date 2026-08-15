@@ -132,5 +132,11 @@ Test-EmptyElementFailsClosed -LibPath $libPathForContract `
 Test-EmptyElementFailsClosed -LibPath $libPathForContract `
     -CallExpression "Get-InvocationAudit -CodexArgs @('exec', '') -HarnessDir 'C:\h' -SchemaPath 'C:\s.json' -VerdictPath 'C:\v.json' -ExpectedDisable @('apps')" `
     -Name 'Get-InvocationAudit -CodexArgs'
+# Get-InvocationAudit -ExpectedDisable: same shape, same fix, applied later than the three above
+# (see task-14-report.md's "fourth identically-shaped case" concern) -- given the SAME contract
+# here: Mandatory removed, Assert-NoEmptyStringElements added as an explicit first-line check.
+Test-EmptyElementFailsClosed -LibPath $libPathForContract `
+    -CallExpression "Get-InvocationAudit -CodexArgs @('exec', '-') -HarnessDir 'C:\h' -SchemaPath 'C:\s.json' -VerdictPath 'C:\v.json' -ExpectedDisable @('apps', '')" `
+    -Name 'Get-InvocationAudit -ExpectedDisable'
 
 Write-TestResult
