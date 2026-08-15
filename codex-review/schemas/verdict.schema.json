@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "summary", "recommendations"],
+  "properties": {
+    "verdict": { "type": "string", "enum": ["approve", "request_changes"] },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 800 },
+    "recommendations": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "location", "issue", "suggestion"],
+        "properties": {
+          "severity": { "type": "string", "enum": ["blocking", "important", "nit"] },
+          "location": { "type": "string", "minLength": 1, "maxLength": 150 },
+          "issue": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "suggestion": { "type": "string", "minLength": 1, "maxLength": 500 }
+        }
+      }
+    }
+  }
+}
