@@ -152,3 +152,212 @@ future session ever parallelizes this specific test file.
    (pre-existing, unrelated to the 8 sync items); removed it while editing the adjacent
    Self-Review paragraph since it was a one-line, zero-risk cleanup directly in the text being
    touched.
+
+---
+
+# Task 14 follow-up: four post-relocation fixes (2026-08-15)
+
+Status: complete, all green. Baseline 380 (composer 34, discovery 27, invoke 183, policy 15,
+publish 51, schema 9, state 61) -> final 395 (composer 36, discovery 27, invoke 194, policy 15,
+publish 53, schema 9, state 61). Four commits, one per section below, all on `main` in this repo
+(not pushed; no GitHub calls made; the real `codex` CLI was never invoked -- see FIX 4's
+end-to-end verification, which used a fake shim throughout):
+
+- `b1b3c86` -- docs: repoint stale tools/claude-skills dev paths at the new repo root
+- `dfea053` -- fix(codex-review): close the mandatory-array fail-open gap on the last four params
+- `b46ab58` -- test(codex-review): stop test-invoke.ps1 from mutating the real premises.json
+- `093a6eb` -- fix(codex-review): bind premise-manifest authorization to live evidence
+
+## FIX 1: stale tools/claude-skills paths
+
+`docs/implementation-plan.md` still described the pre-relocation layout throughout: the
+Architecture sentence, the File Structure tree (rooted at `tools/claude-skills/`), and every
+per-task Files/Interfaces/run/commit reference (67 occurrences total). Stripped the
+`tools/claude-skills/` prefix mechanically everywhere it appeared as a file path; the tree's root
+label became `.`; the 13 bare `git add tools/claude-skills[...]` commands became explicit
+enumerations of the four actual top-level entries (`codex-review codex-reviewed-dev tests
+install.ps1`), preserving each line's original scope (including the two that also staged
+`docs/superpowers/specs`, left untouched).
+
+`codex-review/scripts/calibrate-premises.ps1`'s docstring separately cited the pre-extraction
+design spec at the old consumer-shaped path
+(`docs/superpowers/specs/2026-08-09-codex-review-loop-design.md`); repointed it at this repo's own
+consolidated `docs/design.md`, and mirrored the identical fix in the plan's own embedded copy of
+that docstring (which explicitly claims to be "the current, shipped content" -- leaving it
+unsynced would have made that claim false).
+
+Deliberately NOT touched: every `docs/superpowers/{reviews,specs,plans}/...` path describing the
+codex-review skill's own runtime state locations in a CONSUMER project (the Global Constraints
+"State" bullet, Task 13's state paths, etc.) -- these describe the skill's behavior, not this
+repo's own source layout, per the task's explicit carve-out.
+
+Verified: `grep -r tools/claude-skills` afterward turns up only `docs/build-log/*.md` (9 files) --
+dated historical task reports that correctly keep their as-run paths, since rewriting history
+would misrepresent it. `docs/implementation-plan.md` itself: zero hits.
+
+### Flagged, not fixed (out of scope, same shape as the calibrate-premises.ps1 fix above)
+
+Two more places cite the same old spec path but were left alone because the task named only
+`calibrate-premises.ps1`'s citation as the fix, with an explicit instruction not to touch
+`docs/superpowers/{specs,plans}/...` paths otherwise:
+- `docs/implementation-plan.md` lines 15 and 1161 (the Goal statement, and Task 5's
+  "amend the spec" procedural instruction).
+- `tests/test-discovery.ps1`'s comment above the fall-through assertion ("the plan document
+  (docs/superpowers/specs/2026-08-09-codex-review-loop-design.md live battery...)").
+
+All three are self-referential citations to this repo's own (now-consolidated) spec, not runtime
+paths in a consumer project, so they are the same underlying staleness -- just not named in the
+brief. Flagging for a decision rather than expanding scope unilaterally.
+
+## FIX 2: the four remaining mandatory-array parameters
+
+Applied the exact contract already used for the first three fixed parameters
+(`Get-DisableSet -FeatureNames`, `New-CodexArgs -DisableSet`, `Get-InvocationAudit -CodexArgs`):
+removed `[Parameter(Mandatory)]`, added an `Assert-NoEmptyStringElements` call as the first line
+of the function body. No behavior change for any well-formed caller; every currently-empty-element
+caller now gets a clean terminating throw instead of the non-terminating-bind-error/silent-exit-0
+cascade documented in `Assert-NoEmptyStringElements`'s own comment.
+
+Discrimination proof for each (temporarily reverted just that one parameter back to
+`[Parameter(Mandatory)][string[]]` with no assert call, ran the owning test file, restored, ran
+again):
+
+| Parameter | Reverted (red) | Fixed (green) |
+|---|---|---|
+| `Get-InvocationAudit -ExpectedDisable` | `34 passed, 2 failed` | `36 passed, 0 failed` |
+| `Get-InvocationProfileHash -DisableSet` | `185 passed, 2 failed` | `187 passed, 0 failed` |
+| `Invoke-CodexProcess -CodexArgs` | `185 passed, 2 failed` | `187 passed, 0 failed` |
+| `Invoke-Gh -GhArgs` | `51 passed, 2 failed` | `53 passed, 0 failed` |
+
+Each reverted run failed on exactly the two assertions naming that parameter
+("...fails CLOSED (nonzero exit), not silently" / "...does not silently run to completion past
+the bad input") and nothing else -- confirming each new test discriminates the old contract from
+the new one, isolated from the other three fixes already in place. Wired via the existing
+`Test-EmptyElementFailsClosed` helper (no changes needed to it): `+2` assertions each in
+`test-composer.ps1` (`Get-InvocationAudit -ExpectedDisable`), `test-invoke.ps1`
+(`Get-InvocationProfileHash -DisableSet`, `Invoke-CodexProcess -CodexArgs`), and
+`test-publish.ps1` (`Invoke-Gh -GhArgs`). `Assert-NoEmptyStringElements`'s own docstring updated
+to enumerate all seven protected parameters instead of three.
+
+## FIX 3: temporary skill root for test-invoke.ps1
+
+The "invoke-codex.ps1 entry behavior" section wrote the real (gitignored)
+`codex-review/premises.json` via `Set-TestManifest` and restored the operator's original content
+in a `try/finally` at end-of-file. Replaced with: copy `codex-review/` (scripts + schemas +
+SKILL.md) into `$tmp\entry-skillroot\codex-review` (a subdirectory of the file's existing
+GUID-named `$tmp`) before this section runs; point `$entry` and `Set-TestManifest` at the copy.
+`invoke-codex.ps1` always resolves its own `-SkillRoot` as `Split-Path $PSScriptRoot -Parent`, so
+once `$entry` points into the copy, every read and write of `premises.json` for the rest of the
+section stays inside it. The `try/finally` save-and-restore is gone -- there is nothing left to
+restore.
+
+Proof: a new assertion snapshots the real path's content (or absence) before the section runs and
+asserts it is byte-identical after the entire file finishes (`Assert-Eq`, not just a visual
+check). Independently verified two ways beyond the coded assertion:
+- Single run: real `codex-review/premises.json` confirmed absent before, ran the file (`188
+  passed, 0 failed` at that point in the sequence), confirmed still absent after.
+- Concurrency (the actual originally-reported failure mode): two full runs of `test-invoke.ps1`
+  launched genuinely concurrently via separate PowerShell background jobs (a first attempt via
+  Git-Bash-backgrounded subshells hit an unrelated shell/path-resolution artifact in the harness
+  itself, not a product issue -- redone via `Start-Job`/`Wait-Job` instead). Both completed
+  cleanly (`188 passed, 0 failed` each, no interference), and the real `premises.json` remained
+  absent throughout.
+
+## FIX 4: premise-manifest semantics -- live evidence binds authorization
+
+`Test-PremiseManifest` treated a manifest recording only stack acceptance (what
+`calibrate-premises.ps1`'s compatibility probe can prove, with no live model call) as full
+authorization. Split it into three pieces in `lib.ps1`:
+
+- **`Test-StackAcceptance`** -- the original function, renamed, logic unchanged: CLI
+  path/version/hash, schema hash, AGENTS.md hash, invocation-profile hash, model. This is what
+  `calibrate-premises.ps1` can (re)derive from a probe alone, and now validates its OWN output
+  against (it can never satisfy the fuller gate below, so checking against that would fail on
+  every calibration, including correct ones).
+- **`Test-PremiseManifest`** -- now the two-part gate `invoke-codex.ps1` and `install.ps1` both
+  call unchanged (same signature). Calls `Test-StackAcceptance` first; if that passes, additionally
+  requires a `live_evidence` sub-object on the manifest whose `gate`, `verified_utc`, and
+  fingerprint (`cli_path`/`cli_version`/`cli_sha256`/`schema_sha256`/`agents_md_sha256`/
+  `invocation_profile_sha256`) are all present and match the manifest's own (already-proven-current)
+  top-level fields. Absent or mismatched -> refused, with a `Reason` that names
+  `tests/live/live-schema-gate.ps1` as the remedy.
+- **`Write-LiveEvidence`** (new) -- the only writer of `live_evidence`. Requires an existing
+  stack-accepted `premises.json` (throws if absent, telling the caller to calibrate first); stamps
+  the sub-object with the gate name, timestamp, and the CLI/schema/AGENTS.md/invocation-profile
+  fingerprint the caller supplies. Called from exactly one place: `tests/live/live-schema-gate.ps1`,
+  after every assertion in that file has passed (`$script:Failures.Count -eq 0`) -- that is what
+  "live-verified" means in this codebase now.
+
+`calibrate-premises.ps1` never gained the ability to write `live_evidence`: its output hashtable
+simply has no such key, so every run of the script (a full overwrite of `premises.json`) drops
+any evidence a prior live-gate run had stamped. Its docstring now states this plainly under an
+"ACCEPTANCE, NOT VERIFICATION" heading, and its own self-check switched from the old
+`Test-PremiseManifest` call (which would now always fail immediately after a fresh calibration)
+to `Test-StackAcceptance`.
+
+Updated every place that told an operator "run calibrate-premises.ps1" as if it alone always
+clears exit 12: `invoke-codex.ps1`'s and `install.ps1`'s error messages, and both `SKILL.md`
+files' exit-12 guidance now name both self-serve causes and which fixes which (stack drift ->
+calibrate; missing/stale live evidence -> the live gate, run last since a later calibration drops
+it again).
+
+**End-to-end verification** (fake shim, isolated temp copy under a fresh GUID temp dir -- never
+`codex-review`'s real files):
+1. Ran the real `calibrate-premises.ps1` against the shim: exit 0, valid stack-only manifest
+   written, shim's `exec` branch confirmed never fired (no live call).
+2. `Test-PremiseManifest` right after: refused, `"...no live evidence...; run
+   tests/live/live-schema-gate.ps1"`. `Test-StackAcceptance` on the same file: valid.
+3. Called `Write-LiveEvidence` directly (simulating what `live-schema-gate.ps1` does on success):
+   `Test-PremiseManifest` now valid.
+4. Reran `calibrate-premises.ps1` (simulating a CLI update) against the same file:
+   `live_evidence` confirmed absent afterward; `Test-PremiseManifest` refused again with the same
+   reason as step 2.
+
+Also smoke-tested `install.ps1` live against this machine's real environment: it refused with the
+updated two-cause message and exit 1 (real `codex-review/premises.json` is absent here), confirmed
+via `git status`/`ls` that nothing was mutated -- the CLI probe inside it is read-only and the
+refusal lands before any `Copy-Item`/`Add-Content`.
+
+`tests/live/live-schema-gate.ps1` was edited (added the `Write-LiveEvidence` call, guarded on zero
+failures) but **never executed** -- confirmed syntactically valid via
+`[System.Management.Automation.Language.Parser]::ParseFile` only, per the task's explicit
+instruction not to run anything under `tests/live/`.
+
+Offline regressions added to `tests/test-invoke.ps1`'s existing `Test-PremiseManifest` section
+(reusing its established `$skillRoot = "$tmp\skillroot"` temp path, not the entry-behavior
+section's copy -- that copy exists to host the entry SCRIPT for subprocess invocation, which
+these direct in-process function-call tests don't need): no live evidence -> refused (plus a
+same-manifest `Test-StackAcceptance` check proving the refusal is specifically the new layer, not
+a regression in the pre-existing checks); live evidence fingerprinted to a different CLI hash ->
+refused; matching live evidence -> accepted; `Write-LiveEvidence` stamps a record the gate then
+accepts; recalibrating (writing a fresh stack-only manifest, exactly what `calibrate-premises.ps1`
+does) drops a previously-stamped record and the gate refuses again. `Set-TestManifest` and the
+`Test-PremiseManifest` golden-path fixture (`New-ValidPremisesHashtable`) both now also stamp
+matching `live_evidence`, so the large pre-existing pin/harness/retry/budget/carry-over coverage
+continues to exercise the full, now-stricter production gate unchanged -- caught one bug this way
+during development: an early draft of the "recalibration drops evidence" regression reused the
+now-live-evidence-carrying `New-ValidPremises` fixture as its "post-recalibration" state, which
+made the assertion fail (the fixture no longer represented a stack-only manifest); fixed by
+building that state from `New-ValidPremisesHashtable` with `live_evidence` explicitly removed.
+
+## Concerns (full list, this follow-up)
+
+1. `docs/implementation-plan.md` was NOT synced for FIX 4 (or further synced for FIX 1 beyond the
+   named path/spec-citation fixes) -- it still carries a full historical code listing of the
+   pre-split `Test-PremiseManifest` and the old unconditional "Run calibrate-premises.ps1"
+   wording, and separately still cites the old spec path in two prose spots plus one in
+   `test-discovery.ps1` (see FIX 1's flagged section above). Consistent with how the plan was left
+   after the live-evidence and relocation rounds per this same file's earlier entries, but noting
+   it again here since FIX 4 is a substantial behavior change. Flagging for a decision, not
+   expanding scope unilaterally.
+2. The `git add tools/claude-skills` -> enumerated-directory rewrite in `docs/implementation-plan.md`
+   is a judgment call, not a literal substitution the brief specified: chose to list the four
+   actual top-level entries (`codex-review codex-reviewed-dev tests install.ps1`) rather than
+   `git add .` (which would also stage `docs/`) or `git add -A` unscoped, to preserve each
+   original command's intent (stage the skill source, not the docs) as closely as possible.
+3. `tests/live/live-schema-gate.ps1`'s new `Write-LiveEvidence` call is unexercised by any
+   executed test in this session (by design -- no live CLI calls were made). Its correctness rests
+   on: the isolated direct-call verification in FIX 4 above (which calls `Write-LiveEvidence` with
+   the same argument shapes the gate script now uses) and a static parse check of the gate script
+   itself. The first real run of `tests/live/live-schema-gate.ps1` will be the actual end-to-end
+   proof.
