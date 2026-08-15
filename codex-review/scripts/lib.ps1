@@ -446,12 +446,17 @@ function Get-InvocationProfileHash {
     -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($material)) | ForEach-Object { $_.ToString('x2') })
 }
 
-function Test-PremiseManifest {
+function Test-StackAcceptance {
     <# Binds a review round to the reviewer STACK it was last vetted against: the selected CLI
        (path/version/content hash), the verdict schema, the account AGENTS.md (accepted trusted
        input), the invocation profile (model/effort/feature policy), and the model name. This is
-       a GATE, not a document: normal invocation and installation both refuse to proceed without
-       a manifest that is present and current for the stack that would actually run.
+       everything calibrate-premises.ps1 can (re)derive from a compatibility PROBE alone, with no
+       live model call -- it proves the stack is internally consistent and matches what would
+       actually run, i.e. ACCEPTED. It does NOT prove a real request against the real API was
+       ever sent or accepted; that is what Test-PremiseManifest (below) additionally requires via
+       a separate live-evidence record. calibrate-premises.ps1 validates its own output against
+       THIS narrower check, not the full Test-PremiseManifest gate, which it can never satisfy on
+       its own (see task-14-report.md).
 
        Historical (superseded 2026-08-12): this manifest used to ALSO carry four numeric budget
        premises (tokenizer_family, tokenizer_evidence, base_overhead_tokens, max_output_tokens,
@@ -508,6 +513,85 @@ function Test-PremiseManifest {
     $agentsSha = if (Test-Path $agentsPath) { (Get-FileHash -Algorithm SHA256 $agentsPath).Hash.ToLowerInvariant() } else { 'absent' }
     if ($m.agents_md_sha256 -cne $agentsSha) { return (& $bad "account AGENTS.md changed since the premises were recorded (it is accepted trusted input)") }
     [pscustomobject]@{ Valid=$true; Reason=$null; Manifest=$m }
+}
+
+function Test-PremiseManifest {
+    <# THE gate: normal invocation (invoke-codex.ps1) and installation (install.ps1) both refuse
+       to proceed without this passing for the stack that would actually run.
+
+       Binds authorization to LIVE EVIDENCE, not merely stack acceptance (added: see
+       task-14-report.md). Test-StackAcceptance above proves premises.json's stack-identity
+       fields are internally consistent and match the current CLI/schema/AGENTS.md/invocation
+       profile -- but calibrate-premises.ps1 can reproduce a passing Test-StackAcceptance result
+       from a compatibility PROBE alone, with no live model call, immediately after a CLI or
+       schema change, with no live gate ever rerun. Presenting that probe as proof of a working
+       reviewer stack would let a round run against a stack nobody has actually verified against
+       the real API since the change. This function additionally requires a `live_evidence`
+       record on the manifest: which live gate passed, when, and the exact fingerprint (CLI
+       path/version/hash, schema hash, AGENTS.md hash, invocation-profile hash) it passed
+       against. `live_evidence` is stamped ONLY by tests/live/live-schema-gate.ps1, on an actual
+       passing request against the real API -- calibrate-premises.ps1 never writes or refreshes
+       it, so recalibrating always drops any prior live evidence and a live gate rerun is
+       required again before this passes. #>
+    param([Parameter(Mandatory)][string]$SkillRoot,
+          [Parameter(Mandatory)][pscustomobject]$ActualCli,
+          [Parameter(Mandatory)][string]$InvocationProfileHash,
+          [string]$Model = 'gpt-5.6-sol')
+    $accepted = Test-StackAcceptance -SkillRoot $SkillRoot -ActualCli $ActualCli `
+        -InvocationProfileHash $InvocationProfileHash -Model $Model
+    if (-not $accepted.Valid) { return $accepted }
+    $m = $accepted.Manifest
+    $bad = { param($why) [pscustomobject]@{ Valid=$false; Reason=$why; Manifest=$null } }
+    # Same StrictMode backfill discipline as Test-StackAcceptance above: a genuinely-absent
+    # 'live_evidence' key (the normal case right after a fresh calibration) must fail closed with
+    # a Reason, never throw PropertyNotFoundException past this function's contract.
+    if ($m.PSObject.Properties.Name -notcontains 'live_evidence') { $m | Add-Member -NotePropertyName 'live_evidence' -NotePropertyValue $null }
+    if ($null -eq $m.live_evidence) {
+        return (& $bad "premises.json records stack acceptance but no live evidence (calibrate-premises.ps1 cannot provide it); run tests/live/live-schema-gate.ps1")
+    }
+    $le = $m.live_evidence
+    foreach ($f in @('gate','verified_utc','cli_path','cli_version','cli_sha256','schema_sha256','agents_md_sha256','invocation_profile_sha256')) {
+        if ($le.PSObject.Properties.Name -notcontains $f) { $le | Add-Member -NotePropertyName $f -NotePropertyValue $null }
+    }
+    foreach ($f in @('gate','verified_utc','cli_path','cli_version','cli_sha256','schema_sha256','agents_md_sha256','invocation_profile_sha256')) {
+        if ($null -eq $le.$f -or "$($le.$f)" -eq '') { return (& $bad "live-evidence record is missing '$f'; run tests/live/live-schema-gate.ps1") }
+    }
+    # Compared against the MANIFEST's own top-level fields, not re-derived here: Test-StackAcceptance
+    # just proved those are exactly the CURRENT stack, so this is "matches the current stack" with
+    # no second round of hashing.
+    if ($le.cli_path -cne $m.cli_path -or $le.cli_version -cne $m.cli_version -or $le.cli_sha256 -cne $m.cli_sha256) {
+        return (& $bad "live-evidence record was stamped for a different CLI than the one that would run this round; rerun tests/live/live-schema-gate.ps1")
+    }
+    if ($le.schema_sha256 -cne $m.schema_sha256) { return (& $bad "live-evidence record predates the current verdict schema; rerun tests/live/live-schema-gate.ps1") }
+    if ($le.agents_md_sha256 -cne $m.agents_md_sha256) { return (& $bad "live-evidence record predates the current AGENTS.md; rerun tests/live/live-schema-gate.ps1") }
+    if ($le.invocation_profile_sha256 -cne $m.invocation_profile_sha256) { return (& $bad "live-evidence record predates the current invocation profile; rerun tests/live/live-schema-gate.ps1") }
+    [pscustomobject]@{ Valid=$true; Reason=$null; Manifest=$m }
+}
+
+function Write-LiveEvidence {
+    <# The ONLY writer of the live_evidence record Test-PremiseManifest requires (see above).
+       Called by tests/live/live-schema-gate.ps1, and only there, after an actual live round
+       against the real API has succeeded. Requires premises.json to already exist (calibrate-
+       premises.ps1 must run first) -- this stamps the live-evidence sub-object onto the existing
+       stack-acceptance manifest, it does not create one. #>
+    param([Parameter(Mandatory)][string]$SkillRoot,
+          [Parameter(Mandatory)][string]$Gate,
+          [Parameter(Mandatory)][pscustomobject]$ActualCli,
+          [Parameter(Mandatory)][string]$SchemaSha256,
+          [Parameter(Mandatory)][string]$AgentsMdSha256,
+          [Parameter(Mandatory)][string]$InvocationProfileHash)
+    $path = Join-Path $SkillRoot 'premises.json'
+    if (-not (Test-Path $path)) { throw "premises.json is absent; run calibrate-premises.ps1 before stamping live evidence" }
+    $m = Get-Content -Raw $path | ConvertFrom-Json
+    $evidence = [pscustomobject]@{
+        gate = $Gate; verified_utc = (Get-Date -AsUTC -Format o)
+        cli_path = $ActualCli.Path; cli_version = $ActualCli.Version; cli_sha256 = $ActualCli.Sha256
+        schema_sha256 = $SchemaSha256; agents_md_sha256 = $AgentsMdSha256
+        invocation_profile_sha256 = $InvocationProfileHash
+    }
+    if ($m.PSObject.Properties.Name -contains 'live_evidence') { $m.live_evidence = $evidence }
+    else { $m | Add-Member -NotePropertyName 'live_evidence' -NotePropertyValue $evidence }
+    $m | ConvertTo-Json -Depth 6 | Set-Content -Path $path -Encoding utf8
 }
 
 function Invoke-CodexProcess {

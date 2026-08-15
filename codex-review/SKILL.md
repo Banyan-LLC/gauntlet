@@ -50,11 +50,15 @@ One artifact, one bounded loop. Modes: `doc` (spec/plan) and `pr`. The reviewer 
    - **11** → retry the SAME round **once** (it becomes attempt 2; nothing is overwritten). A second failure exhausts the allowance: the next invocation returns **14** and flags, so stop and escalate rather than trying again.
    - **13** → the pinned reviewer binary changed or its pin is missing. Re-invoke the SAME round with `-AcceptNewBinary`. The round number never resets, so the cap still bites.
    - **16** → the carry-over ledger is missing, incomplete, or altered. The message names the offending ids. Rebuild the ledger from the canonical verdicts — do not "fix" it by trimming entries — and re-invoke. Nothing ran, so this does not consume an attempt.
-   - **12** → environment. If the message names the premise manifest (absent, stale, or bound to
-     a different binary — the common case after a Codex update), the fix is to re-record it:
-     `pwsh -File <skill>/scripts/calibrate-premises.ps1` (no arguments needed — it re-derives the
-     CLI/schema/AGENTS.md/invocation-profile bindings and makes no live model call), then
-     re-invoke. Any other exit-12 message (harness, token) is a human flag.
+   - **12** → environment. Two self-serve manifest causes: stack-identity drift
+     (CLI/schema/AGENTS.md/invocation profile — absent, stale, or bound to a different binary,
+     the common case after a Codex update) — `pwsh -File <skill>/scripts/calibrate-premises.ps1`
+     (no arguments needed; a compatibility probe only, no live model call), then re-invoke.
+     Missing or stale **live evidence** — calibration proves the stack ACCEPTED, never
+     LIVE-VERIFIED, and always drops any existing live-evidence record, so it cannot fix this on
+     its own — `pwsh -File <skill>/tests/live/live-schema-gate.ps1` (one real model call against
+     the real API), then re-invoke (rerunning calibration afterward will drop the evidence again,
+     so run the live gate last). Any other exit-12 message (harness, token) is a human flag.
    - **10 / 14** → human flag (budget overflow; round cap, attempt cap, or a round that already completed).
 4. `pr` mode: publish:
    `pwsh -File <skill>/scripts/publish-review.ps1 -OwnerRepo <o/r> -Pr <n> -Round <n> -VerdictFile <round-N-verdict.json> -StateDir <pr state dir> -BaseOid <oid> -HeadSha <sha>`

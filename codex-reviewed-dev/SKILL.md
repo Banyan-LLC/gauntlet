@@ -38,7 +38,11 @@ No `gh auth switch`, ever. geoffroth token for author calls, BanyanLLC token ins
 Stop; summarize state and sticking points; push notification. Triggers: exits 4/10/14, cap
 reached, CI-fix cap, transient-failure retry exhausted, dismissal denied.
 
-Exit 12 is NOT unconditional. Its most common cause — a premise manifest that is absent,
-stale, or bound to a different binary, which happens routinely after a Codex update — is
-self-serve: re-record it with `calibrate-premises.ps1` and re-invoke, exactly as the
-codex-review protocol says. Only a non-manifest exit 12 (harness, token) is a human flag.
+Exit 12 is NOT unconditional. Two self-serve manifest causes, both handled exactly as the
+codex-review protocol says: stack-identity drift (absent, stale, or bound to a different
+binary — routine after a Codex update) — re-record with `calibrate-premises.ps1`; missing or
+stale **live evidence** (calibration proves the stack ACCEPTED, never LIVE-VERIFIED, and always
+clears any existing live-evidence record, so it cannot fix this cause on its own) — rerun
+`tests/live/live-schema-gate.ps1` (run this one LAST, since a later calibration would drop the
+evidence again). Either way, re-invoke afterward. Only a non-manifest exit 12 (harness, token)
+is a human flag.

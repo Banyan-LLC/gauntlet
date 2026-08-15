@@ -160,7 +160,11 @@ $manifest = Test-PremiseManifest -SkillRoot (Split-Path $PSScriptRoot -Parent) -
     -InvocationProfileHash $profileHash
 if (-not $manifest.Valid) {
     Write-RoundState -StateDir $StateDir -Patch @{ status='flagged'; failure_reason="premise manifest: $($manifest.Reason)" }
-    Write-Error "HUMAN FLAG: $($manifest.Reason). Run calibrate-premises.ps1 to record or refresh premises.json."
+    # Two distinct self-serve causes as of the live-evidence gate (see task-14-report.md): stack
+    # drift is fixed by calibrate-premises.ps1 alone, but missing/stale live evidence is NOT --
+    # calibration only proves the stack ACCEPTED, never LIVE-VERIFIED, and always drops any
+    # existing live-evidence record, so the live gate must be rerun too.
+    Write-Error "HUMAN FLAG: $($manifest.Reason). Stack-identity drift (CLI/schema/AGENTS.md/invocation profile): run calibrate-premises.ps1. Missing or stale live evidence: run tests/live/live-schema-gate.ps1."
     exit 12
 }
 

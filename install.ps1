@@ -12,7 +12,11 @@ $instProfile = Get-InvocationProfileHash -DisableSet (Get-DisableSet -FeatureNam
 $pm = Test-PremiseManifest -SkillRoot "$src\codex-review" -ActualCli $instCli `
     -InvocationProfileHash $instProfile
 if (-not $pm.Valid) {
-    Write-Error "refusing to install: $($pm.Reason). Run scripts/calibrate-premises.ps1 first."
+    # Two distinct self-serve causes as of the live-evidence gate (see task-14-report.md): stack
+    # drift is fixed by calibrate-premises.ps1 alone, but missing/stale live evidence is NOT --
+    # calibration only proves the stack ACCEPTED, never LIVE-VERIFIED, and always drops any
+    # existing live-evidence record, so the live gate must be rerun too.
+    Write-Error "refusing to install: $($pm.Reason). Stack-identity drift (CLI/schema/AGENTS.md/invocation profile): run scripts/calibrate-premises.ps1 first. Missing or stale live evidence: run tests/live/live-schema-gate.ps1 first."
     exit 1
 }
 $dst = "$env:USERPROFILE\.claude\skills"

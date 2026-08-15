@@ -206,16 +206,34 @@ function New-ValidPremisesHashtable {
         agents_md_sha256 = $premisesAgentsSha
         model = 'gpt-5.6-sol'
         invocation_profile_sha256 = $premisesProfileHash
+        # Binding authorization to live evidence (see task-14-report.md): a manifest also needs
+        # proof a live gate actually passed against the real API, fingerprinted to the stack it
+        # passed against. This fixture simulates tests/live/live-schema-gate.ps1 having already
+        # stamped a MATCHING record, so the golden path below continues to exercise "everything
+        # valid" through the FULL production/installer gate (Test-PremiseManifest). Every case
+        # derived from this hashtable that breaks ONE OTHER field still fails at that field's own
+        # check first (Test-StackAcceptance, called before live_evidence is ever examined), so
+        # this addition does not change what any of those pre-existing tests prove. Tests that
+        # need to break ONLY the live-evidence layer remove or mutate this sub-object explicitly.
+        live_evidence = @{
+            gate = 'live-schema-gate'; verified_utc = (Get-Date -AsUTC -Format o)
+            cli_path = $pin.Path; cli_version = $pin.Version; cli_sha256 = $pin.Sha256
+            schema_sha256 = $premisesSchemaSha; agents_md_sha256 = $premisesAgentsSha
+            invocation_profile_sha256 = $premisesProfileHash
+        }
     }
 }
 function New-ValidPremises { [pscustomobject](New-ValidPremisesHashtable) }
 function Write-Premises($ObjOrHashtable) { ($ObjOrHashtable | ConvertTo-Json -Depth 6) | Set-Content -Path $premisesPath -Encoding utf8 }
 
 # --- Golden path. A manifest holding ONLY the stack-identity fields (no numeric budget
-# premises at all) passes -- proving the simplification is real, not merely cosmetic. ---
+# premises at all) PLUS a matching live-evidence record passes -- proving the simplification is
+# real, not merely cosmetic, and that matching live evidence is accepted (one of the three
+# offline regressions FIX 4 requires; the other two -- absent and mismatched -- follow below,
+# after the pre-existing stack-acceptance-layer cases). ---
 Write-Premises (New-ValidPremises)
 $pmOk = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
-Assert-True $pmOk.Valid "a fully valid, current premises.json (stack-identity fields only) passes the gate"
+Assert-True $pmOk.Valid "a fully valid, current premises.json (stack-identity fields + matching live evidence) passes the gate"
 Assert-True ($null -ne $pmOk.Manifest) "a valid result carries the parsed manifest"
 
 # --- Absent file / malformed JSON. ---
@@ -299,6 +317,61 @@ $otherHashCli = [pscustomobject]@{ Path = $pin.Path; Sha256 = ('a' * 64); Versio
 $pmWrongHash = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $otherHashCli -InvocationProfileHash $premisesProfileHash
 Assert-True (-not $pmWrongHash.Valid -and $pmWrongHash.Reason -match 'Codex CLI changed') "same path/version but a different selected CLI content hash is rejected"
 
+# =====================================================================================
+# LIVE EVIDENCE (added: binding authorization to live evidence, not merely stack acceptance --
+# see task-14-report.md). calibrate-premises.ps1 performs a compatibility PROBE only and can
+# regenerate a passing stack-acceptance manifest immediately after CLI or schema drift with no
+# live gate ever rerun; it must not be able to authorize a round on its own. live_evidence is a
+# separate record, stamped ONLY by tests/live/live-schema-gate.ps1 on an actual passing request
+# against the real API. All three cases use $skillRoot (the temp dir already in scope for this
+# whole Test-PremiseManifest section, see above) -- never the real codex-review/premises.json.
+# =====================================================================================
+
+# No live evidence at all: a manifest that is otherwise perfectly valid (stack accepted) but has
+# never been live-verified is refused, not merely degraded.
+$noEvidence = New-ValidPremisesHashtable; $noEvidence.Remove('live_evidence')
+Write-Premises $noEvidence
+$pmNoEvidence = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+Assert-True (-not $pmNoEvidence.Valid -and $pmNoEvidence.Reason -match 'live evidence' -and $pmNoEvidence.Reason -match 'live-schema-gate') "a manifest with NO live-evidence record is refused, naming the live gate to rerun"
+# The narrower stack-only check (what calibrate-premises.ps1 verifies about its OWN output) must
+# still pass for this exact manifest -- proving the refusal above comes from the NEW live-evidence
+# layer, not a regression in the pre-existing stack-identity checks Test-StackAcceptance covers.
+Assert-True (Test-StackAcceptance -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash).Valid "the SAME manifest (minus live_evidence) still passes the narrower stack-acceptance check calibrate-premises.ps1 uses"
+
+# Live evidence present but stamped for a DIFFERENT stack (e.g. a stale record left over from
+# before a CLI update) is refused -- fingerprint match, not mere presence, is what authorizes.
+$staleEvidence = New-ValidPremisesHashtable
+$staleEvidence.live_evidence = @{ gate='live-schema-gate'; verified_utc=(Get-Date -AsUTC -Format o)
+    cli_path=$pin.Path; cli_version=$pin.Version; cli_sha256=('9' * 64)
+    schema_sha256=$premisesSchemaSha; agents_md_sha256=$premisesAgentsSha; invocation_profile_sha256=$premisesProfileHash }
+Write-Premises $staleEvidence
+$pmStaleEvidence = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+Assert-True (-not $pmStaleEvidence.Valid -and $pmStaleEvidence.Reason -match 'live-evidence' -and $pmStaleEvidence.Reason -match 'live-schema-gate') "live evidence stamped for a DIFFERENT CLI hash is refused, naming the live gate to rerun"
+
+# Matching live evidence is accepted -- the full production/installer gate passes end to end.
+# (The golden-path test far above already covers this via New-ValidPremises's now-matching
+# live_evidence, but this makes the property explicit and independently verifiable.)
+$matchingEvidence = New-ValidPremisesHashtable
+$matchingEvidence.live_evidence = @{ gate='live-schema-gate'; verified_utc=(Get-Date -AsUTC -Format o)
+    cli_path=$pin.Path; cli_version=$pin.Version; cli_sha256=$pin.Sha256
+    schema_sha256=$premisesSchemaSha; agents_md_sha256=$premisesAgentsSha; invocation_profile_sha256=$premisesProfileHash }
+Write-Premises $matchingEvidence
+$pmMatchingEvidence = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+Assert-True $pmMatchingEvidence.Valid "live evidence matching the CURRENT stack fingerprint is accepted"
+
+# Write-LiveEvidence itself: stamps onto an existing stack-accepted manifest, and recalibrating
+# (simulated here by writing a fresh stack-only manifest, exactly what calibrate-premises.ps1
+# does) always DROPS it again -- the property invoke-codex.ps1/install.ps1's error messages and
+# both SKILL.md files now depend on ("run the live gate LAST").
+$stackOnly = New-ValidPremisesHashtable; $stackOnly.Remove('live_evidence')
+Write-Premises $stackOnly
+Write-LiveEvidence -SkillRoot $skillRoot -Gate 'live-schema-gate' -ActualCli $pin `
+    -SchemaSha256 $premisesSchemaSha -AgentsMdSha256 $premisesAgentsSha -InvocationProfileHash $premisesProfileHash
+Assert-True (Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash).Valid "Write-LiveEvidence stamps a record that Test-PremiseManifest then accepts"
+$stackOnlyAgain = New-ValidPremisesHashtable; $stackOnlyAgain.Remove('live_evidence')
+Write-Premises $stackOnlyAgain   # simulates calibrate-premises.ps1 recalibrating: no live_evidence key at all
+Assert-True (-not (Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash).Valid) "recalibrating after a Write-LiveEvidence stamp drops it again -- the gate refuses until the live gate reruns"
+
 Remove-Item Env:\CODEX_TEST_CANARY
 
 # ---- invoke-codex.ps1 entry behavior ----
@@ -334,15 +407,30 @@ $promptFile = "$tmp\prompt.txt"; Set-Content $promptFile -Value ("review this`n"
 function Set-TestManifest([string]$ShimPath) {
     # Stack-identity fields only (see task-14-report.md): the numeric budget premises this
     # manifest used to also carry are gone, superseded by the acceptance-time usage gate.
+    #
+    # Also stamps a MATCHING live_evidence sub-object (added: binding authorization to live
+    # evidence, see task-14-report.md): Test-PremiseManifest now additionally requires one, and
+    # every test below exercises invoke-codex.ps1's pin/harness/retry/budget/carry-over behavior,
+    # not the live-evidence gate itself (that gets its own dedicated regressions further down).
+    # This simulates BOTH calibrate-premises.ps1 AND a passing tests/live/live-schema-gate.ps1
+    # run having already happened for this fake stack, exactly as production requires -- it is
+    # test scaffolding writing a hand-built fixture directly, not calibrate-premises.ps1 itself,
+    # so this does not contradict calibrate-premises.ps1 never being able to write this field.
     $probe = Test-CodexCandidate -Path $ShimPath -AllowWrapper
     $agentsPath = "$env:USERPROFILE\.codex\AGENTS.md"
+    $schemaSha = (Get-FileHash -Algorithm SHA256 "$copySkillRoot\schemas\verdict.schema.json").Hash.ToLowerInvariant()
+    $agentsSha = $(if (Test-Path $agentsPath) { (Get-FileHash -Algorithm SHA256 $agentsPath).Hash.ToLowerInvariant() } else { 'absent' })
+    $profileHash = (Get-InvocationProfileHash -DisableSet (Get-DisableSet -FeatureNames $probe.FeatureNames))
     @{ version=1; model='gpt-5.6-sol'
        cli_path=$probe.Path; cli_sha256=$probe.Sha256; cli_version=$probe.Version
-       schema_sha256=(Get-FileHash -Algorithm SHA256 "$copySkillRoot\schemas\verdict.schema.json").Hash.ToLowerInvariant()
-       agents_md_sha256=$(if (Test-Path $agentsPath) { (Get-FileHash -Algorithm SHA256 $agentsPath).Hash.ToLowerInvariant() } else { 'absent' })
-       invocation_profile_sha256=(Get-InvocationProfileHash -DisableSet (Get-DisableSet -FeatureNames $probe.FeatureNames))
-       recorded_utc=(Get-Date -AsUTC -Format o) } |
-        ConvertTo-Json -Depth 4 | Set-Content (Join-Path $copySkillRoot 'premises.json') -Encoding utf8
+       schema_sha256=$schemaSha
+       agents_md_sha256=$agentsSha
+       invocation_profile_sha256=$profileHash
+       recorded_utc=(Get-Date -AsUTC -Format o)
+       live_evidence=@{ gate='live-schema-gate'; verified_utc=(Get-Date -AsUTC -Format o)
+           cli_path=$probe.Path; cli_version=$probe.Version; cli_sha256=$probe.Sha256
+           schema_sha256=$schemaSha; agents_md_sha256=$agentsSha; invocation_profile_sha256=$profileHash } } |
+        ConvertTo-Json -Depth 6 | Set-Content (Join-Path $copySkillRoot 'premises.json') -Encoding utf8
 }
 Set-TestManifest $shim2
 
