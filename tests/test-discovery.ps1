@@ -51,7 +51,7 @@ $noAllow = New-FakeCodexShim -Dir "$tmp\na" -Version "1.0" -ExecHelp $goodExecHe
 Assert-True ($null -eq (Test-CodexCandidate -Path $noAllow -AllowWrapper)) "missing allowlisted feature rejected"
 # NOTE: the brief's fixture used $old (0.130-style) as the "rejected" candidate here, but $old is
 # asserted PASSING two lines above ("0.130-style binary is acceptable") and the plan document
-# (docs/superpowers/specs/2026-08-09-codex-review-loop-design.md live battery, "Task 2 asserts the
+# (docs/design.md live battery, "Task 2 asserts the
 # same thing — these two must not contradict") independently confirms that is intentional:
 # Select-CodexCli is plain "first passing" with no version-preference logic, so a passing $old could
 # never be skipped. Using $old here was therefore unsatisfiable by any correct implementation.

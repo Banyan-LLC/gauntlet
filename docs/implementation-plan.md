@@ -12,7 +12,7 @@ Revision 6 addressed round 4. The largest is architectural: **`exec resume` is g
 
 Previous revisions: 5 addressed round 3, 4 addressed round 2, 3 addressed round 1 and recorded the **Verified premises** below. Spec amendments made during plan review are listed at the top of the spec (rounds 3 and 4).
 
-**Goal:** Build the two personal Claude Code skills specified in `docs/superpowers/specs/2026-08-09-codex-review-loop-design.md` (revision 10, approved): a `codex-review` primitive that runs bounded, hermetic Codex review loops, and a `codex-reviewed-dev` orchestrator that wraps the superpowers lifecycle with Codex review gates.
+**Goal:** Build the two personal Claude Code skills specified in `docs/design.md` (approved at spec review round 10, amended through live evidence): a `codex-review` primitive that runs bounded, hermetic Codex review loops, and a `codex-reviewed-dev` orchestrator that wraps the superpowers lifecycle with Codex review gates.
 
 **Architecture:** Skill source lives in-repo at the repository root (versioned, PR-reviewable) with an installer that copies to `~/.claude/skills/`. All logic is in a dot-sourceable PowerShell library (`lib.ps1`) consumed by two thin entry scripts, so every function is unit-testable without live Codex or GitHub. Tests are plain PowerShell assertion scripts plus a live battery run against the real CLI.
 
@@ -1158,12 +1158,12 @@ Already established (see Verified premises): `codex.exe --version` starts and ex
 
 Because `Invoke-CodexProcess` unconditionally merges `$script:RequiredChildEnv` into every child's environment, there is no longer a way to run a review round with a truly `CODEX_HOME`-only environment through the normal code path — which is the point: the fix is baked in, not merely documented. To evaluate a **future** candidate variable, the procedure is unchanged: run a real `exec` round with the candidate temporarily added or removed from `$script:RequiredChildEnv` (a scratch edit, not a flag), observe whether the round completes, then:
 - Success with the variable removed → it was never necessary; do not add it.
-- Failure without it, success with it → add it to `$script:RequiredChildEnv` with a code comment stating the observed error; then (a) **amend the spec** (`docs/superpowers/specs/2026-08-09-codex-review-loop-design.md`, Secret-free child environment bullet) listing the exact final set with the recorded justification, and (b) extend the `test-invoke.ps1` contract assertion to cover it, and (c) confirm it carries no secret material.
+- Failure without it, success with it → add it to `$script:RequiredChildEnv` with a code comment stating the observed error; then (a) **amend the spec** (`docs/design.md`, Secret-free child environment bullet) listing the exact final set with the recorded justification, and (b) extend the `test-invoke.ps1` contract assertion to cover it, and (c) confirm it carries no secret material.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add codex-review codex-reviewed-dev tests install.ps1 docs/superpowers/specs
+git add codex-review codex-reviewed-dev tests install.ps1 docs/design.md
 git commit -m "feat(codex-review): deadlock-free runner with tree-kill timeout and minimal child env"
 ```
 
@@ -2940,7 +2940,7 @@ Calibration points to fix-and-rerun if hit: features-list row parse; `-c` TOML q
 - [ ] **Step 3: Commit**
 
 ```bash
-git add codex-review codex-reviewed-dev tests install.ps1 docs/superpowers/specs
+git add codex-review codex-reviewed-dev tests install.ps1 docs/design.md
 git commit -m "test(codex-review): live smoke green - AGENTS.md boundary, canaries, near-limit usage gate"
 ```
 
