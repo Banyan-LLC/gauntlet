@@ -760,3 +760,181 @@ file's injection test) -- confirmed by reading its surrounding context, not just
 `docs/design.md` decision 4 already correctly states the production AGENTS.md behavior this
 Finding 3 fix makes the battery actually exercise; no doc claim was wrong, only the test's own
 faithfulness was incomplete. No doc change identified as necessary from this task's four fixes.
+
+---
+
+# Task 14 follow-up: installed-tree fingerprint fix (P1) + documentation-truth sweep (2026-08-16)
+
+Status: complete, all green. Baseline 432 (composer 37, discovery 27, invoke 230, policy 15,
+publish 53, schema 9, state 61) -> final 451 (composer 37, discovery 27, invoke 249, policy 15,
+publish 53, schema 9, state 61). Two commits, one per part, on `main` in this repo (not pushed).
+No live model calls, no GitHub calls, no network: every test uses fake CLI shims. Nothing under
+`tests/live/` was run. `tests/live/live-security.ps1` was not touched -- it is a parallel agent's
+concurrent work in this same worktree (see that agent's own "four security fixes" section
+immediately above, which independently confirms the same scope split from its own side).
+
+- `0f72a5b` -- fix(codex-review): split security fingerprint into wrapper/gate for installed-tree compat
+- `dc74f59` -- docs(codex-review): sync build-log/design/SKILL docs to shipped two-gate live-evidence and Task 11's green-gate narrowing
+
+## PART A (P1): `Get-SecuritySourceFingerprint` threw on every real review round run from an installed tree
+
+### Reproduction (done before writing any fix)
+
+Pointed `Test-PremiseManifest`/`Get-SecuritySourceFingerprint` at a temp directory laid out
+exactly like `install.ps1`'s actual output (`codex-review/` + `codex-reviewed-dev/` copied in, NO
+`tests/` directory anywhere nearby), with a `premises.json` that genuinely passes
+`Test-StackAcceptance` so the call reaches the fingerprint logic -- the exact shape
+`invoke-codex.ps1:159` resolves at runtime (`Test-PremiseManifest -SkillRoot (Split-Path
+$PSScriptRoot -Parent)`, which from an installed
+`~/.claude/skills/codex-review/scripts/invoke-codex.ps1` is `~/.claude/skills/codex-review`, whose
+parent has no `tests/` child). Confirmed the throw, verbatim:
+
+    security source fingerprint: missing required file 'tests\live\live-schema-gate.ps1'
+    (resolved 'C:\...\installed-tree-repro2-...\tests\live\live-schema-gate.ps1')
+
+Exception type `System.Management.Automation.RuntimeException`, uncaught anywhere in the call
+chain -- would abort every real review round in an installed tree, before Codex is ever invoked.
+This was exactly the "Production wiring gap" this file's own prior FINDING 2 follow-up flagged as
+Concern 1 ("an INSTALLED tree will have no tests/live/ sibling ... and it will throw (fail closed,
+but not usefully)") -- this task is that flagged follow-up landing.
+
+### Fix
+
+Split `Get-SecuritySourceFingerprint` into two functions per what each part actually governs, per
+the brief:
+- **`Get-WrapperFingerprint -SkillRoot`** -- SHA-256 over the shipped wrapper sources that EXECUTE
+  at runtime (`scripts/{lib,invoke-codex,publish-review,calibrate-premises}.ps1`,
+  `schemas/verdict.schema.json`), resolved relative to `-SkillRoot` ITSELF (never a sibling
+  `tests/`) -- resolves identically in the dev repo and an installed tree. Missing file still
+  throws (fail-closed unchanged).
+- **`Get-GateFingerprint -RepoRoot`** -- SHA-256 over `tests/live/live-schema-gate.ps1` +
+  `tests/live/live-security.ps1`, resolved relative to `-RepoRoot` (the checkout root, sibling of
+  `codex-review/`). Same fail-closed-on-missing-file construction.
+- `Test-PremiseManifest` now computes both, but verifies them asymmetrically: `wrapper_fingerprint`
+  UNCONDITIONALLY, in every environment (the runtime-critical binding); `gate_fingerprint` ONLY
+  when both live-gate files are present next to `-SkillRoot`'s parent, checked via plain
+  `Test-Path` calls that never throw when the parent doesn't exist or has no `tests/` child --
+  otherwise the recorded value is kept as stamping-time provenance and never compared. Each
+  `live_evidence` sub-record now carries both `wrapper_fingerprint` and `gate_fingerprint` in
+  place of the old single `source_fingerprint`.
+- `Write-LiveEvidence` stamps both fingerprints (its only two callers, the two live gates, always
+  run in the dev repo, so both are always genuinely computable there).
+- Also fixed, same area, flagged as unfixed by this file's own prior FINDING 2 follow-up (Concern
+  2): `tests/live/live-schema-gate.ps1` called `Write-LiveEvidence -Gate 'live-schema-gate'`, a
+  value the `[ValidateSet('schema_gate','security_battery')]` on `-Gate` rejects outright --
+  changed to `-Gate 'schema_gate'`. This file is not the parallel agent's off-limits file (only
+  `tests/live/live-security.ps1` is), so it was in scope to fix directly.
+
+### Regressions (`test-invoke.ps1`, offline, fake shims only)
+
+(a) An installed-tree layout (scripts+schema under `codex-review/`, NO `tests/` sibling at all)
+    computes a wrapper fingerprint successfully (never throws) and `Test-PremiseManifest`
+    VALIDATES when the manifest matches -- the exact case that used to throw, now exercised
+    through the real production gate, not just the low-level function. `gate_fingerprint` is
+    present as inert provenance (a fixed hex placeholder) and is not what makes it pass.
+(b) Editing a wrapper source (`lib.ps1`) invalidates BOTH sub-records independently -- proven with
+    a mirror pair (one sub-record carries the stale, pre-edit fingerprint; the OTHER carries a
+    genuinely current, post-edit one) so `Test-PremiseManifest`'s `schema_gate`-before-
+    `security_battery` loop order cannot mask either check by short-circuiting on the other's
+    absence; each failure is asserted to name the specific stale sub-record. An earlier version of
+    this regression left `schema_gate` entirely ABSENT for the `security_battery` half, which made
+    the loop short-circuit on "no live evidence for schema_gate" before ever reaching
+    `security_battery`'s own wrapper check -- caught by the offline suite itself (a genuine `1
+    failed` on first run), not by inspection; fixed with the mirror-pair design, confirmed green
+    on rerun (twice).
+(c) Editing a live-gate script (`live-schema-gate.ps1`) changes `gate_fingerprint` and IS rejected
+    when run from the dev repo (`tests/live/` present next to `-SkillRoot`'s parent) -- and,
+    mirrored in the same block, the identical kind of stale `gate_fingerprint` value is silently
+    ACCEPTED as provenance in the installed-tree layout, where there is nothing to recompute it
+    against. Demonstrates the documented asymmetry directly, both directions, in one place.
+(d) Still refused when a sub-record is missing entirely -- already covered by the pre-existing
+    "only schema_gate present" / "only security_battery present" cases (dev-repo `$skillRoot`),
+    now exercising the renamed `wrapper_fingerprint`/`gate_fingerprint` fields; not re-derived.
+
+## PART B: documentation-truth sweep
+
+| File : line | Said | Now says |
+|---|---|---|
+| `docs/build-log/task-11-report.md` (capability coverage) | `$requiredClasses` is a fixed 8-element array (shell, web, mcp, apps, plugins, skills, subagents, computer_use) | unchanged (historical) + a "Corrected 2026-08-16" note: `$requiredClasses` is now a fixed 5-element array (shell, web, mcp, apps, plugins); the 3 unprovable classes live in their own permanent, equally immutable `$narrowedClasses`, whose own control still runs and is asserted to NOT fire |
+| `docs/build-log/task-11-report.md` (injection self-report) | "Not silently softened: the assertion stays strict, so the shipped battery will legitimately show this specific check red..." | unchanged (historical) + a "Corrected 2026-08-16" note: the self-report match is now observational/logged only, never asserted (measured 1/3; a hard assertion would fail ~2/3 of runs on model variance). The never-coerced-into-approving property remains hard-asserted (3/3) |
+| `docs/build-log/task-11-report.md` (Cleanup evidence) | "65 assertions passed... only 5 failures were the 3 expected capability-coverage gaps, the resulting verified==required assertion, and the injection self-report assertion" | unchanged (historical) + a "Corrected 2026-08-16" note: that was the ORIGINAL deliberately-red result; the shipped, green-gate result is **72 passed, 0 failed** |
+| `docs/implementation-plan.md` (last line, Plan Self-Review item 4) | "per-class controls that cannot be made to fire block the Task 14 gate" | struck through + corrected in place: an unprovable control does not block Task 14; it is a permanent, negatively-asserted entry in `$narrowedClasses`, shipped and green |
+| `docs/design.md` ("Plan round 6" amendment) | "authorization to run or install additionally requires a `live_evidence` record that only the live schema gate can write" | unchanged (historical) + a "Corrected 2026-08-16" note: `live_evidence` is now two independently-fingerprinted sub-records (`schema_gate`, `security_battery`), each carrying the `wrapper_fingerprint`/`gate_fingerprint` asymmetry from Part A above |
+| `codex-review/SKILL.md` (exit-12 guidance) | named only `tests/live/live-schema-gate.ps1` as the live-evidence remedy | names both `tests/live/live-schema-gate.ps1` (`schema_gate`) and `tests/live/live-security.ps1` (`security_battery`), deferring to the refusal message for which one to actually rerun |
+| `codex-reviewed-dev/SKILL.md` (exit-12 guidance) | same as above | same fix as above |
+| `README.md` | checked (recently user-edited): makes none of the stale claims this sweep targets | left unchanged |
+
+`tests/live/live-security.ps1`'s own header comment (~line 20-22 as of this task; the file is
+under active concurrent edit, so the line number will keep moving -- match by text) also needs a
+fix, but that file is off-limits (owned by the parallel agent). Reported directly to the user
+rather than edited here. Current text:
+
+    - Event taxonomy: thread.started, turn.started, item.completed (item.type = agent_message |
+      error), turn.completed, error. No session_created/exec_command/tool_call ever observed.
+
+Needed change: the parenthetical undersells what the battery's own positive controls confirm live
+(per this file's own per-class evidence table: shell fires `item.type="command_execution"`, web
+fires `item.type="web_search"`) -- both are genuine, confirmed `item.type` values, not the
+guessed-and-wrong `exec_command`/`tool_call` names the second sentence correctly says were never
+observed. Proposed replacement text:
+
+    - Event taxonomy: thread.started, turn.started, item.completed (item.type = agent_message |
+      error in the hermetic baseline; additionally command_execution when shell is enabled and
+      web_search when web is enabled -- see the per-class positive controls below), turn.completed,
+      error. No session_created/exec_command/tool_call ever observed.
+
+No "strict self-report assertion" claim was found anywhere in the header docstring (checked the
+full `<# ... #>` block, lines 1-19 as of this read) -- that claim was already fixed (softened to
+observational-only, matching the code) before this task started, so nothing to change there.
+
+## Verification (every `tests/test-*.ps1`, run individually)
+
+BEFORE (this task's stated baseline):
+
+    composer 37, discovery 27, invoke 230, policy 15, publish 53, schema 9, state 61 = 432
+
+AFTER:
+
+```
+pwsh -NoProfile -File tests/test-composer.ps1    # 37 passed, 0 failed
+pwsh -NoProfile -File tests/test-discovery.ps1   # 27 passed, 0 failed
+pwsh -NoProfile -File tests/test-invoke.ps1      # 249 passed, 0 failed (run twice, stable)
+pwsh -NoProfile -File tests/test-policy.ps1      # 15 passed, 0 failed
+pwsh -NoProfile -File tests/test-publish.ps1     # 53 passed, 0 failed
+pwsh -NoProfile -File tests/test-schema.ps1      # 9 passed, 0 failed
+pwsh -NoProfile -File tests/test-state.ps1       # 61 passed, 0 failed
+```
+
+= 451 total (+19, all in `test-invoke.ps1`, all new Part A regressions). `git status` clean after
+the full run each time; nothing under `tests/live/` executed.
+
+## Concerns
+
+1. **`tests/live/live-security.ps1` never calls `Write-LiveEvidence` at all.** Its own header
+   states the runs it makes "do not need premises.json / live-evidence authorization" for the
+   per-class controls (true, by design), but the shared hermetic baseline / plugins-home hermetic
+   control / injection test use the real canonical `New-CodexArgs` and are exactly the kind of
+   passing live run `security_battery` is meant to be stamped from -- and nothing in the file
+   calls `Write-LiveEvidence -Gate 'security_battery'` anywhere. This means the `security_battery`
+   sub-record can never actually be stamped by a real run yet, so `Test-PremiseManifest` can never
+   pass in production until it is wired up. This is the SAME gap this file's own prior FINDING 2
+   follow-up flagged in its Concern 2 ("...the later task that wires the gates must update this
+   call site (and add the equivalent call to tests/live/live-security.ps1, which does not
+   currently call Write-LiveEvidence at all)") -- still true, not fixed here since the file is
+   off-limits for this task. Flagged for the user / the parallel agent.
+2. This task's git history briefly shows a commit (`b63dd6e`, since reset by the parallel agent
+   working in this same shared, non-isolated working directory) that accidentally included this
+   task's own in-progress `lib.ps1`/`tests/live/live-schema-gate.ps1`/`tests/test-invoke.ps1`
+   changes alongside that agent's own report -- almost certainly a broad `git add` on their side
+   sweeping up this task's uncommitted working-tree edits. They caught it themselves (`git reset
+   HEAD~1`, working tree left untouched) and recommitted narrowly; their own report at
+   `acb4acf`/above independently confirms the same read of events from their side. No content was
+   lost or corrupted (verified: parse-checked and re-ran the offline suite green, twice, after
+   discovering this). Noting it here because a reader of `git log`/`git reflog` will otherwise find
+   the dangling `b63dd6e` puzzling. Worth relaying to whoever dispatched both tasks: this repo path
+   is being used as a shared, non-isolated working directory by two concurrent agents, which is
+   exactly the failure mode the project's own worktree-discipline convention exists to prevent.
+3. `docs/build-log/progress.md` was not checked/touched -- out of scope per the brief (which named
+   specific files), but it references `requiredClasses reduced to the 5 proven +...` and may carry
+   the same kind of narrative drift as `task-11-report.md` did; flagging for a decision rather than
+   expanding scope unilaterally.
