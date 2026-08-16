@@ -698,12 +698,17 @@ function Test-PremiseManifest {
            EXECUTE at runtime, resolved under -SkillRoot itself. ALWAYS verified against the
            current stack, in EVERY environment: this is the runtime-critical binding, and every
            environment that can reach this function ships these files under -SkillRoot.
-         - `gate_fingerprint` (Get-GateFingerprint) -- the two live gates alone authorized to
-           stamp live evidence. Verified ONLY when tests/live/live-schema-gate.ps1 AND
-           tests/live/live-security.ps1 are both present next to -SkillRoot's parent (the dev
-           repo). An installed tree never has them, so there is nothing to recompute against --
-           the recorded value is kept purely as STAMPING-TIME PROVENANCE there, never compared to
-           a value this environment structurally cannot reproduce.
+         - `gate_fingerprint` (Get-GateFingerprint) -- the THREE gate sources that together
+           decide what a live gate asserts and whether it passes: tests/helpers.ps1 (every
+           assertion, the failure list, and Write-TestResult's exit decision),
+           tests/live/live-schema-gate.ps1, and tests/live/live-security.ps1.
+           Verified whenever ALL THREE are present next to -SkillRoot's parent (the dev repo).
+           ABSENCE ALONE DOES NOT GRANT PROVENANCE-ONLY MODE -- see
+           -AllowProvenanceOnlyGateSources below, which is the AUTHORITATIVE rule and governs
+           this bullet: a PARTIAL tree (some gate sources present, at least one missing) is a
+           broken source tree and is ALWAYS refused, switch or no switch; only a wholly-absent
+           tests/ tree, in a caller that has explicitly identified itself as an installed tree,
+           falls back to keeping the recorded value as STAMPING-TIME PROVENANCE.
        In short: we VERIFY, in every environment, what RUNS in that environment; we BIND, only
        where it can be recomputed, what STAMPED the evidence. It remains impossible for a
        missing or mismatched wrapper_fingerprint to pass, anywhere -- only gate_fingerprint's

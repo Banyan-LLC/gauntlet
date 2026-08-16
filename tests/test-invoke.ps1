@@ -356,7 +356,9 @@ function New-ValidPremisesHashtable {
         # without ever rerunning the security battery, and bound none of the wrapper
         # implementation. live_evidence now carries TWO required named sub-records, schema_gate
         # and security_battery, each independently fingerprinted (including wrapper_fingerprint
-        # over the shipped wrapper sources, and gate_fingerprint over the two live gates). This
+        # over the shipped wrapper sources, and gate_fingerprint over the THREE gate sources --
+        # both live-gate scripts plus tests/helpers.ps1, which defines every assertion and the
+        # pass/fail exit decision (FINDING 1a)). This
         # fixture simulates BOTH live gates having
         # already stamped MATCHING records, so the golden path below continues to exercise
         # "everything valid" through the FULL production/installer gate (Test-PremiseManifest).
@@ -864,7 +866,7 @@ $copySkillRoot = Join-Path $copyRoot 'codex-review'
 # Get-GateFingerprint (FINDING 2) resolves its fixed file list relative to -SkillRoot's PARENT --
 # i.e. as siblings of codex-review/, matching this repo's real dev-repo layout (Get-WrapperFingerprint
 # no longer needs this at all -- it resolves entirely under -SkillRoot itself, see the P1 fix). The
-# Copy-Item -Recurse above already brought scripts/ + schemas/ along; add the two live-gate scripts
+# Copy-Item -Recurse above already brought scripts/ + schemas/ along; add the live-gate scripts
 # as a tests\live sibling of $copyRoot so Set-TestManifest below (and invoke-codex.ps1's own internal
 # Test-PremiseManifest call) can compute a real gate fingerprint against this copy.
 New-Item -ItemType Directory -Force (Join-Path $copyRoot 'tests\live') | Out-Null
