@@ -768,6 +768,18 @@ function Test-PremiseManifest {
         foreach ($f in @('gate','utc','cli_path','cli_version','cli_sha256','schema_sha256','agents_md_sha256','invocation_profile_sha256','wrapper_fingerprint','gate_fingerprint')) {
             if ($null -eq $rec.$f -or "$($rec.$f)" -eq '') { return (& $bad "live-evidence record '$gateName' is missing '$f'; run $($gateRerun[$gateName])") }
         }
+        # FINDING 2 fix (P1, see docs/build-log/task-14-report.md): a record's own 'gate' field
+        # must equal the property name it is stored under. Every OTHER fingerprint field is
+        # shared between the two sub-records (same CLI/schema/AGENTS.md/invocation-profile/
+        # wrapper/gate fingerprints for a genuinely passing stack), so without this check,
+        # duplicating the schema_gate record under the security_battery property -- or swapping
+        # the two records -- passed every check above and authorized the whole security-sensitive
+        # stack from one schema-gate run alone, exactly the attack the two-record design exists to
+        # prevent. Ordinal (-ceq/-cne), consistent with every other identity check in this
+        # function -- this is a security identity comparison, not a display comparison.
+        if ($rec.gate -cne $gateName) {
+            return (& $bad "live-evidence record stored under '$gateName' identifies itself as gate '$($rec.gate)' (expected '$gateName') -- a record must match the gate that produced it, never be copied or swapped from another; rerun $($gateRerun[$gateName])")
+        }
         # Compared against the MANIFEST's own top-level fields, not re-derived here: Test-StackAcceptance
         # just proved those are exactly the CURRENT stack, so this is "matches the current stack" with
         # no second round of hashing (the two fingerprints are the exception -- they have no top-level

@@ -533,6 +533,63 @@ Write-Premises (New-ValidPremisesHashtable)
 $pmBothMatching = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
 Assert-True $pmBothMatching.Valid "schema_gate AND security_battery both matching the current stack is accepted"
 
+# =====================================================================================
+# FINDING 2 (P1, see docs/build-log/task-14-report.md): a record's own 'gate' field must equal
+# the PROPERTY NAME it is stored under. Every other fingerprint field is shared between two
+# genuinely matching sub-records (same CLI/schema/AGENTS.md/invocation-profile/wrapper/gate
+# fingerprints), so without this check a schema_gate record copy-pasted (or swapped) into the
+# security_battery slot passed every other check above and authorized the whole security-sensitive
+# stack from one schema-gate run alone -- exactly the attack the two-record design exists to
+# prevent.
+# =====================================================================================
+
+# (a) the schema_gate record DUPLICATED under security_battery (identical content, including
+# gate='schema_gate') -> refused, naming both the slot ('security_battery') and the mislabeled
+# gate value found ('schema_gate').
+$dupUnderSecurity = New-ValidPremisesHashtable
+$dupUnderSecurity.live_evidence = @{ schema_gate = (New-LiveEvidenceRecord 'schema_gate'); security_battery = (New-LiveEvidenceRecord 'schema_gate') }
+Write-Premises $dupUnderSecurity
+$pmDupUnderSecurity = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+Assert-True (-not $pmDupUnderSecurity.Valid -and $pmDupUnderSecurity.Reason -match "'security_battery'" -and $pmDupUnderSecurity.Reason -match "'schema_gate'") "the schema_gate record DUPLICATED under the security_battery property is refused -- one schema-gate run cannot authorize the whole stack by being copy-pasted into the other slot"
+
+# Mirror: the security_battery record duplicated under schema_gate.
+$dupUnderSchema = New-ValidPremisesHashtable
+$dupUnderSchema.live_evidence = @{ schema_gate = (New-LiveEvidenceRecord 'security_battery'); security_battery = (New-LiveEvidenceRecord 'security_battery') }
+Write-Premises $dupUnderSchema
+$pmDupUnderSchema = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+Assert-True (-not $pmDupUnderSchema.Valid -and $pmDupUnderSchema.Reason -match "'schema_gate'" -and $pmDupUnderSchema.Reason -match "'security_battery'") "the security_battery record duplicated under the schema_gate property is refused too (symmetric)"
+
+# (b) the two records' gate fields SWAPPED (schema_gate slot claims to be security_battery, and
+# vice versa) -> refused. Distinct from (a): here BOTH slots are mislabeled, not merely one.
+$swapped = New-ValidPremisesHashtable
+$swapped.live_evidence = @{ schema_gate = (New-LiveEvidenceRecord 'security_battery'); security_battery = (New-LiveEvidenceRecord 'schema_gate') }
+Write-Premises $swapped
+$pmSwapped = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+Assert-True (-not $pmSwapped.Valid -and $pmSwapped.Reason -match "'schema_gate'") "the two records' gate fields SWAPPED is refused (caught at the schema_gate slot, checked first in the loop)"
+
+# (c) gate='' (present-but-empty -- caught by the PRE-EXISTING missing-field loop, not the new
+# identity check) and gate='bogus' (a well-formed but wrong value -- caught by the NEW identity
+# check specifically) -> both refused, via two distinct code paths.
+$blankGateRec = New-LiveEvidenceRecord 'schema_gate'; $blankGateRec.gate = ''
+$blankGate = New-ValidPremisesHashtable
+$blankGate.live_evidence = @{ schema_gate = $blankGateRec; security_battery = (New-LiveEvidenceRecord 'security_battery') }
+Write-Premises $blankGate
+$pmBlankGate = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+Assert-True (-not $pmBlankGate.Valid -and $pmBlankGate.Reason -match "missing 'gate'") "a record with gate='' is refused by the pre-existing missing-field check"
+
+$bogusGateRec = New-LiveEvidenceRecord 'schema_gate'; $bogusGateRec.gate = 'bogus'
+$bogusGate = New-ValidPremisesHashtable
+$bogusGate.live_evidence = @{ schema_gate = $bogusGateRec; security_battery = (New-LiveEvidenceRecord 'security_battery') }
+Write-Premises $bogusGate
+$pmBogusGate = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+Assert-True (-not $pmBogusGate.Valid -and $pmBogusGate.Reason -match "identifies itself as gate 'bogus'") "a record with gate='bogus' is refused by the NEW identity check, naming the bogus value found"
+
+# (d) correctly-labeled records -> accepted: already proven by $pmBothMatching immediately above
+# (New-ValidPremisesHashtable/New-LiveEvidenceRecord always label each record with its own slot's
+# name) and by every other golden-path assertion in this file, all of which continue to pass
+# unchanged with the new identity check in place.
+Write-Premises (New-ValidPremisesHashtable)   # leave $premisesPath valid for anything appended later
+
 # --- FIX 2 regression (d): Write-LiveEvidence stamping security_battery must not disturb an
 # existing, independently-stamped schema_gate record. ---
 $oneStamped = New-ValidPremisesHashtable; $oneStamped.live_evidence = @{ schema_gate = (New-LiveEvidenceRecord 'schema_gate') }
