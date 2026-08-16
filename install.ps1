@@ -9,6 +9,11 @@ try { $instCli = Select-CodexCli -Candidates (Get-CodexCandidates) } catch {
     Write-Error "refusing to install: no usable Codex CLI ($($_.Exception.Message))"; exit 1
 }
 $instProfile = Get-InvocationProfileHash -DisableSet (Get-DisableSet -FeatureNames $instCli.FeatureNames)
+# Deliberately NO -AllowProvenanceOnlyGateSources (P1 fix, see docs/build-log/task-14-report.md,
+# FINDING 1b): this script always runs from the SOURCE repo, where the gate sources
+# (tests\helpers.ps1, tests\live\live-schema-gate.ps1, tests\live\live-security.ps1) are expected
+# to be genuinely present -- so this call is strict/default mode. A source tree with even one gate
+# source missing or renamed must refuse here, not be silently treated as an installed tree.
 $pm = Test-PremiseManifest -SkillRoot "$src\codex-review" -ActualCli $instCli `
     -InvocationProfileHash $instProfile
 if (-not $pm.Valid) {

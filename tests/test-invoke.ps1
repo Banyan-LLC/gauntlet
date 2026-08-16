@@ -250,6 +250,11 @@ New-Item -ItemType Directory -Force "$tmp\tests\live" | Out-Null
 foreach ($f in 'live-schema-gate.ps1','live-security.ps1') {
     Copy-Item "$PSScriptRoot\live\$f" "$tmp\tests\live\$f"
 }
+# FINDING 1a (see docs/build-log/task-14-report.md): tests\helpers.ps1 is now part of
+# Get-GateFingerprint's fixed list too (it defines Assert-True/the failure list/the exit
+# decision for BOTH live gates), so every dev-repo-shaped fixture needs a copy alongside the two
+# live-gate scripts, or it becomes a PARTIAL tree under FINDING 1b's stricter presence check.
+Copy-Item "$PSScriptRoot\helpers.ps1" "$tmp\tests\helpers.ps1"
 
 $wrapperFingerprint = Get-WrapperFingerprint -SkillRoot $skillRoot
 $wrapperFingerprint2 = Get-WrapperFingerprint -SkillRoot $skillRoot
@@ -280,6 +285,20 @@ Assert-Eq $wrapperFpAfterGateEdit $wrapperFingerprint "editing a live gate scrip
 Copy-Item "$PSScriptRoot\live\live-security.ps1" "$tmp\tests\live\live-security.ps1" -Force
 Assert-Eq (Get-GateFingerprint -RepoRoot $tmp) $gateFingerprint "restoring live-security.ps1's original bytes restores the original gate fingerprint"
 
+# --- FINDING 1a regression (see docs/build-log/task-14-report.md): tests\helpers.ps1 is now part
+# of Get-GateFingerprint's fixed list -- editing it must change the gate fingerprint exactly like
+# editing either live-gate script does above. Before this fix, helpers.ps1 (which defines
+# Assert-True, the failure list, and Write-TestResult's exit decision for BOTH live gates) was
+# invisible to the fingerprint: turning Assert-True into a no-op left the fingerprint -- and any
+# stamped evidence bound to it -- unchanged, though the gate no longer asserted anything. ---
+Add-Content -Path "$tmp\tests\helpers.ps1" -Value "`n# fingerprint-test perturbation"
+$gateFpAfterHelpersEdit = Get-GateFingerprint -RepoRoot $tmp
+$wrapperFpAfterHelpersEdit = Get-WrapperFingerprint -SkillRoot $skillRoot
+Assert-True ($gateFpAfterHelpersEdit -ne $gateFingerprint) "editing tests\helpers.ps1 changes the gate fingerprint (FINDING 1a)"
+Assert-Eq $wrapperFpAfterHelpersEdit $wrapperFingerprint "editing tests\helpers.ps1 does NOT change the wrapper fingerprint (independently derived)"
+Copy-Item "$PSScriptRoot\helpers.ps1" "$tmp\tests\helpers.ps1" -Force
+Assert-Eq (Get-GateFingerprint -RepoRoot $tmp) $gateFingerprint "restoring tests\helpers.ps1's original bytes restores the original gate fingerprint"
+
 # Missing required file -> fail closed (throws), never a smaller/silent fingerprint -- each
 # function has its OWN independent fixed file list now, so each is proven separately.
 $missingWrapperRoot = Join-Path $tmp 'wrapper-fingerprint-missing'
@@ -296,6 +315,17 @@ New-Item -ItemType Directory -Force "$missingGateRoot\tests\live" | Out-Null
 Copy-Item "$PSScriptRoot\live\live-security.ps1" "$missingGateRoot\tests\live\live-security.ps1"
 # live-schema-gate.ps1 deliberately NOT copied -- the missing required file.
 Assert-Throws { Get-GateFingerprint -RepoRoot $missingGateRoot } "a missing required live-gate source file fails CLOSED (throws), not silently"
+
+# --- FINDING 1a regression: helpers.ps1 missing ALONE (both live-gate SCRIPTS present) also fails
+# closed -- proves the addition is load-bearing on its own, not merely piggybacking on the
+# pre-existing "some file missing" case above. ---
+$missingHelpersRoot = Join-Path $tmp 'gate-fingerprint-missing-helpers'
+New-Item -ItemType Directory -Force "$missingHelpersRoot\tests\live" | Out-Null
+foreach ($f in 'live-schema-gate.ps1','live-security.ps1') {
+    Copy-Item "$PSScriptRoot\live\$f" "$missingHelpersRoot\tests\live\$f"
+}
+# tests\helpers.ps1 deliberately NOT copied -- the missing required file.
+Assert-Throws { Get-GateFingerprint -RepoRoot $missingHelpersRoot } "a missing tests\helpers.ps1 fails CLOSED (throws) even when BOTH live-gate scripts are present (FINDING 1a)"
 
 function New-LiveEvidenceRecordWith([string]$Gate, [string]$WrapperFingerprint, [string]$GateFingerprint) {
     @{ gate = $Gate; utc = (Get-Date -AsUTC -Format o)
@@ -601,10 +631,17 @@ Write-InstalledPremises (New-InstalledManifest @{
     security_battery = (New-LiveEvidenceRecordWith -Gate 'security_battery' -WrapperFingerprint $installedWrapperFp -GateFingerprint ('e' * 64))
 })
 $pmInstalledThrew = $false; $pmInstalled = $null
-try { $pmInstalled = Test-PremiseManifest -SkillRoot $installedSkillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash }
+try { $pmInstalled = Test-PremiseManifest -SkillRoot $installedSkillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash -AllowProvenanceOnlyGateSources }
 catch { $pmInstalledThrew = $true }
 Assert-True (-not $pmInstalledThrew) "Test-PremiseManifest does not throw against an installed-tree layout (THE P1 fix, exercised through the real production gate)"
-Assert-True ($pmInstalled -and $pmInstalled.Valid) "a matching manifest VALIDATES successfully in an installed tree with no tests/live sibling -- gate_fingerprint is accepted as provenance, not re-verified"
+Assert-True ($pmInstalled -and $pmInstalled.Valid) "a matching manifest VALIDATES successfully in an installed tree with no tests/live sibling, WHEN -AllowProvenanceOnlyGateSources is passed -- gate_fingerprint is accepted as provenance, not re-verified"
+
+# --- FINDING 1b regression (see docs/build-log/task-14-report.md): provenance-only mode is
+# EXPLICIT and OPT-IN, never inferred from absence. The IDENTICAL wholly-absent-tests/ manifest
+# that just validated above (with the switch) is REFUSED by DEFAULT (no switch) -- proving the old
+# behavior (silently inferring "installed, skip verification" from mere absence) is gone. ---
+$pmInstalledNoSwitch = Test-PremiseManifest -SkillRoot $installedSkillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+Assert-True (-not $pmInstalledNoSwitch.Valid -and $pmInstalledNoSwitch.Reason -match 'absent') "the SAME installed-tree (wholly-absent tests/) manifest is REFUSED by DEFAULT (no -AllowProvenanceOnlyGateSources) -- provenance-only mode is opt-in, never inferred from mere absence"
 
 # (b) editing ANY wrapper source invalidates its OWN sub-record's wrapper_fingerprint check,
 # independent of the OTHER sub-record -- proven with a mirror pair (same technique as the
@@ -625,14 +662,14 @@ Write-InstalledPremises (New-InstalledManifest @{
     schema_gate = (New-LiveEvidenceRecordWith -Gate 'schema_gate' -WrapperFingerprint $installedWrapperFp -GateFingerprint ('e' * 64))
     security_battery = (New-LiveEvidenceRecordWith -Gate 'security_battery' -WrapperFingerprint $installedWrapperFpAfterEdit -GateFingerprint ('e' * 64))
 })
-$pmStaleWrapperSchema = Test-PremiseManifest -SkillRoot $installedSkillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+$pmStaleWrapperSchema = Test-PremiseManifest -SkillRoot $installedSkillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash -AllowProvenanceOnlyGateSources
 Assert-True (-not $pmStaleWrapperSchema.Valid -and $pmStaleWrapperSchema.Reason -match "'schema_gate'" -and $pmStaleWrapperSchema.Reason -match 'wrapper sources') "editing a wrapper source invalidates schema_gate's recorded wrapper_fingerprint (security_battery's own, current fingerprint is not enough to save it)"
 
 Write-InstalledPremises (New-InstalledManifest @{
     schema_gate = (New-LiveEvidenceRecordWith -Gate 'schema_gate' -WrapperFingerprint $installedWrapperFpAfterEdit -GateFingerprint ('e' * 64))
     security_battery = (New-LiveEvidenceRecordWith -Gate 'security_battery' -WrapperFingerprint $installedWrapperFp -GateFingerprint ('e' * 64))
 })
-$pmStaleWrapperSecurity = Test-PremiseManifest -SkillRoot $installedSkillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+$pmStaleWrapperSecurity = Test-PremiseManifest -SkillRoot $installedSkillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash -AllowProvenanceOnlyGateSources
 Assert-True (-not $pmStaleWrapperSecurity.Valid -and $pmStaleWrapperSecurity.Reason -match "'security_battery'" -and $pmStaleWrapperSecurity.Reason -match 'wrapper sources') "editing a wrapper source invalidates security_battery's recorded wrapper_fingerprint too (both sub-records, not just whichever is checked first)"
 
 # Restore the installed tree's lib.ps1 so the (still-pre-edit) $installedWrapperFp is accurate
@@ -651,6 +688,18 @@ Assert-True (-not $pmStaleGate.Valid -and $pmStaleGate.Reason -match 'live-gate 
 Copy-Item "$PSScriptRoot\live\live-schema-gate.ps1" "$tmp\tests\live\live-schema-gate.ps1" -Force
 Assert-True (Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash).Valid "restoring live-schema-gate.ps1 restores validity"
 
+# FINDING 1a regression, through the real production gate (not just Get-GateFingerprint directly
+# above): editing tests\helpers.ps1 -- not either gate SCRIPT -- ALSO invalidates already-stamped
+# live evidence when run from the dev repo. This proves helpers.ps1's presence in the fixed list
+# actually GATES stamped evidence end to end, not merely changes an otherwise-unused hash.
+Write-Premises (New-ValidPremisesHashtable)
+Assert-True (Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash).Valid "fixture sanity: baseline manifest is valid before the helpers.ps1 edit"
+Add-Content -Path "$tmp\tests\helpers.ps1" -Value "`n# gate-edit perturbation"
+$pmStaleHelpers = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+Assert-True (-not $pmStaleHelpers.Valid -and $pmStaleHelpers.Reason -match 'live-gate sources') "editing tests\helpers.ps1 invalidates the recorded gate_fingerprint and IS rejected when tests/live/ is present (the dev repo) -- stamped evidence is invalidated by a helpers.ps1 edit, not just a gate-SCRIPT edit"
+Copy-Item "$PSScriptRoot\helpers.ps1" "$tmp\tests\helpers.ps1" -Force
+Assert-True (Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash).Valid "restoring tests\helpers.ps1 restores validity"
+
 # The asymmetry's other half: the IDENTICAL kind of stale gate_fingerprint that gets REJECTED
 # above (dev repo, tests/live present) is accepted as provenance-only in the installed-tree
 # layout, where there is nothing to recompute it against.
@@ -658,12 +707,47 @@ Write-InstalledPremises (New-InstalledManifest @{
     schema_gate = (New-LiveEvidenceRecordWith -Gate 'schema_gate' -WrapperFingerprint $installedWrapperFp -GateFingerprint ('d' * 64))
     security_battery = (New-LiveEvidenceRecordWith -Gate 'security_battery' -WrapperFingerprint $installedWrapperFp -GateFingerprint ('d' * 64))
 })
-$pmInstalledStaleGate = Test-PremiseManifest -SkillRoot $installedSkillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
-Assert-True $pmInstalledStaleGate.Valid "an arbitrary/stale gate_fingerprint value is accepted as provenance-only in an installed tree (no tests/live sibling to verify it against) -- the documented asymmetry"
+$pmInstalledStaleGate = Test-PremiseManifest -SkillRoot $installedSkillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash -AllowProvenanceOnlyGateSources
+Assert-True $pmInstalledStaleGate.Valid "an arbitrary/stale gate_fingerprint value is accepted as provenance-only in an installed tree (no tests/live sibling to verify it against), WHEN -AllowProvenanceOnlyGateSources is passed -- the documented asymmetry"
 
 # (d) still refused when a sub-record is missing entirely: already proven above (dev-repo
 # $skillRoot) by the "only schema_gate present" / "only security_battery present" cases earlier
 # in this section, now exercising the renamed wrapper_fingerprint/gate_fingerprint fields.
+
+# =====================================================================================
+# FINDING 1b (P1, see docs/build-log/task-14-report.md): a PARTIAL/BROKEN gate-source tree (some
+# present, one missing) must be refused in BOTH strict mode AND when
+# -AllowProvenanceOnlyGateSources is passed -- it must NEVER be silently treated as an installed
+# tree just because the switch happened to be set, and a source-tree caller (install.ps1, which
+# never passes the switch) must never have verification silently downgraded merely because one
+# gate source went missing or was renamed.
+# =====================================================================================
+$partialRoot = Join-Path $tmp 'gate-sources-partial'
+New-Item -ItemType Directory -Force "$partialRoot\codex-review\scripts","$partialRoot\codex-review\schemas","$partialRoot\tests\live" | Out-Null
+foreach ($f in 'lib.ps1','invoke-codex.ps1','publish-review.ps1','calibrate-premises.ps1') {
+    Copy-Item "$PSScriptRoot\..\codex-review\scripts\$f" "$partialRoot\codex-review\scripts\$f"
+}
+Copy-Item "$PSScriptRoot\..\codex-review\schemas\verdict.schema.json" "$partialRoot\codex-review\schemas\verdict.schema.json"
+Copy-Item "$PSScriptRoot\helpers.ps1" "$partialRoot\tests\helpers.ps1"
+Copy-Item "$PSScriptRoot\live\live-schema-gate.ps1" "$partialRoot\tests\live\live-schema-gate.ps1"
+# tests\live\live-security.ps1 deliberately NOT copied -- exactly ONE gate source missing, the
+# other two present: a broken/partial dev tree, never a genuinely (wholly-absent) installed one.
+$partialSkillRoot = "$partialRoot\codex-review"
+$partialWrapperFp = Get-WrapperFingerprint -SkillRoot $partialSkillRoot
+(@{ version=1; model='gpt-5.6-sol'
+    cli_path=$pin.Path; cli_sha256=$pin.Sha256; cli_version=$pin.Version
+    schema_sha256=$premisesSchemaSha; agents_md_sha256=$premisesAgentsSha
+    invocation_profile_sha256=$premisesProfileHash; recorded_utc=(Get-Date -AsUTC -Format o)
+    live_evidence=@{
+        schema_gate = (New-LiveEvidenceRecordWith -Gate 'schema_gate' -WrapperFingerprint $partialWrapperFp -GateFingerprint ('e' * 64))
+        security_battery = (New-LiveEvidenceRecordWith -Gate 'security_battery' -WrapperFingerprint $partialWrapperFp -GateFingerprint ('e' * 64))
+    } } | ConvertTo-Json -Depth 6) | Set-Content -Path "$partialSkillRoot\premises.json" -Encoding utf8
+
+$pmPartialStrict = Test-PremiseManifest -SkillRoot $partialSkillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+Assert-True (-not $pmPartialStrict.Valid -and $pmPartialStrict.Reason -match 'INCOMPLETE' -and $pmPartialStrict.Reason -match 'live-security') "a partial gate-source tree (live-security.ps1 missing, helpers.ps1 + live-schema-gate.ps1 present) is refused in STRICT mode (no switch), naming the missing file -- not silently downgraded"
+
+$pmPartialProvenance = Test-PremiseManifest -SkillRoot $partialSkillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash -AllowProvenanceOnlyGateSources
+Assert-True (-not $pmPartialProvenance.Valid -and $pmPartialProvenance.Reason -match 'INCOMPLETE') "the SAME partial gate-source tree is ALSO refused when -AllowProvenanceOnlyGateSources is passed -- a broken/partial dev tree is never treated as an installed tree just because the switch was set"
 
 Write-Premises (New-ValidPremisesHashtable)   # leave $premisesPath fully valid for anything appended later
 
@@ -696,6 +780,12 @@ New-Item -ItemType Directory -Force (Join-Path $copyRoot 'tests\live') | Out-Nul
 foreach ($f in 'live-schema-gate.ps1','live-security.ps1') {
     Copy-Item "$PSScriptRoot\live\$f" (Join-Path $copyRoot "tests\live\$f")
 }
+# FINDING 1a: tests\helpers.ps1 is now also part of Get-GateFingerprint's fixed list -- without a
+# copy here this tree becomes PARTIAL (two of three gate sources) under FINDING 1b's stricter
+# presence check, and invoke-codex.ps1 (which now always passes -AllowProvenanceOnlyGateSources,
+# see below) would be refused rather than exercising the intended "present -> verified strictly"
+# path every entry-behavior test in this section relies on.
+Copy-Item "$PSScriptRoot\helpers.ps1" (Join-Path $copyRoot "tests\helpers.ps1")
 $entry = Join-Path $copySkillRoot 'scripts\invoke-codex.ps1'
 $repo = "$tmp\repo"; git init -q $repo; git -C $repo -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 $goodExecHelp = ($script:RequiredExecFlags -join '  ')

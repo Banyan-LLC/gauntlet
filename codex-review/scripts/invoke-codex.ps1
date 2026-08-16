@@ -156,8 +156,14 @@ $disable = Get-DisableSet -FeatureNames $cli.FeatureNames
 #     executed by B. There is no bypass switch: calibration is a separate entry point
 #     (calibrate-premises.ps1), not a flag on the production path.
 $profileHash = Get-InvocationProfileHash -DisableSet $disable
+# -AllowProvenanceOnlyGateSources (P1 fix, see docs/build-log/task-14-report.md, FINDING 1b): this
+# script runs from an INSTALLED skill at runtime, which never has a tests/ sibling (install.ps1
+# ships only codex-review/ and codex-reviewed-dev/) -- so it always identifies itself as a
+# possible installed tree. This is safe to pass unconditionally, including for a dev-repo run:
+# Test-PremiseManifest verifies gate sources STRICTLY whenever they are actually present, and only
+# falls back to provenance-only when they are wholly absent (see its own docstring).
 $manifest = Test-PremiseManifest -SkillRoot (Split-Path $PSScriptRoot -Parent) -ActualCli $cli `
-    -InvocationProfileHash $profileHash
+    -InvocationProfileHash $profileHash -AllowProvenanceOnlyGateSources
 if (-not $manifest.Valid) {
     Write-RoundState -StateDir $StateDir -Patch @{ status='flagged'; failure_reason="premise manifest: $($manifest.Reason)" }
     # Two distinct self-serve causes as of the live-evidence gate (see task-14-report.md): stack

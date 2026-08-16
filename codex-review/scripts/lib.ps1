@@ -581,26 +581,39 @@ function Get-WrapperFingerprint {
 }
 
 function Get-GateFingerprint {
-    <# Deterministic SHA-256 over a FIXED, SORTED list of the two live gates alone authorized to
-       stamp live evidence: tests/live/live-schema-gate.ps1, tests/live/live-security.ps1 --
-       resolved relative to -RepoRoot (the checkout root, sibling of `codex-review/`). These
-       files exist ONLY in the dev repo (install.ps1 never ships tests/), so this is computed
-       only where they are genuinely present: at STAMPING time from Write-LiveEvidence below
-       (always the dev repo -- its only two callers are tests/live/live-schema-gate.ps1 and
-       tests/live/live-security.ps1, each living next to a real tests/live/), and at
-       VERIFICATION time from Test-PremiseManifest, but ONLY after it has confirmed both files
-       exist next to -SkillRoot's parent -- see the asymmetry documented on Test-PremiseManifest.
-       Where they are absent (an installed tree), the recorded value already on a live-evidence
-       sub-record is kept purely as STAMPING-TIME PROVENANCE: what the gate sources hashed to
-       when they last stamped a passing live run in the dev repo -- install.ps1 copies the whole
-       codex-review/ directory, premises.json included, so that provenance travels with the
-       install -- never a value this function is asked to reproduce where it structurally cannot.
+    <# Deterministic SHA-256 over a FIXED, SORTED list of the sources alone authorized to produce
+       stamped live evidence: tests/live/live-schema-gate.ps1, tests/live/live-security.ps1, AND
+       tests/helpers.ps1 -- resolved relative to -RepoRoot (the checkout root, sibling of
+       `codex-review/`). These files exist ONLY in the dev repo (install.ps1 never ships tests/),
+       so this is computed only where they are genuinely present: at STAMPING time from
+       Write-LiveEvidence below (always the dev repo -- its only two callers are
+       tests/live/live-schema-gate.ps1 and tests/live/live-security.ps1, each living next to a
+       real tests/live/), and at VERIFICATION time from Test-PremiseManifest, but ONLY after it
+       has confirmed all three files exist next to -SkillRoot's parent -- see the asymmetry
+       documented on Test-PremiseManifest. Where they are absent (an installed tree), the recorded
+       value already on a live-evidence sub-record is kept purely as STAMPING-TIME PROVENANCE:
+       what the gate sources hashed to when they last stamped a passing live run in the dev repo
+       -- install.ps1 copies the whole codex-review/ directory, premises.json included, so that
+       provenance travels with the install -- never a value this function is asked to reproduce
+       where it structurally cannot.
+
+       tests\helpers.ps1 (added: see docs/build-log/task-14-report.md, FINDING 1a) -- it defines
+       Assert-True (every assertion in BOTH live gates goes through it), $script:Failures (the
+       accumulated failure list), and Write-TestResult (the function that decides the exit code
+       both gates live/die by). Before this fix, editing helpers.ps1 -- e.g. turning Assert-True
+       into a no-op -- left the gate fingerprint completely unchanged: a live gate that no longer
+       asserts anything could still stamp "valid" evidence, because the two files this function
+       hashed were byte-identical to what genuinely passed. helpers.ps1 is exactly as
+       security-critical as the two gate scripts themselves and is now hashed alongside them.
 
        Same per-file construction as Get-WrapperFingerprint above (path-prefix bytes + file
        bytes, fixed sorted order, hash of the concatenation). A listed file that is missing
-       throws -- callers are expected to only invoke this once presence is already established. #>
+       throws -- callers are expected to only invoke this once presence is already established
+       (see Test-PremiseManifest's own presence/completeness gate, which runs before this is
+       ever called). #>
     param([Parameter(Mandatory)][string]$RepoRoot)
     $relPaths = @(
+        'tests\helpers.ps1',
         'tests\live\live-schema-gate.ps1',
         'tests\live\live-security.ps1'
     ) | Sort-Object
@@ -664,11 +677,37 @@ function Test-PremiseManifest {
        In short: we VERIFY, in every environment, what RUNS in that environment; we BIND, only
        where it can be recomputed, what STAMPED the evidence. It remains impossible for a
        missing or mismatched wrapper_fingerprint to pass, anywhere -- only gate_fingerprint's
-       verification is environment-conditional. #>
+       verification is environment-conditional.
+
+       -AllowProvenanceOnlyGateSources: PROVENANCE-ONLY MODE IS EXPLICIT AND OPT-IN, NEVER
+       INFERRED FROM ABSENCE (P1 fix, see docs/build-log/task-14-report.md, FINDING 1b). This
+       switch defaults OFF. The prior logic inferred "installed tree, skip gate_fingerprint
+       verification" purely from "at least one of the gate sources is missing" -- correct for a
+       genuine install (install.ps1 never ships tests/), but WRONG for a source/dev tree: deleting
+       or renaming a single gate source (e.g. tests/helpers.ps1, or either live-gate script)
+       silently DOWNGRADED verification to provenance-only instead of failing, and install.ps1
+       itself runs Test-PremiseManifest against the source tree. The rule now, evaluated against
+       the FIXED gate-source list (tests\helpers.ps1, tests\live\live-schema-gate.ps1,
+       tests\live\live-security.ps1), independent of the switch for two of its three outcomes:
+         - ALL gate sources present -> gate_fingerprint is verified STRICTLY, ALWAYS, regardless
+           of whether the switch is set. Presence wins: a caller cannot opt out of a check there
+           is genuinely something to check by merely passing a switch.
+         - SOME but not all present (a partial/broken tree) -> ALWAYS refused, regardless of the
+           switch, naming the missing file(s). A partial dev tree is never treated as an installed
+           tree just because the switch happened to be passed -- otherwise deleting exactly one
+           gate source would downgrade verification exactly like the bug this fix closes.
+         - NONE present (wholly absent -- the genuine installed-tree shape) -> provenance-only
+           ONLY when this switch is set; refused by default. This is the only outcome the switch
+           actually changes.
+       install.ps1 runs from the source tree and calls this WITHOUT the switch (strict/default).
+       invoke-codex.ps1 runs from an installed skill at runtime and ALWAYS passes the switch --
+       safe in a dev-repo run too, because "present -> always verified" outranks the switch, so a
+       real dev-repo invocation still verifies gate sources strictly whenever they are present. #>
     param([Parameter(Mandatory)][string]$SkillRoot,
           [Parameter(Mandatory)][pscustomobject]$ActualCli,
           [Parameter(Mandatory)][string]$InvocationProfileHash,
-          [string]$Model = 'gpt-5.6-sol')
+          [string]$Model = 'gpt-5.6-sol',
+          [switch]$AllowProvenanceOnlyGateSources)
     $accepted = Test-StackAcceptance -SkillRoot $SkillRoot -ActualCli $ActualCli `
         -InvocationProfileHash $InvocationProfileHash -Model $Model
     if (-not $accepted.Valid) { return $accepted }
@@ -684,15 +723,38 @@ function Test-PremiseManifest {
     $le = $m.live_evidence
     # wrapper_fingerprint: ALWAYS computed and verified -- see the docstring's asymmetry above.
     $wrapperFingerprint = Get-WrapperFingerprint -SkillRoot $SkillRoot
-    # gate_fingerprint: only verifiable where tests/live/*.ps1 actually exist to recompute it
+    # gate_fingerprint: only verifiable where the gate sources actually exist to recompute it
     # against. Split-Path/Join-Path/Test-Path are pure string+filesystem checks -- this never
     # throws even when $SkillRoot's parent does not exist or has no tests/ child, which is
     # exactly the installed-tree case this whole fix exists for.
+    #
+    # See the docstring's -AllowProvenanceOnlyGateSources section (FINDING 1b) for the full
+    # rationale. Same fixed, sorted list Get-GateFingerprint itself hashes (kept in sync here
+    # deliberately, not derived from it, so a presence check never silently drifts from what is
+    # actually fingerprinted).
     $repoRoot = Split-Path $SkillRoot -Parent
-    $gateScriptRelPaths = @('tests\live\live-schema-gate.ps1', 'tests\live\live-security.ps1')
+    $gateScriptRelPaths = @('tests\helpers.ps1', 'tests\live\live-schema-gate.ps1', 'tests\live\live-security.ps1')
     $missingGateFiles = @($gateScriptRelPaths | Where-Object { -not (Test-Path -LiteralPath (Join-Path $repoRoot $_) -PathType Leaf) })
-    $gatesPresent = ($missingGateFiles.Count -eq 0)
-    $gateFingerprint = if ($gatesPresent) { Get-GateFingerprint -RepoRoot $repoRoot } else { $null }
+    $allGateSourcesPresent = ($missingGateFiles.Count -eq 0)
+    $allGateSourcesAbsent = ($missingGateFiles.Count -eq $gateScriptRelPaths.Count)
+    if (-not $allGateSourcesPresent -and -not $allGateSourcesAbsent) {
+        # PARTIAL/BROKEN tree: some gate sources present, at least one missing. Refused
+        # unconditionally -- this is the exact downgrade-to-provenance-only gap FINDING 1b closes,
+        # so it is deliberately checked BEFORE the switch is ever consulted below.
+        $presentFiles = @($gateScriptRelPaths | Where-Object { $missingGateFiles -notcontains $_ })
+        return (& $bad "gate sources are INCOMPLETE under '$repoRoot' (present: $($presentFiles -join ', '); missing: $($missingGateFiles -join ', ')) -- a partial source tree is never treated as an installed tree, regardless of -AllowProvenanceOnlyGateSources; restore the missing file(s)")
+    }
+    $verifyGateFingerprint = $true
+    $gateFingerprint = $null
+    if ($allGateSourcesPresent) {
+        # Present wins, unconditionally: verified strictly whether or not the switch was passed.
+        $gateFingerprint = Get-GateFingerprint -RepoRoot $repoRoot
+    } elseif ($AllowProvenanceOnlyGateSources) {
+        # Wholly absent AND the caller has positively identified itself as an installed tree.
+        $verifyGateFingerprint = $false
+    } else {
+        return (& $bad "gate sources ($($gateScriptRelPaths -join ', ')) are entirely absent under '$repoRoot'; refused by default -- pass -AllowProvenanceOnlyGateSources only from an invocation that has positively identified itself as an installed tree")
+    }
     $gateRerun = @{ schema_gate = 'tests/live/live-schema-gate.ps1'; security_battery = 'tests/live/live-security.ps1' }
     foreach ($gateName in @('schema_gate','security_battery')) {
         if ($le.PSObject.Properties.Name -notcontains $gateName) { $le | Add-Member -NotePropertyName $gateName -NotePropertyValue $null }
@@ -718,9 +780,9 @@ function Test-PremiseManifest {
         if ($rec.invocation_profile_sha256 -cne $m.invocation_profile_sha256) { return (& $bad "live-evidence record '$gateName' predates the current invocation profile; rerun $($gateRerun[$gateName])") }
         # RUNTIME-CRITICAL, verified unconditionally: see the asymmetry in the docstring above.
         if ($rec.wrapper_fingerprint -cne $wrapperFingerprint) { return (& $bad "live-evidence record '$gateName' predates the current wrapper sources (lib.ps1/invoke-codex.ps1/publish-review.ps1/calibrate-premises.ps1/schema); rerun $($gateRerun[$gateName])") }
-        # Verified ONLY where the live-gate sources exist to recompute it against; otherwise the
+        # Verified ONLY where the gate sources exist to recompute it against; otherwise the
         # recorded value is stamping-time provenance and is never compared.
-        if ($gatesPresent -and $rec.gate_fingerprint -cne $gateFingerprint) { return (& $bad "live-evidence record '$gateName' predates the current live-gate sources (tests/live/live-schema-gate.ps1, tests/live/live-security.ps1); rerun $($gateRerun[$gateName])") }
+        if ($verifyGateFingerprint -and $rec.gate_fingerprint -cne $gateFingerprint) { return (& $bad "live-evidence record '$gateName' predates the current live-gate sources (tests/helpers.ps1, tests/live/live-schema-gate.ps1, tests/live/live-security.ps1); rerun $($gateRerun[$gateName])") }
     }
     [pscustomobject]@{ Valid=$true; Reason=$null; Manifest=$m }
 }
