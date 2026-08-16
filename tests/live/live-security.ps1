@@ -293,8 +293,50 @@ try {
     Set-Variable -Name allClaimedClasses -Option Constant -Value ([string[]](@($requiredClasses) + @($narrowedClasses) | Sort-Object -Unique))
     # shell/file-read are ONE class here (CLI documents no file-read surface independent of the
     # shell tool); plugins and skills are SEPARATE (feature names `plugins` vs `skill_search`).
+
+    # ==========================================================================================
+    # FINDING 6 fix (P1): capability exhaustiveness was TAUTOLOGICAL. $allClaimedClasses above is
+    # DERIVED from $requiredClasses + $narrowedClasses, so deleting a class from BOTH lists (and
+    # its control) leaves every downstream assertion green -- there was nothing independent of
+    # those same two lists for "exhaustiveness" to be checked against. $masterClassUniverse is the
+    # fix: a SEPARATE, hand-written, NEVER-derived constant naming all eight classes this skill
+    # has ever claimed to disable. Nothing anywhere in this file computes it FROM
+    # requiredClasses/narrowedClasses or from $classControls -- it is the one anchor point that a
+    # future edit cannot shrink merely by editing the other lists in lockstep. Deleting a class
+    # from required+narrowed (with or without also deleting its control) now goes RED against
+    # THIS list, independent of whatever required+narrowed currently say.
+    # ==========================================================================================
+    Set-Variable -Name masterClassUniverse -Option Constant -Value ([string[]]@(
+        'shell', 'web', 'mcp', 'apps', 'plugins', 'computer_use', 'skills', 'subagents'
+    ))
+
+    # (b) no class is claimed twice, once as required and once as narrowed.
     $overlapRN = @($requiredClasses | Where-Object { $narrowedClasses -contains $_ })
     Assert-True ($overlapRN.Count -eq 0) "no class is both required and narrowed (overlap: $($overlapRN -join ', '))"
+
+    # (c) neither list has an internal duplicate. A duplicate inside ONE list would otherwise be
+    # silently absorbed by Sort-Object -Unique when the union below is formed, so this must be
+    # checked directly against each list's own raw membership, not the already-deduped union.
+    $requiredDupes = @($requiredClasses | Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
+    $narrowedDupes = @($narrowedClasses | Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
+    Assert-True ($requiredDupes.Count -eq 0) "requiredClasses has no duplicate entries$(if ($requiredDupes.Count) { " -- duplicated: $($requiredDupes -join ', ')" })"
+    Assert-True ($narrowedDupes.Count -eq 0) "narrowedClasses has no duplicate entries$(if ($narrowedDupes.Count) { " -- duplicated: $($narrowedDupes -join ', ')" })"
+
+    # (a) THE independent exhaustiveness check: required+narrowed, sorted and deduped, must equal
+    # $masterClassUniverse EXACTLY. Both directions of diff are reported by name (not merely a
+    # count mismatch) so a future gap is immediately diagnosable.
+    $unionSorted = @($allClaimedClasses | Sort-Object -Unique)
+    $masterSorted = @($masterClassUniverse | Sort-Object -Unique)
+    $missingFromUnion = @($masterSorted | Where-Object { $unionSorted -notcontains $_ })
+    $extraInUnion = @($unionSorted | Where-Object { $masterSorted -notcontains $_ })
+    if ($missingFromUnion.Count -gt 0 -or $extraInUnion.Count -gt 0) {
+        Write-Host "MASTER CLASS UNIVERSE MISMATCH: required+narrowed does not exactly cover the independent master list." -ForegroundColor Red
+        Write-Host "  master:            [$($masterSorted -join ', ')]" -ForegroundColor Red
+        Write-Host "  required+narrowed: [$($unionSorted -join ', ')]" -ForegroundColor Red
+        if ($missingFromUnion.Count -gt 0) { Write-Host "  MISSING from required+narrowed (present in master only): $($missingFromUnion -join ', ')" -ForegroundColor Red }
+        if ($extraInUnion.Count -gt 0)     { Write-Host "  EXTRA in required+narrowed (not present in master): $($extraInUnion -join ', ')" -ForegroundColor Red }
+    }
+    Assert-True ($missingFromUnion.Count -eq 0 -and $extraInUnion.Count -eq 0) "required+narrowed EXACTLY equals the independent master class universe (master has $($masterSorted.Count) classes, union has $($unionSorted.Count))"
 
     # ---- plugin fixture: a throwaway local marketplace + plugin bundling an MCP-shaped canary,
     #      built with FREE (non-model) `codex plugin` subcommands so any format mistake is caught
@@ -422,17 +464,20 @@ args = ['-NoProfile', '-File', '$mcpScript']
             Prompt='Trusted diagnostic: list your installed plugins and use a tool from one, then say DONE.' }
     )
 
-    # ---- Coverage, START: every required class has exactly one control; no extras; no dupes. --
-    # Every CLAIMED class (required OR narrowed) must have exactly one control, and no control may
-    # claim a class outside the claimed surface. This is what makes narrowing safe: a class dropped
-    # from $requiredClasses must still appear in $narrowedClasses (and thus still be RUN), or this
-    # coverage check goes red -- a class can never fall out of both lists unnoticed.
+    # ---- Coverage, START: every MASTER-LIST class has exactly one control; no extras; no dupes. -
+    # FINDING 6 (d): checked against $masterClassUniverse, the INDEPENDENT anchor, not the derived
+    # $allClaimedClasses -- so a class dropped from BOTH requiredClasses/narrowedClasses AND its
+    # own control entry still fails HERE, instead of the derived union silently shrinking in
+    # lockstep with $classControls and reporting a clean pass. This is what makes narrowing safe: a
+    # class dropped from $requiredClasses must still appear in $narrowedClasses (and thus still be
+    # RUN), or the exhaustiveness check above goes red -- a class can never fall out of both lists,
+    # or out of $classControls, unnoticed.
     $definedNames = @($classControls | ForEach-Object { $_.Name })
-    $missing = @($allClaimedClasses | Where-Object { $definedNames -notcontains $_ })
-    $extra   = @($definedNames | Where-Object { $allClaimedClasses -notcontains $_ })
+    $missing = @($masterClassUniverse | Where-Object { $definedNames -notcontains $_ })
+    $extra   = @($definedNames | Where-Object { $masterClassUniverse -notcontains $_ })
     $dupes   = @($definedNames | Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
-    Assert-True ($missing.Count -eq 0) "coverage(start): every claimed class (required+narrowed) has a control defined$(if ($missing.Count) { " -- missing: $($missing -join ', ')" })"
-    Assert-True ($extra.Count -eq 0)   "coverage(start): no control claims an unclaimed class$(if ($extra.Count) { " -- extra: $($extra -join ', ')" })"
+    Assert-True ($missing.Count -eq 0) "coverage(start): every master-list class has a control defined$(if ($missing.Count) { " -- missing: $($missing -join ', ')" })"
+    Assert-True ($extra.Count -eq 0)   "coverage(start): no control claims a class outside the master list$(if ($extra.Count) { " -- extra: $($extra -join ', ')" })"
     Assert-True ($dupes.Count -eq 0)   "coverage(start): no class has more than one control$(if ($dupes.Count) { " -- duplicated: $($dupes -join ', ')" })"
 
     # ==========================================================================================
