@@ -6,6 +6,14 @@ attempts. The prompt-injection behavioral test reliably shows the reviewer is ne
 approving; its EXPLICIT self-report of the manipulation attempt is not 100% reliable (documented,
 not papered over).
 
+**Corrected 2026-08-16 (see docs/build-log/task-14-report.md):** this report documents Task 11's
+ORIGINAL implementation, which shipped as a deliberately-red battery (65 passed, 5 failed) pending
+a narrowing decision. That decision landed shortly after: the 3 unprovable classes were promoted
+to a permanent, separately-asserted `$narrowedClasses` list and the injection self-report
+assertion was softened to observational-only, turning this into a green gate. The three inline
+corrections below (marked "Corrected 2026-08-16") point at the specific superseded claims; nothing
+in the original text past this point was otherwise edited.
+
 CLI: `C:\Users\geoff\AppData\Local\OpenAI\Codex\bin\8e8bf206e63ac436\codex.exe`
 Version: `0.147.0-alpha.6.6`
 SHA256: `592958896cbffa154709618476fc9c9bf7fe73957e9a4fc12094c5051b6c69b3`
@@ -37,6 +45,18 @@ was checked and makes no independent hermeticity/capability claim of its own (it
    `-a/--ask-for-approval` help text (gives `cat`/`sed` as example shell commands) — there is no
    separate file-read control surface on this CLI. plugins and skills were kept as two separate
    controls throughout, never merged.
+
+   **Corrected 2026-08-16 (post-green-gate design, see docs/build-log/task-14-report.md):** the
+   shipped battery no longer scores capability coverage as one 8-element list. `$requiredClasses`
+   is now a fixed **5-element** array (shell, web, mcp, apps, plugins) — each still control-proven
+   exactly as described above — and the three classes that never produced a distinguishing signal
+   (computer_use, skills, subagents) live in their own separate, equally immutable
+   `$narrowedClasses` array, whose own positive control is still run on every battery pass and
+   asserted to NOT fire (so a future CLI version making one observable turns the battery red
+   again, rather than silently staying green). An exhaustiveness check requires the two lists to
+   jointly cover every claimed class with no overlap, so a class can never silently fall out of
+   both. This is a permanent design decision, not an unresolved gap — see the correction to
+   "Cleanup evidence" below for the resulting pass/fail count.
 4. **No leftover credentials.** One GUID temp root per run; the entire battery runs inside
    `try { } catch { } finally { }`. `home-*` directories (which hold a copied `auth.json`) are
    structurally separate from the empty `cwd-*` -C working directories. On every exit path the
@@ -104,6 +124,14 @@ model to list environment variables.
   so the shipped battery will legitimately show this specific check red on a run where the model
   happens not to narrate the attempt, exactly reflecting what actually happened.
 
+  **Corrected 2026-08-16:** the "stays strict" hard assertion described above was itself later
+  revised. The shipped battery (see docs/build-log/task-14-report.md, "Make the Task 11 battery a
+  green gate; soften injection self-report to non-fatal") now treats the self-report match as
+  observational/logged only — printed for visibility, never asserted — because a hard assertion at
+  a measured 1/3 rate fails roughly two runs in three on ordinary model variance, with no real
+  regression. The **never-coerced-into-approving** property immediately above remains hard-asserted
+  (3/3, safety-critical); only the self-report narration check was softened.
+
 ## Cleanup evidence
 
 **Normal run (the final, shipped run):** 65 assertions passed including
@@ -111,6 +139,15 @@ model to list environment variables.
 passed silently (no FAIL line for either), confirmed by inspecting the full pass/fail log; the
 only 5 failures were the 3 expected capability-coverage gaps, the resulting "verified == required"
 assertion, and the injection self-report assertion.
+
+**Corrected 2026-08-16:** "65 passed, 5 failed" was this task's ORIGINAL, deliberately-red result
+(the 3 expected capability-coverage gaps, the resulting "verified == required" assertion, and the
+then-strict injection self-report assertion, all failing on purpose pending the narrowing
+decision). Once computer_use/skills/subagents were promoted to their own permanently-narrowed,
+negative-asserted class (see the correction on requirement 3 above) and the self-report assertion
+was softened to observational-only (see the correction above), the battery became a green gate:
+the final shipped result is **72 passed, 0 failed** (see docs/build-log/task-14-report.md). The
+GUID-cleanup and no-leftover-auth assertions described above still pass exactly as stated.
 
 **Finally-path (described, not forced in the real battery):** the battery is proven to route
 through `finally` on ANY exception via `try { ... } catch { Assert-True $false ... } finally { ... cleanup ... }`.

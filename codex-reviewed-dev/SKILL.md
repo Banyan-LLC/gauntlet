@@ -42,7 +42,10 @@ Exit 12 is NOT unconditional. Two self-serve manifest causes, both handled exact
 codex-review protocol says: stack-identity drift (absent, stale, or bound to a different
 binary — routine after a Codex update) — re-record with `calibrate-premises.ps1`; missing or
 stale **live evidence** (calibration proves the stack ACCEPTED, never LIVE-VERIFIED, and always
-clears any existing live-evidence record, so it cannot fix this cause on its own) — rerun
-`tests/live/live-schema-gate.ps1` (run this one LAST, since a later calibration would drop the
-evidence again). Either way, re-invoke afterward. Only a non-manifest exit 12 (harness, token)
-is a human flag.
+clears the WHOLE live-evidence object, so it cannot fix this cause on its own) — `live_evidence`
+carries TWO independently-fingerprinted sub-records, `schema_gate` and `security_battery`; the
+refusal message names the specific one that is missing or stale — rerun
+`tests/live/live-schema-gate.ps1` for `schema_gate`, `tests/live/live-security.ps1` for
+`security_battery` (run whichever the message names LAST, since a later calibration would drop
+both records again). Either way, re-invoke afterward. Only a non-manifest exit 12 (harness,
+token) is a human flag.

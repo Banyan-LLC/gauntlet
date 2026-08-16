@@ -55,10 +55,15 @@ One artifact, one bounded loop. Modes: `doc` (spec/plan) and `pr`. The reviewer 
      the common case after a Codex update) — `pwsh -File <skill>/scripts/calibrate-premises.ps1`
      (no arguments needed; a compatibility probe only, no live model call), then re-invoke.
      Missing or stale **live evidence** — calibration proves the stack ACCEPTED, never
-     LIVE-VERIFIED, and always drops any existing live-evidence record, so it cannot fix this on
-     its own — `pwsh -File <skill>/tests/live/live-schema-gate.ps1` (one real model call against
-     the real API), then re-invoke (rerunning calibration afterward will drop the evidence again,
-     so run the live gate last). Any other exit-12 message (harness, token) is a human flag.
+     LIVE-VERIFIED, and always drops the WHOLE live-evidence object, so it cannot fix this on its
+     own. `live_evidence` carries TWO independently-fingerprinted sub-records, `schema_gate` and
+     `security_battery` (see task-14-report.md, FINDING 2) — the refusal message names the
+     SPECIFIC one that is missing or stale: `pwsh -File <skill>/tests/live/live-schema-gate.ps1`
+     for `schema_gate`, `pwsh -File <repo>/tests/live/live-security.ps1` for `security_battery`
+     (one real model call against the real API either way), then re-invoke. Run whichever live
+     gate(s) the message names LAST — rerunning calibration afterward drops both records again,
+     even if only one had actually gone stale. Any other exit-12 message (harness, token) is a
+     human flag.
    - **10 / 14** → human flag (budget overflow; round cap, attempt cap, or a round that already completed).
 4. `pr` mode: publish:
    `pwsh -File <skill>/scripts/publish-review.ps1 -OwnerRepo <o/r> -Pr <n> -Round <n> -VerdictFile <round-N-verdict.json> -StateDir <pr state dir> -BaseOid <oid> -HeadSha <sha>`
