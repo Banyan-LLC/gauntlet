@@ -938,3 +938,222 @@ the full run each time; nothing under `tests/live/` executed.
    specific files), but it references `requiredClasses reduced to the 5 proven +...` and may carry
    the same kind of narrative drift as `task-11-report.md` did; flagging for a decision rather than
    expanding scope unilaterally.
+
+---
+
+# Task 14 follow-up: four more fixes from external security review (2026-08-16)
+
+Status: complete, all green. Baseline 454 (composer 37, discovery 27, invoke 252, policy 15,
+publish 53, schema 9, state 61) -> final 485 (composer 37, discovery 27, invoke 279, policy 15,
+publish 53, schema 9, state 65). Four commits, one per finding, on `main` in this repo (not
+pushed). No live model calls, no GitHub calls, no network -- every offline test uses fake CLI
+shims. Nothing under `tests/live/` was executed; `tests/live/live-security.ps1` was edited (per
+this task's explicit exception) and verified by static parse-check plus a standalone,
+scratchpad-only, AST-extraction verification harness (not committed) that runs its
+`Get-NovelSignatures` function in isolation -- never the live battery.
+
+Commits:
+- `667c1a8` -- FINDING 1: complete gate-source binding, explicit opt-in provenance-only mode
+- `a4a1e02` -- FINDING 2: require a live-evidence record to identify its own gate
+- `2b8e3f0` -- FINDING 3: shared safe property-name helper for the StrictMode empty-collection hazard
+- `8f7c080` -- FINDING 4: correct the injection-test requirement to match the implemented oracle
+
+Noted in passing: two commits landed just before this task started (`58244c9`, `62fc47c`,
+2026-08-16 02:30/02:45) -- the original ad hoc `Write-LiveEvidence` StrictMode fix and its
+build-log entry. Already-current when this task began reading the repo; built on top of them
+throughout, no conflict.
+
+## FINDING 1 (P1): gate-source binding was incomplete AND could silently disappear
+
+**(a)** `Get-GateFingerprint` (`lib.ps1`) hashed only the two live-gate scripts, omitting
+`tests/helpers.ps1` -- which defines `Assert-True`, the failure list, and `Write-TestResult`'s
+exit decision for BOTH gates. Editing `helpers.ps1` (e.g. a no-op `Assert-True`) left the gate
+fingerprint, and any evidence stamped against it, unchanged. `tests\helpers.ps1` is now the first
+entry in the function's fixed, sorted hash list; docstring updated.
+
+**(b)** `Test-PremiseManifest` inferred "installed tree, skip `gate_fingerprint` verification"
+purely from "at least one gate source is missing" -- correct for a genuine install (`install.ps1`
+never ships `tests/`) but wrong for a source tree, since `install.ps1` itself calls this function
+against the source tree. Provenance-only mode is now explicit and opt-in via a new
+`-AllowProvenanceOnlyGateSources` switch (default off), evaluated against the fixed 3-file list:
+ALL present -> verified strictly, unconditionally, regardless of the switch; SOME but not all
+present (a broken/partial tree) -> refused unconditionally, regardless of the switch; NONE present
+(wholly absent) -> provenance-only only when the switch is passed, else refused. `install.ps1`
+calls in strict/default mode (no code change needed -- absence of the switch already meant
+strict). `invoke-codex.ps1` (runs from the installed skill at runtime) now always passes the
+switch -- safe for dev-repo runs too, since "present" always outranks the switch.
+
+**Discrimination (test-invoke.ps1, run individually each time):**
+
+Reverted 1a alone (`Get-GateFingerprint`'s list back to the 2-file version):
+```
+FAIL: editing tests\helpers.ps1 changes the gate fingerprint (FINDING 1a)
+FAIL: a missing tests\helpers.ps1 fails CLOSED (throws) even when BOTH live-gate scripts are present (FINDING 1a)
+FAIL: editing tests\helpers.ps1 invalidates the recorded gate_fingerprint and IS rejected when tests/live/ is present (the dev repo) -- stamped evidence is invalidated by a helpers.ps1 edit, not just a gate-SCRIPT edit
+259 passed, 3 failed
+```
+Restored -> `262 passed, 0 failed`.
+
+Reverted 1b alone (`Test-PremiseManifest`'s gate-presence block back to inferred-from-absence,
+switch parameter left declared but unused):
+```
+FAIL: the SAME installed-tree (wholly-absent tests/) manifest is REFUSED by DEFAULT (no -AllowProvenanceOnlyGateSources) -- provenance-only mode is opt-in, never inferred from mere absence
+FAIL: a partial gate-source tree (live-security.ps1 missing, helpers.ps1 + live-schema-gate.ps1 present) is refused in STRICT mode (no switch), naming the missing file -- not silently downgraded
+FAIL: the SAME partial gate-source tree is ALSO refused when -AllowProvenanceOnlyGateSources is passed -- a broken/partial dev tree is never treated as an installed tree just because the switch was set
+259 passed, 3 failed
+```
+Restored -> `262 passed, 0 failed`.
+
+**Regressions, mapped to the brief's four:** (i) helpers.ps1 edit changes the fingerprint and
+invalidates stamped evidence -- both proven above. (ii) exactly one gate file missing, in BOTH
+strict and provenance-only mode -- the new `$partialRoot` fixture (helpers.ps1 +
+live-schema-gate.ps1 present, live-security.ps1 absent), asserted refused both with and without
+the switch, reason matching `INCOMPLETE`. (iii) wholly-absent `tests/` validates ONLY in
+provenance-only mode -- the pre-existing `$installedRoot` fixture, now asserted refused by default
+and valid only with the switch. (iv) `install.ps1`'s strict path refuses a source tree with a
+missing gate file -- `install.ps1`'s call site was confirmed (by direct inspection) to pass no
+switch, so it exercises the exact same strict/default code path (ii) proves refuses a partial
+tree; not separately subprocess-tested, since running the real `install.ps1` would copy into this
+machine's real `~/.claude/skills` and touch `~/.claude/CLAUDE.md`.
+
+## FINDING 2 (P1): evidence records were not required to identify their own gate
+
+`Test-PremiseManifest`'s per-record loop required each record's `gate` field present and
+nonempty but never checked it equals the record's own property name. Every OTHER field is shared
+between two genuinely matching sub-records, so duplicating the `schema_gate` record under
+`security_battery` (or swapping the two) passed every other check and authorized the whole
+security-sensitive stack from one schema-gate run alone. Now asserts `$rec.gate -ceq $gateName`
+(ordinal), refusing with a message naming both the expected slot and the value actually found.
+
+**Discrimination:** reverted the new check alone (deleted the `if ($rec.gate -cne $gateName)`
+block):
+```
+FAIL: the schema_gate record DUPLICATED under the security_battery property is refused -- one schema-gate run cannot authorize the whole stack by being copy-pasted into the other slot
+FAIL: the security_battery record duplicated under the schema_gate property is refused too (symmetric)
+FAIL: the two records' gate fields SWAPPED is refused (caught at the schema_gate slot, checked first in the loop)
+FAIL: a record with gate='bogus' is refused by the NEW identity check, naming the bogus value found
+263 passed, 4 failed
+```
+(The `gate=''` case correctly stayed green under the revert -- it is caught by the pre-existing
+missing-field loop, a different code path, confirming the two checks are independent.) Restored ->
+`267 passed, 0 failed`.
+
+Regressions map 1:1 to the brief's (a)-(d): duplicate-under-security / duplicate-under-schema
+(mirror), swapped, blank (pre-existing path) and bogus (new path), and correctly-labeled ->
+accepted (reuses every existing golden-path assertion, all still green).
+
+## FINDING 3 (P2): the StrictMode empty-collection bug remained at ~19 other sites
+
+`$obj.PSObject.Properties.Name` throws under `Set-StrictMode -Version Latest` when `$obj` has
+ZERO properties (a JSON `{}`) -- fixed ad hoc in `Write-LiveEvidence` (a local scriptblock) but
+present at 10 more sites in `lib.ps1` (`Test-StackAcceptance`, `Test-PremiseManifest`,
+`Get-RunUsage` x4, `Test-CarryOverLedger` x2) and 9 in `tests/live/live-security.ps1`
+(`Get-NovelSignatures` x8, the per-class `WebSearch` check), all reachable since
+`live-security.ps1` dot-sources `lib.ps1` and inherits its strict mode. Added one shared
+`Get-PropertyNames -InputObject <obj>` helper (`@()` for `$null` or zero properties, never
+throws) and replaced every one of those 19 sites, plus refactored `Write-LiveEvidence`'s own
+local scriptblock to call the same shared helper (pure DRY, behavior unchanged).
+
+**Checked and deliberately left unchanged:** two sites inside `live-security.ps1`'s generated
+MCP-canary script TEXT (written out as a standalone `.ps1`, launched as its own `pwsh -File`
+child process). Empirically confirmed that text never inherits `Set-StrictMode` (verified
+directly: `("{}" | ConvertFrom-Json).PSObject.Properties.Name` in a plain, non-dot-sourced child
+process returns `$false`, no throw) and is already wrapped in a catch-all `try/while {} catch
+{}`. Not a hazard; `Get-PropertyNames` is not reachable there regardless (never dot-sources
+`lib.ps1`). **Also checked:** `invoke-codex.ps1`'s `$prev.PSObject.Properties['harness_dir']`
+uses INDEXER syntax, not `.Name` enumeration -- confirmed empirically safe on an empty object
+regardless of StrictMode, left as-is. **Found but out of this finding's scope:**
+`tests/test-schema.ps1` lines 16-17 use the identical `.PSObject.Properties.Name` pattern against
+the shipped, always-non-empty `verdict.schema.json` -- a trusted test fixture, not a fail-closed
+validator processing untrusted input, and outside the finding's named scope (`lib.ps1` +
+`live-security.ps1` only); left unchanged, flagged here per the task's own request.
+
+**Discrimination (test-invoke.ps1 AND test-state.ps1, since the shared helper spans both):**
+reverted `Get-PropertyNames`'s body alone back to the raw unsafe expression (every call site
+routes through the one helper, so this reproduces the original bug everywhere at once):
+```
+=== test-invoke.ps1 ===
+FAIL: a wholly-empty manifest ({} as the whole file) fails closed rather than throwing
+FAIL: a wholly-empty manifest ({}) is reported invalid, not silently accepted
+FAIL: live_evidence present as an EMPTY object ({}) fails closed rather than throwing
+FAIL: an empty live_evidence object ({}) is reported invalid, not silently accepted
+FAIL: a live-evidence sub-record that is an EMPTY object ({}) fails closed rather than throwing
+FAIL: an empty live-evidence sub-record ({}) is reported invalid, not silently accepted
+FAIL: stamping onto a freshly-calibrated manifest (no live_evidence key) does not error -- The property 'Name' cannot be found on this object. Verify that the property exists.
+FAIL: the first stamp after calibration actually PERSISTS a readable schema_gate record
+FAIL: a bare empty JSON object line ({}) fails closed rather than throwing, even alongside a valid turn.completed
+FAIL: a bare empty JSON object line ({}) fails CLOSED (Ok is false), even alongside a valid turn.completed
+FAIL: a stream whose ONLY line is an empty JSON object ({}) fails closed rather than throwing
+FAIL: a stream whose ONLY line is {} is reported Ok=false, not silently accepted
+FAIL: a turn.completed whose usage object is itself empty ({}) fails closed rather than throwing
+FAIL: a turn.completed with an empty usage object ({}) is reported Ok=false, naming the missing input_tokens
+264 passed, 14 failed
+=== test-state.ps1 ===
+FAIL: a wholly-empty ledger envelope ({} as the whole file) fails closed rather than throwing
+FAIL: a wholly-empty ledger envelope ({}) is reported invalid, not silently accepted
+FAIL: a ledger entry that is an EMPTY object ({}) fails closed rather than throwing
+FAIL: a ledger entry that is {} is reported invalid (missing 'id', the first field checked)
+61 passed, 4 failed
+```
+The two extra failures in `test-invoke.ps1` beyond this task's 12 new assertions are PRE-EXISTING
+tests that independently exercise the identical hazard inside `Write-LiveEvidence` (a
+freshly-calibrated manifest's `live_evidence` starts as `[pscustomobject]@{}`) -- confirms the
+`Write-LiveEvidence` refactor is correctly covered by its own prior tests, not a gap. Restored ->
+`279 passed, 0 failed` and `65 passed, 0 failed` respectively (both run twice for stability).
+`live-security.ps1`'s fix was separately discriminated via the standalone AST-extraction harness
+(reverted one site, 4 of 10 checks failed; restored, `10 passed, 0 failed`) -- see that finding's
+own section above for detail; not re-pasted here.
+
+Regressions map 1:1 to the brief's (i)-(v): `Get-RunUsage` against a `{}` line and a stream whose
+only line is `{}` (plus a bonus case, a `{}` usage sub-object); `Test-PremiseManifest` against a
+`{}` manifest, a `{}` live_evidence, and a `{}` sub-record; `Test-CarryOverLedger` against a `{}`
+envelope and a `{}` entry.
+
+## FINDING 4 (P2): the injection requirement contradicted the implemented oracle
+
+`docs/design.md`'s adversarial-hermeticity item and `tests/live/live-security.ps1`'s injection-
+test comment both still said the verdict "must produce a verdict that reports the injection
+attempt" / "must report it" -- stale, and contradicted by the actual implemented oracle (already
+shipped, unchanged by this task): self-report is logged but non-gating (measured 1/3). Both
+places corrected via an appended "Corrected 2026-08-16" note (this repo's own convention --
+original text preserved, not rewritten), restating the three actual hard requirements
+(non-compliance, independent unbounded-retry-defect identification, no environment-variable
+disclosure) and stating explicitly that self-report is recorded but not gating. No other claim in
+either passage was touched. Comment/docs-only; `live-security.ps1` parse-checked clean
+(`ParseFile`, 0 errors) after the edit and after restoring FINDING 3's discrimination revert.
+
+## Verification (every `tests/test-*.ps1`, run individually, per the task's instruction)
+
+```
+pwsh -NoProfile -File tests\test-composer.ps1    # 37 passed, 0 failed
+pwsh -NoProfile -File tests\test-discovery.ps1   # 27 passed, 0 failed
+pwsh -NoProfile -File tests\test-invoke.ps1      # 279 passed, 0 failed
+pwsh -NoProfile -File tests\test-policy.ps1      # 15 passed, 0 failed
+pwsh -NoProfile -File tests\test-publish.ps1     # 53 passed, 0 failed
+pwsh -NoProfile -File tests\test-schema.ps1      # 9 passed, 0 failed
+pwsh -NoProfile -File tests\test-state.ps1       # 65 passed, 0 failed
+```
+= 485 total (+31 over the 454 baseline: +10 FINDING 1, +5 FINDING 2, +16 FINDING 3 [+12
+`test-invoke.ps1`, +4 `test-state.ps1`], +0 FINDING 4). `git status --porcelain` checked before
+every commit; only the specific files edited for that finding were staged by explicit path (never
+`git add -A`/`.`); no unexpected modification from the concurrent session referenced in the
+task's own instructions was observed.
+
+## Concerns (full list, this follow-up)
+
+1. FINDING 1(iv) (`install.ps1`'s strict refusal of a source tree missing a gate file) is proven
+   at the `Test-PremiseManifest` function level (identical code path, identical no-switch call
+   shape) rather than by actually subprocess-running `install.ps1`, which would copy into this
+   machine's real `~/.claude/skills/` and modify `~/.claude/CLAUDE.md` -- an irreversible-ish
+   side effect judged out of place for an automated regression. Flagging in case a future task
+   wants a fully isolated (`HOME`/`USERPROFILE`-redirected) subprocess harness for `install.ps1`
+   itself.
+2. `tests/test-schema.ps1`'s two `.PSObject.Properties.Name` sites (noted under FINDING 3 above)
+   are the same syntactic pattern but not a practical hazard (a trusted, always-non-empty
+   fixture) and outside FINDING 3's named scope; left unconverted. Flagging per the task's own
+   request rather than expanding scope unilaterally.
+3. `docs/implementation-plan.md`, both `SKILL.md` files, and `docs/build-log/progress.md` were
+   not synced for any of these four findings (consistent with how they were already left behind
+   after earlier rounds, per this same file's own prior Concern entries) -- none of the four
+   findings named a doc-sync requirement beyond FINDING 4's own two named locations, which were
+   fixed. Flagging for a decision rather than expanding scope unilaterally.
