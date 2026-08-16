@@ -14,11 +14,13 @@
    manifest regenerated immediately after CLI or schema drift silently re-authorize every round
    with no live gate ever rerun -- exactly the gap this script used to leave open. This script
    therefore NEVER writes or refreshes a `live_evidence` record: overwriting premises.json, which
-   every run of this script does, always DROPS any live-evidence record a prior run of
-   tests/live/live-schema-gate.ps1 stamped. Test-PremiseManifest -- the gate the production entry
-   and the installer actually call -- requires BOTH stack acceptance (this script) AND a matching
-   live-evidence record, so a live gate rerun is required again after every calibration before
-   either will authorize anything.
+   every run of this script does, always DROPS the WHOLE live_evidence object -- BOTH of its
+   sub-records (`schema_gate` and `security_battery`, restructured: see task-14-report.md,
+   FINDING 2) -- regardless of which one a prior live-gate run had stamped. Test-PremiseManifest
+   -- the gate the production entry and the installer actually call -- requires stack acceptance
+   (this script) AND a matching, independently-fingerprinted live-evidence sub-record for EACH of
+   the two live gates, so a recalibration forces BOTH tests/live/live-schema-gate.ps1 and
+   tests/live/live-security.ps1 to rerun before either sub-record authorizes anything again.
 
    Historical (superseded 2026-08-12): earlier revisions of this script also measured and
    recorded four NUMERIC budget premises (tokenizer family/evidence, base overhead, max output

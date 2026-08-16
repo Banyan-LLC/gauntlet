@@ -213,7 +213,9 @@ Test-EmptyElementFailsClosed -LibPath "$PSScriptRoot\..\codex-review\scripts\lib
 # binding (CLI hash/version/path, schema hash, AGENTS.md hash, invocation-profile hash, model)
 # remains here; -BudgetBytes is no longer a Test-PremiseManifest parameter.
 # =====================================================================================
-$skillRoot = "$tmp\skillroot"
+$skillRoot = "$tmp\codex-review"   # directory MUST be literally named "codex-review": Get-SecuritySourceFingerprint
+                                    # resolves its fixed file list relative to -SkillRoot's PARENT, matching this
+                                    # repo's real layout (a sibling tests\live\ one level up from codex-review\)
 New-Item -ItemType Directory -Force "$skillRoot\schemas" | Out-Null
 Copy-Item "$PSScriptRoot\..\codex-review\schemas\verdict.schema.json" "$skillRoot\schemas\verdict.schema.json"
 $premisesSchemaSha = (Get-FileHash -Algorithm SHA256 "$skillRoot\schemas\verdict.schema.json").Hash.ToLowerInvariant()
@@ -223,6 +225,70 @@ $premisesDisableSet = @('apps','browser_use','shell_tool')
 $premisesProfileHash = Get-InvocationProfileHash -DisableSet $premisesDisableSet
 $premisesPath = "$skillRoot\premises.json"
 
+# =====================================================================================
+# Get-SecuritySourceFingerprint (FINDING 2, see docs/build-log/task-14-report.md): needs a
+# skill root that actually LOOKS like a shipped tree -- scripts + schema, with the two live-gate
+# scripts one level up under a sibling tests/live/ -- not merely the schemas-only stub the
+# pre-existing Test-PremiseManifest fixtures needed. Populate $skillRoot\scripts and a
+# tests\live sibling of $tmp (Get-SecuritySourceFingerprint resolves the fixed list relative to
+# -SkillRoot's PARENT) with copies of the REAL shipped files, so the fingerprint is computed over
+# genuine content and is sensitive to a real future edit. This tree is read only by
+# Get-SecuritySourceFingerprint's own file walk (directly here, and indirectly via
+# Test-PremiseManifest/Write-LiveEvidence below), so it does not need to be executable.
+# =====================================================================================
+New-Item -ItemType Directory -Force "$skillRoot\scripts" | Out-Null
+foreach ($f in 'lib.ps1','invoke-codex.ps1','publish-review.ps1','calibrate-premises.ps1') {
+    Copy-Item "$PSScriptRoot\..\codex-review\scripts\$f" "$skillRoot\scripts\$f"
+}
+New-Item -ItemType Directory -Force "$tmp\tests\live" | Out-Null
+foreach ($f in 'live-schema-gate.ps1','live-security.ps1') {
+    Copy-Item "$PSScriptRoot\live\$f" "$tmp\tests\live\$f"
+}
+
+$fp1 = Get-SecuritySourceFingerprint -SkillRoot $skillRoot
+$fp2 = Get-SecuritySourceFingerprint -SkillRoot $skillRoot
+Assert-True ($fp1 -match '^[0-9a-f]{64}$') "security source fingerprint is lowercase hex SHA-256"
+Assert-Eq $fp1 $fp2 "identical shipped sources produce an identical fingerprint"
+
+# FIX 2 regression (e): a change to ANY security-critical source file changes the fingerprint --
+# proven for the wrapper implementation (lib.ps1) and, separately, for a live gate script
+# (live-security.ps1), so the property is not an accident of which one file happens to be edited.
+Add-Content -Path "$skillRoot\scripts\lib.ps1" -Value "`n# fingerprint-test perturbation"
+$fpAfterLibEdit = Get-SecuritySourceFingerprint -SkillRoot $skillRoot
+Assert-True ($fpAfterLibEdit -ne $fp1) "editing lib.ps1 changes the security source fingerprint"
+
+Add-Content -Path "$tmp\tests\live\live-security.ps1" -Value "`n# fingerprint-test perturbation"
+$fpAfterGateEdit = Get-SecuritySourceFingerprint -SkillRoot $skillRoot
+Assert-True ($fpAfterGateEdit -ne $fpAfterLibEdit) "editing a live gate script (live-security.ps1) also changes the fingerprint"
+
+# Restore both files exactly (byte-for-byte) so every fingerprint computed AFTER this point --
+# including $securityFingerprint below, which every live-evidence fixture embeds -- reflects the
+# pristine copies, not these deliberate perturbations.
+Copy-Item "$PSScriptRoot\..\codex-review\scripts\lib.ps1" "$skillRoot\scripts\lib.ps1" -Force
+Copy-Item "$PSScriptRoot\live\live-security.ps1" "$tmp\tests\live\live-security.ps1" -Force
+Assert-Eq (Get-SecuritySourceFingerprint -SkillRoot $skillRoot) $fp1 "restoring the original bytes restores the original fingerprint"
+
+# Missing required file -> fail closed (throws), never a smaller/silent fingerprint.
+$missingFileRoot = Join-Path $tmp 'fingerprint-missing'
+New-Item -ItemType Directory -Force "$missingFileRoot\codex-review\scripts","$missingFileRoot\codex-review\schemas","$missingFileRoot\tests\live" | Out-Null
+foreach ($f in 'lib.ps1','invoke-codex.ps1','publish-review.ps1') {
+    Copy-Item "$PSScriptRoot\..\codex-review\scripts\$f" "$missingFileRoot\codex-review\scripts\$f"
+}
+# calibrate-premises.ps1 deliberately NOT copied -- the missing required file.
+Copy-Item "$PSScriptRoot\..\codex-review\schemas\verdict.schema.json" "$missingFileRoot\codex-review\schemas\verdict.schema.json"
+Copy-Item "$PSScriptRoot\live\live-schema-gate.ps1" "$missingFileRoot\tests\live\live-schema-gate.ps1"
+Copy-Item "$PSScriptRoot\live\live-security.ps1" "$missingFileRoot\tests\live\live-security.ps1"
+Assert-Throws { Get-SecuritySourceFingerprint -SkillRoot "$missingFileRoot\codex-review" } "a missing required security-critical source file fails CLOSED (throws), not silently"
+
+$securityFingerprint = Get-SecuritySourceFingerprint -SkillRoot $skillRoot
+
+function New-LiveEvidenceRecord([string]$Gate) {
+    @{ gate = $Gate; utc = (Get-Date -AsUTC -Format o)
+       cli_path = $pin.Path; cli_version = $pin.Version; cli_sha256 = $pin.Sha256
+       schema_sha256 = $premisesSchemaSha; agents_md_sha256 = $premisesAgentsSha
+       invocation_profile_sha256 = $premisesProfileHash
+       source_fingerprint = $securityFingerprint }
+}
 function New-ValidPremisesHashtable {
     @{
         version = 1
@@ -235,18 +301,22 @@ function New-ValidPremisesHashtable {
         invocation_profile_sha256 = $premisesProfileHash
         # Binding authorization to live evidence (see task-14-report.md): a manifest also needs
         # proof a live gate actually passed against the real API, fingerprinted to the stack it
-        # passed against. This fixture simulates tests/live/live-schema-gate.ps1 having already
-        # stamped a MATCHING record, so the golden path below continues to exercise "everything
-        # valid" through the FULL production/installer gate (Test-PremiseManifest). Every case
-        # derived from this hashtable that breaks ONE OTHER field still fails at that field's own
-        # check first (Test-StackAcceptance, called before live_evidence is ever examined), so
-        # this addition does not change what any of those pre-existing tests prove. Tests that
-        # need to break ONLY the live-evidence layer remove or mutate this sub-object explicitly.
+        # passed against. RESTRUCTURED (FINDING 2): a single generic live_evidence record let
+        # calibration plus one schema-gate pass authorize the WHOLE security-sensitive stack
+        # without ever rerunning the security battery, and bound none of the wrapper
+        # implementation. live_evidence now carries TWO required named sub-records, schema_gate
+        # and security_battery, each independently fingerprinted (including source_fingerprint
+        # over the shipped wrapper sources). This fixture simulates BOTH live gates having
+        # already stamped MATCHING records, so the golden path below continues to exercise
+        # "everything valid" through the FULL production/installer gate (Test-PremiseManifest).
+        # Every case derived from this hashtable that breaks ONE OTHER top-level field still
+        # fails at that field's own check first (Test-StackAcceptance, called before
+        # live_evidence is ever examined), so this addition does not change what any of those
+        # pre-existing tests prove. Tests that need to break ONLY the live-evidence layer remove
+        # or mutate this sub-object explicitly.
         live_evidence = @{
-            gate = 'live-schema-gate'; verified_utc = (Get-Date -AsUTC -Format o)
-            cli_path = $pin.Path; cli_version = $pin.Version; cli_sha256 = $pin.Sha256
-            schema_sha256 = $premisesSchemaSha; agents_md_sha256 = $premisesAgentsSha
-            invocation_profile_sha256 = $premisesProfileHash
+            schema_gate = (New-LiveEvidenceRecord 'schema_gate')
+            security_battery = (New-LiveEvidenceRecord 'security_battery')
         }
     }
 }
@@ -345,13 +415,17 @@ $pmWrongHash = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $otherHashC
 Assert-True (-not $pmWrongHash.Valid -and $pmWrongHash.Reason -match 'Codex CLI changed') "same path/version but a different selected CLI content hash is rejected"
 
 # =====================================================================================
-# LIVE EVIDENCE (added: binding authorization to live evidence, not merely stack acceptance --
-# see task-14-report.md). calibrate-premises.ps1 performs a compatibility PROBE only and can
-# regenerate a passing stack-acceptance manifest immediately after CLI or schema drift with no
-# live gate ever rerun; it must not be able to authorize a round on its own. live_evidence is a
-# separate record, stamped ONLY by tests/live/live-schema-gate.ps1 on an actual passing request
-# against the real API. All three cases use $skillRoot (the temp dir already in scope for this
-# whole Test-PremiseManifest section, see above) -- never the real codex-review/premises.json.
+# LIVE EVIDENCE: RESTRUCTURED, two independently-fingerprinted sub-records, not one generic
+# stamp (FINDING 2, see docs/build-log/task-14-report.md). A single flat live_evidence record let
+# calibration plus ONE schema-gate pass authorize the WHOLE security-sensitive stack -- including
+# capabilities (shell/web/apps/MCP/plugins hermeticity) only tests/live/live-security.ps1
+# actually exercises -- without ever rerunning the security battery, and bound none of the
+# wrapper implementation itself. live_evidence is now an object with TWO required named
+# sub-records, schema_gate and security_battery, each independently fingerprinted (CLI, schema,
+# AGENTS.md, invocation profile, AND source_fingerprint over the shipped wrapper sources --
+# Get-SecuritySourceFingerprint, exercised directly above). All cases use $skillRoot (the temp
+# dir already in scope for this whole Test-PremiseManifest section, now also populated with
+# scripts/ + a sibling tests/live/, see above) -- never the real codex-review/premises.json.
 # =====================================================================================
 
 # No live evidence at all: a manifest that is otherwise perfectly valid (stack accepted) but has
@@ -359,45 +433,85 @@ Assert-True (-not $pmWrongHash.Valid -and $pmWrongHash.Reason -match 'Codex CLI 
 $noEvidence = New-ValidPremisesHashtable; $noEvidence.Remove('live_evidence')
 Write-Premises $noEvidence
 $pmNoEvidence = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
-Assert-True (-not $pmNoEvidence.Valid -and $pmNoEvidence.Reason -match 'live evidence' -and $pmNoEvidence.Reason -match 'live-schema-gate') "a manifest with NO live-evidence record is refused, naming the live gate to rerun"
+Assert-True (-not $pmNoEvidence.Valid -and $pmNoEvidence.Reason -match 'live evidence') "a manifest with NO live-evidence object at all is refused"
 # The narrower stack-only check (what calibrate-premises.ps1 verifies about its OWN output) must
 # still pass for this exact manifest -- proving the refusal above comes from the NEW live-evidence
 # layer, not a regression in the pre-existing stack-identity checks Test-StackAcceptance covers.
 Assert-True (Test-StackAcceptance -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash).Valid "the SAME manifest (minus live_evidence) still passes the narrower stack-acceptance check calibrate-premises.ps1 uses"
 
-# Live evidence present but stamped for a DIFFERENT stack (e.g. a stale record left over from
-# before a CLI update) is refused -- fingerprint match, not mere presence, is what authorizes.
-$staleEvidence = New-ValidPremisesHashtable
-$staleEvidence.live_evidence = @{ gate='live-schema-gate'; verified_utc=(Get-Date -AsUTC -Format o)
-    cli_path=$pin.Path; cli_version=$pin.Version; cli_sha256=('9' * 64)
-    schema_sha256=$premisesSchemaSha; agents_md_sha256=$premisesAgentsSha; invocation_profile_sha256=$premisesProfileHash }
-Write-Premises $staleEvidence
-$pmStaleEvidence = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
-Assert-True (-not $pmStaleEvidence.Valid -and $pmStaleEvidence.Reason -match 'live-evidence' -and $pmStaleEvidence.Reason -match 'live-schema-gate') "live evidence stamped for a DIFFERENT CLI hash is refused, naming the live gate to rerun"
+# --- FIX 2 regression (a): only schema_gate present (security_battery never run) -> refused,
+# naming security_battery's OWN live gate to rerun. This is the exact gap the restructuring
+# closes: a schema-only stamp must not authorize the whole security-sensitive stack. ---
+$onlySchemaGate = New-ValidPremisesHashtable
+$onlySchemaGate.live_evidence = @{ schema_gate = (New-LiveEvidenceRecord 'schema_gate') }
+Write-Premises $onlySchemaGate
+$pmOnlySchema = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+Assert-True (-not $pmOnlySchema.Valid -and $pmOnlySchema.Reason -match 'security_battery' -and $pmOnlySchema.Reason -match 'live-security') "schema_gate ALONE does not authorize the round -- security_battery is refused, naming its own live gate"
 
-# Matching live evidence is accepted -- the full production/installer gate passes end to end.
-# (The golden-path test far above already covers this via New-ValidPremises's now-matching
-# live_evidence, but this makes the property explicit and independently verifiable.)
-$matchingEvidence = New-ValidPremisesHashtable
-$matchingEvidence.live_evidence = @{ gate='live-schema-gate'; verified_utc=(Get-Date -AsUTC -Format o)
-    cli_path=$pin.Path; cli_version=$pin.Version; cli_sha256=$pin.Sha256
-    schema_sha256=$premisesSchemaSha; agents_md_sha256=$premisesAgentsSha; invocation_profile_sha256=$premisesProfileHash }
-Write-Premises $matchingEvidence
-$pmMatchingEvidence = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
-Assert-True $pmMatchingEvidence.Valid "live evidence matching the CURRENT stack fingerprint is accepted"
+# The mirror image: only security_battery present -> refused, naming schema_gate's own gate.
+$onlySecurity = New-ValidPremisesHashtable
+$onlySecurity.live_evidence = @{ security_battery = (New-LiveEvidenceRecord 'security_battery') }
+Write-Premises $onlySecurity
+$pmOnlySecurity = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+Assert-True (-not $pmOnlySecurity.Valid -and $pmOnlySecurity.Reason -match 'schema_gate' -and $pmOnlySecurity.Reason -match 'live-schema-gate') "security_battery ALONE does not authorize the round -- schema_gate is refused, naming its own live gate"
 
-# Write-LiveEvidence itself: stamps onto an existing stack-accepted manifest, and recalibrating
-# (simulated here by writing a fresh stack-only manifest, exactly what calibrate-premises.ps1
-# does) always DROPS it again -- the property invoke-codex.ps1/install.ps1's error messages and
-# both SKILL.md files now depend on ("run the live gate LAST").
-$stackOnly = New-ValidPremisesHashtable; $stackOnly.Remove('live_evidence')
-Write-Premises $stackOnly
-Write-LiveEvidence -SkillRoot $skillRoot -Gate 'live-schema-gate' -ActualCli $pin `
+# --- FIX 2 regression (b): both records present, but security_battery is fingerprinted for a
+# DIFFERENT CLI (a stale record left over from before a CLI update) -> refused, even though
+# schema_gate matches perfectly. Fingerprint match, not mere presence, is what authorizes. ---
+$staleSecurity = New-ValidPremisesHashtable
+$staleSecurityRec = New-LiveEvidenceRecord 'security_battery'; $staleSecurityRec.cli_sha256 = ('9' * 64)
+$staleSecurity.live_evidence = @{ schema_gate = (New-LiveEvidenceRecord 'schema_gate'); security_battery = $staleSecurityRec }
+Write-Premises $staleSecurity
+$pmStaleSecurity = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+Assert-True (-not $pmStaleSecurity.Valid -and $pmStaleSecurity.Reason -match 'security_battery' -and $pmStaleSecurity.Reason -match 'live-security') "security_battery stamped for a DIFFERENT CLI is refused even though schema_gate matches"
+
+# Symmetric case: schema_gate stale (predates the current schema) while security_battery
+# matches -- proves the per-sub-record check applies UNIFORMLY, not merely to whichever gate is
+# checked first in the loop.
+$staleSchemaGate = New-ValidPremisesHashtable
+$staleSchemaRec = New-LiveEvidenceRecord 'schema_gate'; $staleSchemaRec.schema_sha256 = ('0' * 64)
+$staleSchemaGate.live_evidence = @{ schema_gate = $staleSchemaRec; security_battery = (New-LiveEvidenceRecord 'security_battery') }
+Write-Premises $staleSchemaGate
+$pmStaleSchemaGate = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+Assert-True (-not $pmStaleSchemaGate.Valid -and $pmStaleSchemaGate.Reason -match 'schema_gate') "schema_gate stamped for a stale schema is refused even though security_battery matches"
+
+# --- FIX 2 regression (c): both present and matching -> accepted end to end. (The golden-path
+# test far above already covers this via New-ValidPremises's now-matching live_evidence, but this
+# makes the property explicit and independently verifiable.) ---
+Write-Premises (New-ValidPremisesHashtable)
+$pmBothMatching = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+Assert-True $pmBothMatching.Valid "schema_gate AND security_battery both matching the current stack is accepted"
+
+# --- FIX 2 regression (d): Write-LiveEvidence stamping security_battery must not disturb an
+# existing, independently-stamped schema_gate record. ---
+$oneStamped = New-ValidPremisesHashtable; $oneStamped.live_evidence = @{ schema_gate = (New-LiveEvidenceRecord 'schema_gate') }
+Write-Premises $oneStamped
+$schemaGateBeforeJson = ((Get-Content -Raw $premisesPath | ConvertFrom-Json).live_evidence.schema_gate | ConvertTo-Json -Depth 6 -Compress)
+Write-LiveEvidence -SkillRoot $skillRoot -Gate 'security_battery' -ActualCli $pin `
     -SchemaSha256 $premisesSchemaSha -AgentsMdSha256 $premisesAgentsSha -InvocationProfileHash $premisesProfileHash
-Assert-True (Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash).Valid "Write-LiveEvidence stamps a record that Test-PremiseManifest then accepts"
-$stackOnlyAgain = New-ValidPremisesHashtable; $stackOnlyAgain.Remove('live_evidence')
-Write-Premises $stackOnlyAgain   # simulates calibrate-premises.ps1 recalibrating: no live_evidence key at all
-Assert-True (-not (Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash).Valid) "recalibrating after a Write-LiveEvidence stamp drops it again -- the gate refuses until the live gate reruns"
+$afterStamp = Get-Content -Raw $premisesPath | ConvertFrom-Json
+Assert-True ($null -ne $afterStamp.live_evidence.security_battery) "Write-LiveEvidence -Gate security_battery adds the security_battery record"
+Assert-Eq ($afterStamp.live_evidence.schema_gate | ConvertTo-Json -Depth 6 -Compress) $schemaGateBeforeJson "stamping security_battery leaves the pre-existing schema_gate record byte-for-byte untouched"
+Assert-True (Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash).Valid "after both gates have been stamped (one by fixture, one by Write-LiveEvidence), the manifest is accepted"
+
+# The mirror image: stamping schema_gate must not disturb an existing security_battery record.
+$otherStamped = New-ValidPremisesHashtable; $otherStamped.live_evidence = @{ security_battery = (New-LiveEvidenceRecord 'security_battery') }
+Write-Premises $otherStamped
+$securityBeforeJson = ((Get-Content -Raw $premisesPath | ConvertFrom-Json).live_evidence.security_battery | ConvertTo-Json -Depth 6 -Compress)
+Write-LiveEvidence -SkillRoot $skillRoot -Gate 'schema_gate' -ActualCli $pin `
+    -SchemaSha256 $premisesSchemaSha -AgentsMdSha256 $premisesAgentsSha -InvocationProfileHash $premisesProfileHash
+$afterOtherStamp = Get-Content -Raw $premisesPath | ConvertFrom-Json
+Assert-Eq ($afterOtherStamp.live_evidence.security_battery | ConvertTo-Json -Depth 6 -Compress) $securityBeforeJson "stamping schema_gate leaves an existing security_battery record byte-for-byte untouched"
+
+# Recalibrating (a fresh stack-only manifest, exactly what calibrate-premises.ps1 writes) drops
+# BOTH sub-records at once, forcing both live gates to rerun -- not merely whichever one changed.
+# The property invoke-codex.ps1/install.ps1's error messages and both SKILL.md files now depend
+# on ("run the live gate LAST").
+$recalibrated = New-ValidPremisesHashtable; $recalibrated.Remove('live_evidence')
+Write-Premises $recalibrated
+Assert-True (-not (Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash).Valid) "recalibrating after both stamps drops the whole live_evidence object -- both gates must rerun"
+
+Write-Premises (New-ValidPremisesHashtable)   # leave $premisesPath fully valid for anything appended later
 
 Remove-Item Env:\CODEX_TEST_CANARY
 
@@ -418,6 +532,15 @@ $copyRoot = Join-Path $tmp 'entry-skillroot'
 New-Item -ItemType Directory -Force $copyRoot | Out-Null
 Copy-Item -Recurse "$PSScriptRoot\..\codex-review" $copyRoot
 $copySkillRoot = Join-Path $copyRoot 'codex-review'
+# Get-SecuritySourceFingerprint (FINDING 2) resolves its fixed file list relative to -SkillRoot's
+# PARENT -- i.e. as siblings of codex-review/, matching this repo's real layout. The Copy-Item
+# -Recurse above already brought scripts/ + schemas/ along; add the two live-gate scripts as a
+# tests\live sibling of $copyRoot so Set-TestManifest below (and invoke-codex.ps1's own internal
+# Test-PremiseManifest call) can compute a real fingerprint against this copy.
+New-Item -ItemType Directory -Force (Join-Path $copyRoot 'tests\live') | Out-Null
+foreach ($f in 'live-schema-gate.ps1','live-security.ps1') {
+    Copy-Item "$PSScriptRoot\live\$f" (Join-Path $copyRoot "tests\live\$f")
+}
 $entry = Join-Path $copySkillRoot 'scripts\invoke-codex.ps1'
 $repo = "$tmp\repo"; git init -q $repo; git -C $repo -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 $goodExecHelp = ($script:RequiredExecFlags -join '  ')
@@ -435,28 +558,36 @@ function Set-TestManifest([string]$ShimPath) {
     # Stack-identity fields only (see task-14-report.md): the numeric budget premises this
     # manifest used to also carry are gone, superseded by the acceptance-time usage gate.
     #
-    # Also stamps a MATCHING live_evidence sub-object (added: binding authorization to live
-    # evidence, see task-14-report.md): Test-PremiseManifest now additionally requires one, and
-    # every test below exercises invoke-codex.ps1's pin/harness/retry/budget/carry-over behavior,
-    # not the live-evidence gate itself (that gets its own dedicated regressions further down).
-    # This simulates BOTH calibrate-premises.ps1 AND a passing tests/live/live-schema-gate.ps1
-    # run having already happened for this fake stack, exactly as production requires -- it is
-    # test scaffolding writing a hand-built fixture directly, not calibrate-premises.ps1 itself,
-    # so this does not contradict calibrate-premises.ps1 never being able to write this field.
+    # Also stamps MATCHING live_evidence sub-objects for BOTH schema_gate and security_battery
+    # (restructured: FINDING 2, see task-14-report.md): Test-PremiseManifest now requires both
+    # independently, and every test below exercises invoke-codex.ps1's pin/harness/retry/budget/
+    # carry-over behavior, not the live-evidence gate itself (that gets its own dedicated
+    # regressions in the Test-PremiseManifest section above). This simulates calibrate-premises.ps1
+    # AND both tests/live/live-schema-gate.ps1 and tests/live/live-security.ps1 having already
+    # passed for this fake stack, exactly as production requires -- it is test scaffolding writing
+    # a hand-built fixture directly, not the real scripts, so this does not contradict
+    # calibrate-premises.ps1 never being able to write live_evidence, or either live gate being the
+    # only real writer of its own sub-record (Write-LiveEvidence).
     $probe = Test-CodexCandidate -Path $ShimPath -AllowWrapper
     $agentsPath = "$env:USERPROFILE\.codex\AGENTS.md"
     $schemaSha = (Get-FileHash -Algorithm SHA256 "$copySkillRoot\schemas\verdict.schema.json").Hash.ToLowerInvariant()
     $agentsSha = $(if (Test-Path $agentsPath) { (Get-FileHash -Algorithm SHA256 $agentsPath).Hash.ToLowerInvariant() } else { 'absent' })
     $profileHash = (Get-InvocationProfileHash -DisableSet (Get-DisableSet -FeatureNames $probe.FeatureNames))
+    $srcFingerprint = Get-SecuritySourceFingerprint -SkillRoot $copySkillRoot
+    $evidenceFor = {
+        param($Gate)
+        @{ gate=$Gate; utc=(Get-Date -AsUTC -Format o)
+           cli_path=$probe.Path; cli_version=$probe.Version; cli_sha256=$probe.Sha256
+           schema_sha256=$schemaSha; agents_md_sha256=$agentsSha; invocation_profile_sha256=$profileHash
+           source_fingerprint=$srcFingerprint }
+    }
     @{ version=1; model='gpt-5.6-sol'
        cli_path=$probe.Path; cli_sha256=$probe.Sha256; cli_version=$probe.Version
        schema_sha256=$schemaSha
        agents_md_sha256=$agentsSha
        invocation_profile_sha256=$profileHash
        recorded_utc=(Get-Date -AsUTC -Format o)
-       live_evidence=@{ gate='live-schema-gate'; verified_utc=(Get-Date -AsUTC -Format o)
-           cli_path=$probe.Path; cli_version=$probe.Version; cli_sha256=$probe.Sha256
-           schema_sha256=$schemaSha; agents_md_sha256=$agentsSha; invocation_profile_sha256=$profileHash } } |
+       live_evidence=@{ schema_gate=(& $evidenceFor 'schema_gate'); security_battery=(& $evidenceFor 'security_battery') } } |
         ConvertTo-Json -Depth 6 | Set-Content (Join-Path $copySkillRoot 'premises.json') -Encoding utf8
 }
 Set-TestManifest $shim2

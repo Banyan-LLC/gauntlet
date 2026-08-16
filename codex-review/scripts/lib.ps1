@@ -530,6 +530,51 @@ function Test-StackAcceptance {
     [pscustomobject]@{ Valid=$true; Reason=$null; Manifest=$m }
 }
 
+function Get-SecuritySourceFingerprint {
+    <# Deterministic SHA-256 over a FIXED, SORTED list of the security-critical shipped sources:
+       the wrapper implementation (lib.ps1, invoke-codex.ps1, publish-review.ps1,
+       calibrate-premises.ps1), the verdict schema, and the two live gates that alone are
+       authorized to stamp live evidence (tests/live/live-schema-gate.ps1,
+       tests/live/live-security.ps1). Binds each stamped live-evidence sub-record (see
+       Write-LiveEvidence/Test-PremiseManifest below) to the exact bytes of these files at
+       stamping time -- so an edit to the WRAPPER ITSELF, not merely a CLI/schema/AGENTS.md
+       change, also invalidates the corresponding stamp and forces its gate to rerun (added: see
+       docs/build-log/task-14-report.md, FINDING 2 -- previously a single generic live_evidence
+       record bound none of the wrapper implementation at all).
+
+       -SkillRoot is the `codex-review` directory (same meaning as everywhere else in this file);
+       the fixed list below is repo-relative to ITS PARENT, since the two live-gate scripts live
+       under a sibling `tests/live/`, not under `codex-review/` itself.
+
+       Per file: hash (path-prefix bytes + file bytes) -- so a file that moved to a different
+       logical path, even with byte-identical content, still changes its own digest. Concatenate
+       those per-file hex digests in the FIXED sorted order above (never filesystem enumeration
+       order) and hash the concatenation once more. A listed file that is MISSING throws rather
+       than being silently omitted: a security-critical source that cannot be found is a
+       fail-closed condition, never a smaller/quieter fingerprint. #>
+    param([Parameter(Mandatory)][string]$SkillRoot)
+    $repoRoot = Split-Path $SkillRoot -Parent
+    $relPaths = @(
+        'codex-review\scripts\lib.ps1',
+        'codex-review\scripts\invoke-codex.ps1',
+        'codex-review\scripts\publish-review.ps1',
+        'codex-review\scripts\calibrate-premises.ps1',
+        'codex-review\schemas\verdict.schema.json',
+        'tests\live\live-schema-gate.ps1',
+        'tests\live\live-security.ps1'
+    ) | Sort-Object
+    $perFileHashes = foreach ($rel in $relPaths) {
+        $full = Join-Path $repoRoot $rel
+        if (-not (Test-Path -LiteralPath $full -PathType Leaf)) {
+            throw "security source fingerprint: missing required file '$rel' (resolved '$full')"
+        }
+        $prefixed = [byte[]]([Text.Encoding]::UTF8.GetBytes($rel) + [System.IO.File]::ReadAllBytes($full))
+        -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash($prefixed) | ForEach-Object { $_.ToString('x2') })
+    }
+    $material = ($perFileHashes -join '')
+    -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($material)) | ForEach-Object { $_.ToString('x2') })
+}
+
 function Test-PremiseManifest {
     <# THE gate: normal invocation (invoke-codex.ps1) and installation (install.ps1) both refuse
        to proceed without this passing for the stack that would actually run.
@@ -541,13 +586,24 @@ function Test-PremiseManifest {
        from a compatibility PROBE alone, with no live model call, immediately after a CLI or
        schema change, with no live gate ever rerun. Presenting that probe as proof of a working
        reviewer stack would let a round run against a stack nobody has actually verified against
-       the real API since the change. This function additionally requires a `live_evidence`
-       record on the manifest: which live gate passed, when, and the exact fingerprint (CLI
-       path/version/hash, schema hash, AGENTS.md hash, invocation-profile hash) it passed
-       against. `live_evidence` is stamped ONLY by tests/live/live-schema-gate.ps1, on an actual
-       passing request against the real API -- calibrate-premises.ps1 never writes or refreshes
-       it, so recalibrating always drops any prior live evidence and a live gate rerun is
-       required again before this passes. #>
+       the real API since the change.
+
+       TWO independently fingerprinted sub-records, not one generic stamp (restructured: see
+       docs/build-log/task-14-report.md, FINDING 2). A single flat `live_evidence` record used to
+       let calibration plus ONE schema-gate pass authorize the WHOLE security-sensitive stack --
+       including capabilities (shell/web/apps/MCP/plugins hermeticity) that only
+       tests/live/live-security.ps1 actually exercises -- without ever rerunning the security
+       battery, and bound none of the wrapper implementation itself (fixed by
+       Get-SecuritySourceFingerprint above). `live_evidence` is now an object with TWO REQUIRED
+       named sub-records, `schema_gate` and `security_battery`; EACH must independently carry a
+       matching fingerprint (CLI path/version/hash, schema hash, AGENTS.md hash,
+       invocation-profile hash, AND source_fingerprint) before this passes. Either sub-record
+       absent, or either one's fingerprint stale, refuses -- naming exactly which live gate to
+       rerun. `live_evidence` is stamped ONLY by Write-LiveEvidence (below), called only from
+       tests/live/live-schema-gate.ps1 (schema_gate) and tests/live/live-security.ps1
+       (security_battery), each after an actual passing run against the real API --
+       calibrate-premises.ps1 never writes or refreshes either sub-record, so recalibrating always
+       drops the WHOLE live_evidence object and both live gates must rerun. #>
     param([Parameter(Mandatory)][string]$SkillRoot,
           [Parameter(Mandatory)][pscustomobject]$ActualCli,
           [Parameter(Mandatory)][string]$InvocationProfileHash,
@@ -561,36 +617,52 @@ function Test-PremiseManifest {
     # 'live_evidence' key (the normal case right after a fresh calibration) must fail closed with
     # a Reason, never throw PropertyNotFoundException past this function's contract.
     if ($m.PSObject.Properties.Name -notcontains 'live_evidence') { $m | Add-Member -NotePropertyName 'live_evidence' -NotePropertyValue $null }
-    if ($null -eq $m.live_evidence) {
-        return (& $bad "premises.json records stack acceptance but no live evidence (calibrate-premises.ps1 cannot provide it); run tests/live/live-schema-gate.ps1")
+    if ($null -eq $m.live_evidence -or $m.live_evidence -isnot [System.Management.Automation.PSCustomObject]) {
+        return (& $bad "premises.json records stack acceptance but no live evidence (calibrate-premises.ps1 cannot provide it); run tests/live/live-schema-gate.ps1 and tests/live/live-security.ps1")
     }
     $le = $m.live_evidence
-    foreach ($f in @('gate','verified_utc','cli_path','cli_version','cli_sha256','schema_sha256','agents_md_sha256','invocation_profile_sha256')) {
-        if ($le.PSObject.Properties.Name -notcontains $f) { $le | Add-Member -NotePropertyName $f -NotePropertyValue $null }
+    $securitySourceFingerprint = Get-SecuritySourceFingerprint -SkillRoot $SkillRoot
+    $gateRerun = @{ schema_gate = 'tests/live/live-schema-gate.ps1'; security_battery = 'tests/live/live-security.ps1' }
+    foreach ($gateName in @('schema_gate','security_battery')) {
+        if ($le.PSObject.Properties.Name -notcontains $gateName) { $le | Add-Member -NotePropertyName $gateName -NotePropertyValue $null }
+        $rec = $le.$gateName
+        if ($null -eq $rec -or $rec -isnot [System.Management.Automation.PSCustomObject]) {
+            return (& $bad "premises.json has no live evidence for '$gateName'; run $($gateRerun[$gateName])")
+        }
+        foreach ($f in @('gate','utc','cli_path','cli_version','cli_sha256','schema_sha256','agents_md_sha256','invocation_profile_sha256','source_fingerprint')) {
+            if ($rec.PSObject.Properties.Name -notcontains $f) { $rec | Add-Member -NotePropertyName $f -NotePropertyValue $null }
+        }
+        foreach ($f in @('gate','utc','cli_path','cli_version','cli_sha256','schema_sha256','agents_md_sha256','invocation_profile_sha256','source_fingerprint')) {
+            if ($null -eq $rec.$f -or "$($rec.$f)" -eq '') { return (& $bad "live-evidence record '$gateName' is missing '$f'; run $($gateRerun[$gateName])") }
+        }
+        # Compared against the MANIFEST's own top-level fields, not re-derived here: Test-StackAcceptance
+        # just proved those are exactly the CURRENT stack, so this is "matches the current stack" with
+        # no second round of hashing (source_fingerprint is the one exception -- it has no top-level
+        # manifest counterpart, so it is compared directly against the freshly-computed value above).
+        if ($rec.cli_path -cne $m.cli_path -or $rec.cli_version -cne $m.cli_version -or $rec.cli_sha256 -cne $m.cli_sha256) {
+            return (& $bad "live-evidence record '$gateName' was stamped for a different CLI than the one that would run this round; rerun $($gateRerun[$gateName])")
+        }
+        if ($rec.schema_sha256 -cne $m.schema_sha256) { return (& $bad "live-evidence record '$gateName' predates the current verdict schema; rerun $($gateRerun[$gateName])") }
+        if ($rec.agents_md_sha256 -cne $m.agents_md_sha256) { return (& $bad "live-evidence record '$gateName' predates the current AGENTS.md; rerun $($gateRerun[$gateName])") }
+        if ($rec.invocation_profile_sha256 -cne $m.invocation_profile_sha256) { return (& $bad "live-evidence record '$gateName' predates the current invocation profile; rerun $($gateRerun[$gateName])") }
+        if ($rec.source_fingerprint -cne $securitySourceFingerprint) { return (& $bad "live-evidence record '$gateName' predates the current security-critical wrapper sources (lib.ps1/invoke-codex.ps1/publish-review.ps1/calibrate-premises.ps1/schema/live gates); rerun $($gateRerun[$gateName])") }
     }
-    foreach ($f in @('gate','verified_utc','cli_path','cli_version','cli_sha256','schema_sha256','agents_md_sha256','invocation_profile_sha256')) {
-        if ($null -eq $le.$f -or "$($le.$f)" -eq '') { return (& $bad "live-evidence record is missing '$f'; run tests/live/live-schema-gate.ps1") }
-    }
-    # Compared against the MANIFEST's own top-level fields, not re-derived here: Test-StackAcceptance
-    # just proved those are exactly the CURRENT stack, so this is "matches the current stack" with
-    # no second round of hashing.
-    if ($le.cli_path -cne $m.cli_path -or $le.cli_version -cne $m.cli_version -or $le.cli_sha256 -cne $m.cli_sha256) {
-        return (& $bad "live-evidence record was stamped for a different CLI than the one that would run this round; rerun tests/live/live-schema-gate.ps1")
-    }
-    if ($le.schema_sha256 -cne $m.schema_sha256) { return (& $bad "live-evidence record predates the current verdict schema; rerun tests/live/live-schema-gate.ps1") }
-    if ($le.agents_md_sha256 -cne $m.agents_md_sha256) { return (& $bad "live-evidence record predates the current AGENTS.md; rerun tests/live/live-schema-gate.ps1") }
-    if ($le.invocation_profile_sha256 -cne $m.invocation_profile_sha256) { return (& $bad "live-evidence record predates the current invocation profile; rerun tests/live/live-schema-gate.ps1") }
     [pscustomobject]@{ Valid=$true; Reason=$null; Manifest=$m }
 }
 
 function Write-LiveEvidence {
-    <# The ONLY writer of the live_evidence record Test-PremiseManifest requires (see above).
-       Called by tests/live/live-schema-gate.ps1, and only there, after an actual live round
-       against the real API has succeeded. Requires premises.json to already exist (calibrate-
-       premises.ps1 must run first) -- this stamps the live-evidence sub-object onto the existing
-       stack-acceptance manifest, it does not create one. #>
+    <# Writes/updates ONE named sub-record on live_evidence -- schema_gate or security_battery --
+       leaving the OTHER sub-record (if present) completely untouched (restructured: see
+       docs/build-log/task-14-report.md, FINDING 2). Called from exactly two places:
+       tests/live/live-schema-gate.ps1 (-Gate 'schema_gate') and tests/live/live-security.ps1
+       (-Gate 'security_battery'), each only after an actual live round against the real API has
+       succeeded. Requires premises.json to already exist (calibrate-premises.ps1 must run first)
+       -- this stamps a live-evidence sub-object onto the existing stack-acceptance manifest, it
+       does not create one. source_fingerprint is ALWAYS derived here via
+       Get-SecuritySourceFingerprint, never accepted as a caller-supplied value, so a stamp always
+       reflects what is genuinely on disk at stamping time. #>
     param([Parameter(Mandatory)][string]$SkillRoot,
-          [Parameter(Mandatory)][string]$Gate,
+          [Parameter(Mandatory)][ValidateSet('schema_gate','security_battery')][string]$Gate,
           [Parameter(Mandatory)][pscustomobject]$ActualCli,
           [Parameter(Mandatory)][string]$SchemaSha256,
           [Parameter(Mandatory)][string]$AgentsMdSha256,
@@ -598,12 +670,16 @@ function Write-LiveEvidence {
     $path = Join-Path $SkillRoot 'premises.json'
     if (-not (Test-Path $path)) { throw "premises.json is absent; run calibrate-premises.ps1 before stamping live evidence" }
     $m = Get-Content -Raw $path | ConvertFrom-Json
-    $evidence = [pscustomobject]@{
-        gate = $Gate; verified_utc = (Get-Date -AsUTC -Format o)
+    $record = [pscustomobject]@{
+        gate = $Gate; utc = (Get-Date -AsUTC -Format o)
         cli_path = $ActualCli.Path; cli_version = $ActualCli.Version; cli_sha256 = $ActualCli.Sha256
         schema_sha256 = $SchemaSha256; agents_md_sha256 = $AgentsMdSha256
         invocation_profile_sha256 = $InvocationProfileHash
+        source_fingerprint = (Get-SecuritySourceFingerprint -SkillRoot $SkillRoot)
     }
+    $evidence = if (($m.PSObject.Properties.Name -contains 'live_evidence') -and ($null -ne $m.live_evidence)) { $m.live_evidence } else { [pscustomobject]@{} }
+    if ($evidence.PSObject.Properties.Name -contains $Gate) { $evidence.$Gate = $record }
+    else { $evidence | Add-Member -NotePropertyName $Gate -NotePropertyValue $record }
     if ($m.PSObject.Properties.Name -contains 'live_evidence') { $m.live_evidence = $evidence }
     else { $m | Add-Member -NotePropertyName 'live_evidence' -NotePropertyValue $evidence }
     $m | ConvertTo-Json -Depth 6 | Set-Content -Path $path -Encoding utf8
