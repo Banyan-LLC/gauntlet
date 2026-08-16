@@ -653,15 +653,25 @@ function Invoke-CodexProcess {
 # ---------------------------------------------------------------------------------------
 function Get-RunUsage {
     <# Parses a completed run's raw stdout event stream (JSONL, one event per line) and
-       enforces every acceptance-time invariant on it: no top-level error event, EXACTLY ONE
-       turn.completed event, and that event's usage.input_tokens present as a genuine
-       positive integer. Returns {Ok, Reason, InputTokens, RawLine} -- RawLine is the
+       enforces every acceptance-time invariant on it: every non-blank line must parse as a
+       well-formed JSON OBJECT carrying a 'type', no top-level error or turn.failed event,
+       EXACTLY ONE turn.completed event, and that event's usage.input_tokens present as a
+       genuine positive integer. Returns {Ok, Reason, InputTokens, RawLine} -- RawLine is the
        terminal event exactly as received, for the caller to persist verbatim alongside the
        parsed integer (see Write-NewFileExclusive at the round-N-attempt-M-usage.json call
-       site). Deliberately silent, not throwing, on a line that fails to parse as JSON or
-       parses to a bare JSON null: under Set-StrictMode -Version Latest (inherited from this
-       file's own top-of-file directive) this function must fail CLOSED with a Reason on any
-       malformed stream, never crash past its documented contract.
+       site).
+
+       FAILS CLOSED on a malformed stream (added: see docs/build-log/task-14-report.md,
+       FINDING 4a). A prior revision silently `continue`d past a non-blank line that failed to
+       parse as JSON, parsed to a bare (non-object) JSON value, or parsed to an object with no
+       'type' field -- so a genuine, valid turn.completed event could coexist with a malformed
+       or adversarial line ELSEWHERE in the same stream and the run was still ACCEPTED. That is
+       backwards for an acceptance gate: `--json` stdout is documented JSONL of TYPED events, and
+       anything that does not fit that shape is evidence the stream is not trustworthy, not
+       something to skip past. Every such line — and a `turn.failed` event, rejected the same way
+       a top-level `error` event already was — now returns Ok=$false immediately. Only a
+       genuinely blank/whitespace-only line is still skipped (a real process's stdout, once split
+       on newline, always ends in one).
        -EventLines is deliberately NOT [Parameter(Mandatory)]: PowerShell's parameter binder
        applies an implicit "no element may be null or an empty string" check to MANDATORY
        [string]/[string[]] parameters specifically (confirmed empirically — this is what
@@ -679,13 +689,24 @@ function Get-RunUsage {
     $events = [System.Collections.Generic.List[object]]::new()
     foreach ($line in $EventLines) {
         if (-not $line -or -not $line.Trim()) { continue }
-        try { $parsed = $line | ConvertFrom-Json } catch { continue }
-        if ($null -eq $parsed) { continue }
+        try { $parsed = $line | ConvertFrom-Json -ErrorAction Stop } catch {
+            return (& $bad "event stream line is not valid JSON: $($_.Exception.Message)")
+        }
+        if ($parsed -isnot [System.Management.Automation.PSCustomObject]) {
+            $shape = if ($null -eq $parsed) { 'null' } else { $parsed.GetType().Name }
+            return (& $bad "event stream line did not parse to a JSON object (got $shape)")
+        }
+        if ($parsed.PSObject.Properties.Name -notcontains 'type') {
+            return (& $bad "event stream line is a JSON object with no 'type' field")
+        }
         $events.Add([pscustomobject]@{ Raw = $line; Parsed = $parsed })
     }
     $isType = { param($e, $t) ($e.Parsed.PSObject.Properties.Name -contains 'type') -and ($e.Parsed.type -ceq $t) }
     if (@($events | Where-Object { & $isType $_ 'error' }).Count -gt 0) {
         return (& $bad "the event stream reported a top-level error event")
+    }
+    if (@($events | Where-Object { & $isType $_ 'turn.failed' }).Count -gt 0) {
+        return (& $bad "the event stream reported a turn.failed event")
     }
     $completed = @($events | Where-Object { & $isType $_ 'turn.completed' })
     if ($completed.Count -eq 0) { return (& $bad "no turn.completed event in the event stream") }

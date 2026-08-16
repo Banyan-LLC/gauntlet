@@ -37,7 +37,8 @@ function New-FakeCodexShim {
           [ValidateSet('normal','invalid-verdict','no-verdict','ignore-stdin-sleep')][string]$Behavior = 'normal',
           [int]$LoginStatusExitCode = 0,
           [int]$InputTokens = 9456,
-          [ValidateSet('normal','no-usage-field','malformed-usage','duplicate-turn-completed','error-event')]
+          [ValidateSet('normal','no-usage-field','malformed-usage','duplicate-turn-completed','error-event',
+                       'unparseable-line','null-line','no-type-object','turn-failed')]
           [string]$UsageBehavior = 'normal',
           [string]$MalformedInputTokensLiteral = '"not-a-number"')
     New-Item -ItemType Directory -Force $Dir | Out-Null
@@ -83,6 +84,14 @@ if ($a[0] -eq 'exec') {
         'malformed-usage'          { Write-Output ('{"type":"turn.completed","usage":{"input_tokens":' + $cfg.malformedInputTokensLiteral + ',"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":25,"reasoning_output_tokens":0}}') }
         'duplicate-turn-completed' { Write-Output $goodUsage; Write-Output $goodUsage }
         'error-event'              { Write-Output '{"type":"error","message":"simulated upstream error"}' }
+        # FINDING 4a (see docs/build-log/task-14-report.md): each of these emits a VALID terminal
+        # turn.completed (proving the run otherwise looked fine) PLUS, separately, one malformed
+        # line -- Get-RunUsage must fail closed on the malformed line even though a genuine
+        # terminal event is also present, not silently skip it and accept the good one anyway.
+        'unparseable-line'         { Write-Output $goodUsage; Write-Output 'not-json-at-all {{{' }
+        'null-line'                { Write-Output $goodUsage; Write-Output 'null' }
+        'no-type-object'           { Write-Output $goodUsage; Write-Output '{"foo":"bar"}' }
+        'turn-failed'              { Write-Output $goodUsage; Write-Output '{"type":"turn.failed","message":"simulated turn failure"}' }
         default                    { Write-Output $goodUsage }
     }
     exit 0
@@ -90,7 +99,18 @@ if ($a[0] -eq 'exec') {
 exit 64
 '@
     $pwshAbs = [System.Environment]::ProcessPath   # absolute path of the running pwsh
-    Set-Content -Path "$Dir\shim.cmd" -Encoding ascii -Value "@`"$pwshAbs`" -NoProfile -File `"%~dp0shim.ps1`" %*"
+    # @echo off (own line, `@`-prefixed so even IT is never echoed): without it, cmd.exe echoes
+    # every line it executes to STDOUT that isn't itself `@`-prefixed. The launch line below always
+    # was `@`-prefixed, but a test that later `Add-Content`s a bare (non-`@`) line onto this file
+    # to simulate binary tampering (e.g. "rem tampered-between-rounds", used across this suite to
+    # exercise Test-BinaryUnchanged) does NOT prefix its appended line -- so once that tampered
+    # binary is genuinely re-pinned and RUN (not merely hash-rejected), cmd.exe echoes
+    # "<cwd>>rem tampered-between-rounds" onto stdout as an extra, un-asked-for event-stream line.
+    # The pre-FINDING-4a Get-RunUsage silently `continue`d past that stray line and never noticed;
+    # the fixed, fail-closed Get-RunUsage correctly rejects it as an unparseable line -- exposing
+    # this latent fixture issue rather than a defect in the fix. Fixed at the root: `@echo off`
+    # suppresses the echo for every line cmd.exe executes from this file, appended or not.
+    Set-Content -Path "$Dir\shim.cmd" -Encoding ascii -Value "@echo off`r`n@`"$pwshAbs`" -NoProfile -File `"%~dp0shim.ps1`" %*"
     return "$Dir\shim.cmd"
 }
 
@@ -144,7 +164,8 @@ function Set-FakeCodexBehavior {
           [ValidateSet('normal','invalid-verdict','no-verdict','ignore-stdin-sleep')][string]$Behavior,
           [string]$VerdictJson,
           [int]$InputTokens,
-          [ValidateSet('normal','no-usage-field','malformed-usage','duplicate-turn-completed','error-event')]
+          [ValidateSet('normal','no-usage-field','malformed-usage','duplicate-turn-completed','error-event',
+                       'unparseable-line','null-line','no-type-object','turn-failed')]
           [string]$UsageBehavior,
           [string]$MalformedInputTokensLiteral)
     $cfg = Get-Content -Raw "$Dir\config.json" | ConvertFrom-Json

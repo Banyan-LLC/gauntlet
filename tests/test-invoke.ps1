@@ -705,6 +705,55 @@ Assert-Eq (Get-Content -Raw "$state12\state.json") $stateJsonBefore "replay left
 # reverting the corresponding guard in invoke-codex.ps1/lib.ps1 and observing the predicted
 # failure (see task-7-report.md).
 # =====================================================================================
+
+# =====================================================================================
+# Get-RunUsage: DIRECT unit-level regressions (FINDING 4a, see docs/build-log/task-14-report.md).
+# The prior implementation silently `continue`d past a line that failed to parse as JSON, parsed
+# to a non-object JSON value (null/number/string/array), or parsed to an object with no 'type'
+# field -- so a valid terminal turn.completed could coexist with a malformed/adversarial line
+# ANYWHERE ELSE in the same stream and the run was still ACCEPTED. Each case below combines a
+# GENUINE valid terminal turn.completed with exactly one additional bad line and asserts
+# Get-RunUsage now fails CLOSED (Ok=$false) instead of silently ignoring the bad line. Blank/
+# whitespace-only lines remain fine to skip -- a real process's stdout always ends in one.
+# =====================================================================================
+$goodTerminal = '{"type":"turn.completed","usage":{"input_tokens":9456,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":25,"reasoning_output_tokens":0}}'
+
+$ruBlankOnly = Get-RunUsage -EventLines @('', '   ', $goodTerminal, '')
+Assert-True $ruBlankOnly.Ok "sanity: blank/whitespace-only lines alone are still fine to skip"
+
+$ruUnparseable = Get-RunUsage -EventLines @($goodTerminal, 'not-json-at-all {{{')
+Assert-True (-not $ruUnparseable.Ok) "a non-blank line that fails to parse as JSON fails CLOSED, even alongside a valid turn.completed"
+
+$ruNull = Get-RunUsage -EventLines @($goodTerminal, 'null')
+Assert-True (-not $ruNull.Ok) "a bare JSON null line fails CLOSED, even alongside a valid turn.completed"
+
+$ruArray = Get-RunUsage -EventLines @($goodTerminal, '[1,2,3]')
+Assert-True (-not $ruArray.Ok) "a bare JSON array line (parses, but not an object) fails CLOSED"
+
+$ruNumber = Get-RunUsage -EventLines @($goodTerminal, '42')
+Assert-True (-not $ruNumber.Ok) "a bare JSON number line (parses, but not an object) fails CLOSED"
+
+$ruString = Get-RunUsage -EventLines @($goodTerminal, '"just a string"')
+Assert-True (-not $ruString.Ok) "a bare JSON string line (parses, but not an object) fails CLOSED"
+
+$ruNoType = Get-RunUsage -EventLines @($goodTerminal, '{"foo":"bar"}')
+Assert-True (-not $ruNoType.Ok) "a well-formed JSON object with no 'type' field fails CLOSED, even alongside a valid turn.completed"
+
+$ruTurnFailed = Get-RunUsage -EventLines @($goodTerminal, '{"type":"turn.failed","message":"simulated turn failure"}')
+Assert-True (-not $ruTurnFailed.Ok) "a turn.failed event fails CLOSED exactly like a top-level error event does, even alongside a valid turn.completed"
+
+# Sanity: none of the above changed the pre-existing happy path -- a stream with ONLY the
+# realistic happy-path lines (no malformed content at all) still succeeds.
+$ruGolden = Get-RunUsage -EventLines @(
+    '{"type":"thread.started","thread_id":"11111111-2222-3333-4444-555555555555"}',
+    '{"type":"turn.started"}',
+    '{"type":"item.completed","item":{"type":"agent_message","text":"ok"}}',
+    $goodTerminal,
+    ''
+)
+Assert-True $ruGolden.Ok "sanity: the realistic happy-path event stream still succeeds"
+Assert-Eq $ruGolden.InputTokens 9456 "sanity: happy-path input_tokens parsed correctly"
+
 $docBase = @{ Mode='doc'; RepoRoot=$repo; ArtifactPath='docs/x.md'; ArtifactCommit='abc1234' }
 
 # --- Regression 2: missing usage field -> 11, no canonical verdict. ---
@@ -753,6 +802,43 @@ Set-TestManifest $shimErr
 pwsh -NoProfile -File $entry @docBase -CliPathOverride $shimErr -PromptFile $promptFile -StateDir $stateUErr -Round 1
 Assert-Eq $LASTEXITCODE 11 "a top-level error event exits 11"
 Assert-True (-not (Test-Path "$stateUErr\round-1-verdict.json")) "error event: no canonical verdict"
+
+# --- FINDING 4a end-to-end regressions (see docs/build-log/task-14-report.md and the direct
+# Get-RunUsage unit-level regressions above). Each shim emits a GENUINE valid terminal
+# turn.completed PLUS, separately, exactly one bad line (helpers.ps1's UsageBehavior switch) --
+# end to end through invoke-codex.ps1, each must leave NO canonical verdict. ---
+$stateU8a = "$tmp\stateU8a"; New-Item -ItemType Directory -Force $stateU8a | Out-Null
+$shimUnparseable = New-FakeCodexShim -Dir "$tmp\shimUnparseable" -Version "0.147.0" -ExecHelp $goodExecHelp -ResumeHelp $goodResumeHelp -FeaturesText $feat -UsageBehavior unparseable-line
+Set-TestManifest $shimUnparseable
+pwsh -NoProfile -File $entry @docBase -CliPathOverride $shimUnparseable -PromptFile $promptFile -StateDir $stateU8a -Round 1
+Assert-Eq $LASTEXITCODE 11 "an unparseable non-blank line (alongside a valid turn.completed) exits 11"
+Assert-True (-not (Test-Path "$stateU8a\round-1-verdict.json")) "unparseable line: no canonical verdict"
+Assert-True (-not (Test-Path "$stateU8a\round-1-attempt-1-usage.json")) "unparseable line: no usage artifact"
+Assert-True ((Read-RoundState -StateDir $stateU8a).failure_reason -match 'usage gate') "unparseable line: failure reason names the usage gate"
+
+$stateU8b = "$tmp\stateU8b"; New-Item -ItemType Directory -Force $stateU8b | Out-Null
+$shimNullLine = New-FakeCodexShim -Dir "$tmp\shimNullLine" -Version "0.147.0" -ExecHelp $goodExecHelp -ResumeHelp $goodResumeHelp -FeaturesText $feat -UsageBehavior null-line
+Set-TestManifest $shimNullLine
+pwsh -NoProfile -File $entry @docBase -CliPathOverride $shimNullLine -PromptFile $promptFile -StateDir $stateU8b -Round 1
+Assert-Eq $LASTEXITCODE 11 "a bare JSON null line (alongside a valid turn.completed) exits 11"
+Assert-True (-not (Test-Path "$stateU8b\round-1-verdict.json")) "null line: no canonical verdict"
+Assert-True (-not (Test-Path "$stateU8b\round-1-attempt-1-usage.json")) "null line: no usage artifact"
+
+$stateU8c = "$tmp\stateU8c"; New-Item -ItemType Directory -Force $stateU8c | Out-Null
+$shimNoType = New-FakeCodexShim -Dir "$tmp\shimNoType" -Version "0.147.0" -ExecHelp $goodExecHelp -ResumeHelp $goodResumeHelp -FeaturesText $feat -UsageBehavior no-type-object
+Set-TestManifest $shimNoType
+pwsh -NoProfile -File $entry @docBase -CliPathOverride $shimNoType -PromptFile $promptFile -StateDir $stateU8c -Round 1
+Assert-Eq $LASTEXITCODE 11 "a JSON object with no 'type' field (alongside a valid turn.completed) exits 11"
+Assert-True (-not (Test-Path "$stateU8c\round-1-verdict.json")) "no-type object: no canonical verdict"
+Assert-True (-not (Test-Path "$stateU8c\round-1-attempt-1-usage.json")) "no-type object: no usage artifact"
+
+$stateU8d = "$tmp\stateU8d"; New-Item -ItemType Directory -Force $stateU8d | Out-Null
+$shimTurnFailed = New-FakeCodexShim -Dir "$tmp\shimTurnFailed" -Version "0.147.0" -ExecHelp $goodExecHelp -ResumeHelp $goodResumeHelp -FeaturesText $feat -UsageBehavior turn-failed
+Set-TestManifest $shimTurnFailed
+pwsh -NoProfile -File $entry @docBase -CliPathOverride $shimTurnFailed -PromptFile $promptFile -StateDir $stateU8d -Round 1
+Assert-Eq $LASTEXITCODE 11 "a turn.failed event (alongside a valid turn.completed) exits 11"
+Assert-True (-not (Test-Path "$stateU8d\round-1-verdict.json")) "turn.failed: no canonical verdict"
+Assert-True (-not (Test-Path "$stateU8d\round-1-attempt-1-usage.json")) "turn.failed: no usage artifact"
 
 # --- Regression 5: input_tokens over the 659,500 limit -> 10 (human flag, NOT retryable -- the
 # same prompt would report the same usage again), no canonical verdict. 0.75 x the documented
