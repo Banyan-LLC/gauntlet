@@ -13,7 +13,7 @@ $ri = Resolve-CliInvocation -Path 'C:\x\codex.ps1'
 Assert-Eq $ri.FileName ([System.Environment]::ProcessPath) "ps1 via absolute pwsh"
 Assert-Throws { Resolve-CliInvocation -Path 'C:\x\codex.vbs' } "unknown wrapper rejected"
 
-$goodExecHelp = '--output-schema --output-last-message --json --ignore-user-config --ignore-rules --skip-git-repo-check --disable -s, --sandbox -C, --cd -m, --model -c, --config'
+$goodExecHelp = '--output-schema --output-last-message --json --ignore-user-config --ignore-rules --skip-git-repo-check --ephemeral --disable -s, --sandbox -C, --cd -m, --model -c, --config'
 $goodResumeHelp = '--output-schema --output-last-message --json --ignore-user-config --ignore-rules --skip-git-repo-check --disable -m, --model -c, --config'
 $oldResumeHelp = '--json --ignore-user-config -m, --model -c, --config'
 $features = @"

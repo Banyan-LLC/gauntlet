@@ -35,6 +35,11 @@ Assert-Throws { Get-InvocationAudit -CodexArgs $mutEffort @auditCommon } "BYPASS
 $reordered = [string[]]@(@($r1[0]) + @($r1[2..($r1.Count-1)]) + @($r1[1]))
 Assert-Throws { Get-InvocationAudit -CodexArgs $reordered @auditCommon } "reordered args fail canonical equality"
 Assert-Throws { Get-InvocationAudit -CodexArgs ([string[]]@($r1 | Where-Object { $_ -ne '--ignore-user-config' })) @auditCommon } "missing hermetic flag rejected"
+# FINDING 1 regression (see docs/build-log/task-14-report.md): --ephemeral must be REQUIRED, not
+# merely composed -- an arg set that lost it (accidentally or adversarially) must fail the audit
+# exactly like losing any other hermetic flag does, so a manifest/audit built without it is
+# rejected rather than silently accepted.
+Assert-Throws { Get-InvocationAudit -CodexArgs ([string[]]@($r1 | Where-Object { $_ -ne '--ephemeral' })) @auditCommon } "BYPASS: missing --ephemeral rejected"
 Assert-Throws { Get-InvocationAudit -CodexArgs $r1 @auditCommon -ExpectedDisable @('apps','browser_use') } "disable-set mismatch rejected"
 $withResume = [string[]]@(@($r1[0]) + @('resume','1111-2222') + @($r1[1..($r1.Count-1)]))
 Assert-Throws { Get-InvocationAudit -CodexArgs $withResume @auditCommon } "BYPASS: a smuggled 'resume' subcommand is rejected"
@@ -81,7 +86,7 @@ try {
         # Same shape as the real builder in lib.ps1, except the sandbox value is forbidden.
         $a = [System.Collections.Generic.List[string]]::new()
         $a.Add('exec')
-        $a.AddRange([string[]]@('--ignore-user-config','--ignore-rules','--skip-git-repo-check'))
+        $a.AddRange([string[]]@('--ignore-user-config','--ignore-rules','--skip-git-repo-check','--ephemeral'))
         $a.AddRange([string[]]@('-s','danger-full-access','-C',$HarnessDir))
         $a.AddRange([string[]]@('-m',$Model,'-c',"model_reasoning_effort=`"$Effort`""))
         $a.AddRange([string[]]@('-c','web_search="disabled"','-c','shell_environment_policy.inherit="none"'))

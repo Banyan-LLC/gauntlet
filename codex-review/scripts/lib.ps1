@@ -2,7 +2,15 @@
 Set-StrictMode -Version Latest
 
 $script:FeatureAllowlist = @('enable_request_compression','remote_compaction_v2','fast_mode','personality','guardian_approval')
-$script:RequiredExecFlags = @('--output-schema','--output-last-message','--json','--ignore-user-config','--ignore-rules','--skip-git-repo-check','--disable','-s','-C','-m','-c')
+# --ephemeral (added: see docs/build-log/task-14-report.md, FINDING 1): without it, a review
+# session persists its session/rollout files -- which embed the UNTRUSTED review material -- to
+# the real CODEX_HOME, outside every audited state dir this skill writes. `codex exec --help`
+# advertises `--ephemeral  Run without persisting session files to disk` (verified against the
+# real CLI), and OpenAI's own non-interactive docs prescribe it whenever rollout persistence is
+# unwanted -- exactly this skill's whole hermeticity premise. Required in the SAME compatibility
+# probe as the other hermetic flags: a CLI that does not advertise it fails discovery with a clear
+# reason, rather than silently running non-ephemeral.
+$script:RequiredExecFlags = @('--output-schema','--output-last-message','--json','--ignore-user-config','--ignore-rules','--skip-git-repo-check','--ephemeral','--disable','-s','-C','-m','-c')
 
 function Invoke-BoundedProcess {
     <# THE process runner. Every external command in this skill goes through it: the Codex
@@ -274,7 +282,14 @@ function New-CodexArgs {
     Assert-NoEmptyStringElements -FunctionName 'New-CodexArgs' -ParameterName 'DisableSet' -Values $DisableSet
     $a = [System.Collections.Generic.List[string]]::new()
     $a.Add('exec')
-    $a.AddRange([string[]]@('--ignore-user-config','--ignore-rules','--skip-git-repo-check'))
+    # --ephemeral (see $script:RequiredExecFlags above): no session/rollout persistence to the
+    # real CODEX_HOME -- review material is untrusted, so nothing about a round should land
+    # outside this skill's own audited state dirs. Grouped with the other hermetic flags so the
+    # whole "no ambient state" invariant reads as one line. Required consistently across the
+    # whole chain: the compatibility probe, Get-InvocationAudit's presence check below, and
+    # therefore Get-InvocationProfileHash (derived from this exact array) -- an arg set missing
+    # it fails the audit and hashes differently from one that carries it.
+    $a.AddRange([string[]]@('--ignore-user-config','--ignore-rules','--skip-git-repo-check','--ephemeral'))
     $a.AddRange([string[]]@('-s','read-only','-C',$HarnessDir))
     $a.AddRange([string[]]@('-m',$Model,'-c',"model_reasoning_effort=`"$Effort`""))
     $a.AddRange([string[]]@('-c','web_search="disabled"','-c','shell_environment_policy.inherit="none"'))
@@ -337,7 +352,7 @@ function Get-InvocationAudit {
     $expD = @($ExpectedDisable | Sort-Object -Unique)
     if ($dVals.Count -ne $expD.Count) { throw "audit: expected $($expD.Count) --disable flags, found $($dVals.Count)" }
     if (((@($dVals) | Sort-Object) -join '|') -cne ($expD -join '|')) { throw "audit: disable-set mismatch" }
-    foreach ($f in @('--ignore-user-config','--ignore-rules','--skip-git-repo-check','--json')) {
+    foreach ($f in @('--ignore-user-config','--ignore-rules','--skip-git-repo-check','--ephemeral','--json')) {
         if ($CodexArgs -notcontains $f) { throw "audit: missing '$f'" }
     }
     if ($CodexArgs[-1] -cne '-') { throw "audit: prompt must come from stdin ('-')" }

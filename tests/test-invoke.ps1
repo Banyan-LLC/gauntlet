@@ -163,6 +163,33 @@ try {
     ${function:New-CodexArgs} = $savedNewCodexArgsForHash
 }
 
+# FINDING 1 regression (see docs/build-log/task-14-report.md): the profile hash must be sensitive
+# to --ephemeral's presence specifically, not merely to disable-set/model/effort. New-CodexArgs has
+# no toggle for it -- it is unconditional, not optional -- so the only way to construct a genuine
+# "without --ephemeral" arg set is to shadow the builder (same technique as the FIXED-ARRAY case
+# just above and test-composer.ps1's LAYER1 discriminator) and confirm the resulting hash differs
+# from the real (with --ephemeral) one.
+$savedNewCodexArgsForEphemeral = ${function:New-CodexArgs}
+try {
+    ${function:New-CodexArgs} = {
+        param($HarnessDir, $SchemaPath, $VerdictPath, $DisableSet, $Model = 'gpt-5.6-sol', $Effort = 'xhigh')
+        # Identical to the real builder in lib.ps1 except --ephemeral is OMITTED.
+        $a = [System.Collections.Generic.List[string]]::new()
+        $a.Add('exec')
+        $a.AddRange([string[]]@('--ignore-user-config','--ignore-rules','--skip-git-repo-check'))
+        $a.AddRange([string[]]@('-s','read-only','-C',$HarnessDir))
+        $a.AddRange([string[]]@('-m',$Model,'-c',"model_reasoning_effort=`"$Effort`""))
+        $a.AddRange([string[]]@('-c','web_search="disabled"','-c','shell_environment_policy.inherit="none"'))
+        foreach ($f in $DisableSet) { $a.Add('--disable'); $a.Add($f) }
+        $a.AddRange([string[]]@('--output-schema',$SchemaPath,'-o',$VerdictPath,'--json','-'))
+        return $a.ToArray()
+    }
+    $hWithoutEphemeral = Get-InvocationProfileHash -DisableSet $hashDisable
+    Assert-True ($hWithoutEphemeral -ne $h1) "profile hash WITHOUT --ephemeral differs from the real (with --ephemeral) hash"
+} finally {
+    ${function:New-CodexArgs} = $savedNewCodexArgsForEphemeral
+}
+
 # Parameter-contract safety: Get-InvocationProfileHash -DisableSet is deliberately NOT
 # [Parameter(Mandatory)] (see Assert-NoEmptyStringElements in lib.ps1) -- same non-terminating
 # bind-error shape as the other parameters given this treatment. See Test-EmptyElementFailsClosed
