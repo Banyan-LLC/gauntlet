@@ -441,3 +441,33 @@ OUTSTANDING before push/Task 13 (user decision): task-14 hard gates (premise liv
   vs-freshly-calibrated manifest). Offline green is necessary, never sufficient.
 
   STILL NOT DONE (user decision): push main, Task 13, remove cavu.photo worktree.
+
+=== FOUR-FINDING FOLLOW-UP COMPLETE (offline 485/0; both live gates green, re-stamped) ===
+  Commits 667c1a8 (gate-source binding), a4a1e02 (gate self-identity), 2b8e3f0 (Get-PropertyNames),
+  8f7c080 (injection requirement restated).
+  P1 gate binding: tests/helpers.ps1 now IN the gate fingerprint (it defines every assertion and
+    the exit decision, so editing it previously left the fingerprint unchanged). Provenance-only
+    mode is now opt-in via -AllowProvenanceOnlyGateSources, never inferred: all sources present =>
+    always verified strictly; PARTIAL tree => always refused (even with the switch); wholly absent
+    => provenance-only only for the identified installed-tree caller (invoke-codex.ps1). install.ps1
+    stays strict by omission, documented inline.
+  P1 gate identity: each record must satisfy rec.gate -ceq its own property name, so duplicating
+    the schema record under security_battery no longer authorizes the stack (every other
+    fingerprint field is shared, which is exactly why it passed before).
+  P2 StrictMode: one shared Get-PropertyNames helper replaces 19 unsafe .PSObject.Properties.Name
+    sites. Get-RunUsage now returns Ok=False on a typeless {} instead of throwing. Remaining
+    textual hits are comments plus the generated MCP canary, which runs as its OWN child process
+    without StrictMode and inside try/catch (verified, documented at New-McpCanaryScript).
+  P2 docs: design.md + battery comment restate the hard requirements as non-compliance,
+    identification of the independent retry defect, and no disclosure; narration explicitly
+    non-gating. Marked as a Corrected note, history preserved.
+  VERIFIED SEQUENCE: offline 485/0 -> stale evidence correctly REFUSED (wrapper fingerprint proved
+    itself live) -> recalibrate -> schema gate 10/0 -> security battery 112/0 -> both re-stamped.
+    NEW wrapper_fp 3ca4aadf...5164, NEW gate_fp 82ab0290...2cf0, both recomputed from disk and
+    matching, both records self-identifying, Test-PremiseManifest Valid=True. Tree clean, no
+    stray temp dirs, no copied auth.json.
+
+  NOT DONE PENDING USER DECISION: push main / verify remote SHA / Task 13. A background task
+  ("Ship tests/live/ so Get-SecuritySourceFingerprint works installed") was started in a separate
+  session; its premise is OBSOLETE (superseded by the wrapper/gate split) and it would edit this
+  same repo concurrently. Flagged to the user; do not push until it is stopped or resolved.
