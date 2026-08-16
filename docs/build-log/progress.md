@@ -548,3 +548,53 @@ OUTSTANDING before push/Task 13 (user decision): task-14 hard gates (premise liv
   gh) or publish-review.ps1 -- an orchestrator-level precondition, same pattern as
   Test-HandoffFresh. Suite 504 -> 516 (+12, test-publish.ps1, 3 cases: becomes-synced,
   permanently-stale-bounded, unexpected-third-head-distinct-reason). Task overall: 485 -> 516.
+
+=== TASK 13 STEP 2 COMPLETE - all four drills PASS; scratch repo archived ===
+  Fixes first (313297a base-drift guard, 9398c78 Wait-PrHeadSynced, f424cb8 two follow-ups).
+  Offline 516/0. Live gates re-run TWICE (each wrapper edit invalidates the fingerprint):
+  schema 10/0, security 112/0 both times. Pushed main: 24dad6d -> 9398c78 -> f424cb8, remote
+  SHA verified each time.
+
+  *** THE CODEX CLI AUTO-UPDATED MID-TASK: 0.147.0-alpha.6.6 -> 0.148.0-alpha.9. ***
+  The manifest caught it ("invocation profile changed") and refused to authorize until both gates
+  re-ran. The security battery then passed 112/0 on the NEW binary, so the 5 control-proven /
+  3 narrowed capability split re-verified on 0.148 rather than being assumed to carry over. A
+  pinned-CLI change also correctly forced exit 13 (-AcceptNewBinary) on a live review round.
+
+  DRILL 5 head-drift: PASS (Fresh=False 'head advanced').
+  DRILL 6 base-drift: PASS after the fix, proven against the exact condition that defeated the old
+    code: baseRefOid stayed STATIC at 8fa5aafa while the live tip moved 3dc0738 -> 2403a80, and
+    Test-HandoffFresh returned 'base advanced'. Baseline Fresh=True first, carrying the new
+    base_ref_name/base_tip_oid provenance.
+  DRILL 7 idempotency: PASS (re-publish exit 0, review count unchanged).
+  DRILL 8 transient: PASS. Injection method DEVIATED from the plan and this is itself a finding:
+    the plan suggested HTTPS_PROXY/GH_HOST in the child env, but Invoke-Gh CLEARS the child
+    environment to GH_TOKEN + SystemRoot, so env-based injection cannot reach the child at all.
+    Used a PATH-scoped fake gh instead (process-scoped; workstation network untouched): faulted
+    exit=5 'TRANSIENT: actor lookup failed' with NO review created, then recovery with identical
+    inputs exited 0 with the review count unchanged.
+
+  TWO DEFECTS IN THE NEW CODE, found by driving it live, fixed in f424cb8:
+   - Wait-PrHeadSynced made -StaleHead Mandatory, so a caller syncing for the FIRST time (no prior
+     head to name - the common case) could not call it at all. Now optional; it only sharpens the
+     diagnosis, the gate is unchanged.
+   - A publication predating the fix has no base_ref_name/base_tip_oid; reading them under
+     StrictMode threw and surfaced as "transport or malformed response" - a misleading diagnosis
+     for an operator. Now fails closed naming the missing fields and the remedy.
+
+  OPEN DESIGN QUESTION (surfaced by an operator error of mine, worth a decision):
+    base_tip_oid is bound into the idempotency marker as specified, so a transient retry that
+    happens AFTER the base branch moves posts a SECOND review instead of recovering. I hit this
+    exactly: markers differed only in base_tip (3dc0738 vs 2403a80), same head/round/digest, and
+    PR #2 ended with 4 APPROVED reviews, 2 of them now stale-but-standing. Defensible (a moved
+    base IS a different review context) but the stale prior approval is left APPROVED rather than
+    dismissed. Recommend deciding: dismiss superseded reviews on base movement, or exclude
+    base_tip from the marker and rely on Test-HandoffFresh alone.
+
+  FIXTURE SPLIT (kept explicit): PR #1 = fetcher.js, the real adversarial fixture; ran rounds 1-10
+    and hit the ROUND CAP without approving - valid escalation evidence, cap NOT raised, approval
+    NOT manufactured. PR #2 = a trivial .gitignore, created SOLELY to exercise the approval-only
+    mechanics (drills 5-8) that PR #1 could not reach. All drill results above are from PR #2.
+  Scratch repo ARCHIVED (not deleted), still private, 0 merged PRs, both PRs left open.
+  REMAINING: Task 13 Step 1 activation checklist - a manual gate the user runs in a fresh session
+    after install.ps1; four exact prompts, record observed skill routing.
