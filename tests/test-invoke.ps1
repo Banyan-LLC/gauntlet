@@ -394,6 +394,18 @@ Set-Content -Path $premisesPath -Value '{not valid json' -Encoding utf8
 $pmBadJson = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
 Assert-True (-not $pmBadJson.Valid) "malformed JSON fails closed"
 
+# --- FINDING 3 (P2, see docs/build-log/task-14-report.md): a wholly-empty manifest, `{}` as the
+# ENTIRE file, is valid JSON and a valid (zero-property) object -- distinct from both "absent" and
+# "malformed JSON" above. `$obj.PSObject.Properties.Name` throws under Set-StrictMode when $obj
+# has zero properties, so this is the single most extreme case of the "field entirely absent"
+# hazard tested below: not one field missing, but ALL of them. Must fail closed with a Reason,
+# never throw an uncaught exception. ---
+Write-Premises @{}
+$threw = $false; $pmEmptyManifest = $null
+try { $pmEmptyManifest = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash } catch { $threw = $true }
+Assert-True (-not $threw) "a wholly-empty manifest ({} as the whole file) fails closed rather than throwing"
+Assert-True ($pmEmptyManifest -and -not $pmEmptyManifest.Valid) "a wholly-empty manifest ({}) is reported invalid, not silently accepted"
+
 # --- Strict-mode regression: a field ENTIRELY ABSENT from the JSON (not merely null) must fail
 # closed with a Reason, never throw an uncaught exception. lib.ps1 runs under
 # Set-StrictMode -Version Latest, under which dotting into a genuinely-missing PSCustomObject
@@ -489,6 +501,28 @@ Assert-True (-not $pmNoEvidence.Valid -and $pmNoEvidence.Reason -match 'live evi
 # still pass for this exact manifest -- proving the refusal above comes from the NEW live-evidence
 # layer, not a regression in the pre-existing stack-identity checks Test-StackAcceptance covers.
 Assert-True (Test-StackAcceptance -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash).Valid "the SAME manifest (minus live_evidence) still passes the narrower stack-acceptance check calibrate-premises.ps1 uses"
+
+# --- FINDING 3 (P2, see docs/build-log/task-14-report.md): live_evidence PRESENT but an EMPTY
+# object ({}), not merely absent. `$le.PSObject.Properties.Name` (checking for 'schema_gate'/
+# 'security_battery') throws under Set-StrictMode when $le has zero properties -- must fail
+# closed with a Reason instead. ---
+$leEmpty = New-ValidPremisesHashtable; $leEmpty.live_evidence = @{}
+Write-Premises $leEmpty
+$threw = $false; $pmLeEmpty = $null
+try { $pmLeEmpty = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash } catch { $threw = $true }
+Assert-True (-not $threw) "live_evidence present as an EMPTY object ({}) fails closed rather than throwing"
+Assert-True ($pmLeEmpty -and -not $pmLeEmpty.Valid) "an empty live_evidence object ({}) is reported invalid, not silently accepted"
+
+# A live-evidence SUB-RECORD (schema_gate specifically) that is an EMPTY object ({}) -- present at
+# the top level (so the "no live evidence for X" branch is not what fires), but zero properties of
+# its own. `$rec.PSObject.Properties.Name` (checking for 'gate'/'utc'/etc.) throws the same way.
+$recEmpty = New-ValidPremisesHashtable
+$recEmpty.live_evidence = @{ schema_gate = @{}; security_battery = (New-LiveEvidenceRecord 'security_battery') }
+Write-Premises $recEmpty
+$threw = $false; $pmRecEmpty = $null
+try { $pmRecEmpty = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash } catch { $threw = $true }
+Assert-True (-not $threw) "a live-evidence sub-record that is an EMPTY object ({}) fails closed rather than throwing"
+Assert-True ($pmRecEmpty -and -not $pmRecEmpty.Valid) "an empty live-evidence sub-record ({}) is reported invalid, not silently accepted"
 
 # --- FIX 2 regression (a): only schema_gate present (security_battery never run) -> refused,
 # naming security_battery's OWN live gate to rerun. This is the exact gap the restructuring
@@ -1175,6 +1209,28 @@ Assert-True (-not $ruNoType.Ok) "a well-formed JSON object with no 'type' field 
 
 $ruTurnFailed = Get-RunUsage -EventLines @($goodTerminal, '{"type":"turn.failed","message":"simulated turn failure"}')
 Assert-True (-not $ruTurnFailed.Ok) "a turn.failed event fails CLOSED exactly like a top-level error event does, even alongside a valid turn.completed"
+
+# --- FINDING 3 (P2, see docs/build-log/task-14-report.md): the StrictMode empty-collection
+# hazard. `$obj.PSObject.Properties.Name` throws under Set-StrictMode -Version Latest when $obj
+# has ZERO properties -- a bare JSON `{}` is exactly that. Get-RunUsage must return the documented
+# {Ok=$false; Reason} structure, never an uncaught exception, when it meets one. ---
+$threw = $false; $ruEmptyObjLine = $null
+try { $ruEmptyObjLine = Get-RunUsage -EventLines @($goodTerminal, '{}') } catch { $threw = $true }
+Assert-True (-not $threw) "a bare empty JSON object line ({}) fails closed rather than throwing, even alongside a valid turn.completed"
+Assert-True ($ruEmptyObjLine -and -not $ruEmptyObjLine.Ok) "a bare empty JSON object line ({}) fails CLOSED (Ok is false), even alongside a valid turn.completed"
+
+$threw = $false; $ruOnlyEmptyObj = $null
+try { $ruOnlyEmptyObj = Get-RunUsage -EventLines @('{}') } catch { $threw = $true }
+Assert-True (-not $threw) "a stream whose ONLY line is an empty JSON object ({}) fails closed rather than throwing"
+Assert-True ($ruOnlyEmptyObj -and -not $ruOnlyEmptyObj.Ok) "a stream whose ONLY line is {} is reported Ok=false, not silently accepted"
+
+# Bonus coverage at the same hazard class, one call further in: a turn.completed whose OWN
+# 'usage' value is present but itself an empty object ({}) -- a distinct zero-property object
+# from the top-level line just above.
+$threw = $false; $ruEmptyUsage = $null
+try { $ruEmptyUsage = Get-RunUsage -EventLines @('{"type":"turn.completed","usage":{}}') } catch { $threw = $true }
+Assert-True (-not $threw) "a turn.completed whose usage object is itself empty ({}) fails closed rather than throwing"
+Assert-True ($ruEmptyUsage -and -not $ruEmptyUsage.Ok -and $ruEmptyUsage.Reason -match 'input_tokens') "a turn.completed with an empty usage object ({}) is reported Ok=false, naming the missing input_tokens"
 
 # Sanity: none of the above changed the pre-existing happy path -- a stream with ONLY the
 # realistic happy-path lines (no malformed content at all) still succeeds.

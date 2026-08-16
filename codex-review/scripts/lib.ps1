@@ -252,6 +252,36 @@ function Assert-NoEmptyStringElements {
     if ($bad.Count -gt 0) { throw "${FunctionName}: -$ParameterName must not contain a null or empty-string element ($($bad.Count) found of $($Values.Count))" }
 }
 
+function Get-PropertyNames {
+    <# Returns $InputObject's own property names as [string[]], SAFELY: @() for $null or a
+       ZERO-property object, never throws.
+
+       FIX (P2, see docs/build-log/task-14-report.md, FINDING 3). `$obj.PSObject.Properties.Name`
+       THROWS under Set-StrictMode -Version Latest specifically when $obj has ZERO properties --
+       confirmed empirically: "The property 'Name' cannot be found on this object. Verify that the
+       property exists." PowerShell's member-enumeration feature (a missing property access that
+       distributes across a collection's elements, e.g. $collection.Name) cannot resolve 'Name'
+       against an EMPTY PSMemberInfoCollection, since there are no elements to enumerate it
+       against, and strict mode turns that ambiguity into a hard error. `.PSObject.Properties`
+       ALONE (no trailing .Name) is a genuine property of PSObject and never throws regardless of
+       element count -- only the pseudo-property-via-enumeration access on a zero-element
+       collection does. A zero-property object is not exotic here: it is a JSON `{}`, which a
+       hand-edited, drifted, adversarial, or freshly-initialized manifest/ledger/event genuinely
+       can be -- so every fail-closed validator in this file (and in tests/live/live-security.ps1,
+       which dot-sources this file) that dots into a caller-supplied object's properties must go
+       through this helper instead of the raw expression, or it stays fail-closed only BY LUCK: a
+       thrown exception is not an "accept", but it bypasses the documented {Ok/Valid;Reason}
+       structured-failure contract every caller of these functions depends on, handing them an
+       uncaught exception instead.
+
+       First fixed ad hoc, inline, in Write-LiveEvidence (a local scriptblock) before this shared
+       helper existed; Write-LiveEvidence now calls this instead, and every other
+       `.PSObject.Properties.Name` site in lib.ps1 and tests/live/live-security.ps1 does too. #>
+    param($InputObject)
+    if ($null -eq $InputObject) { return [string[]]@() }
+    return [string[]]@($InputObject.PSObject.Properties | ForEach-Object { $_.Name })
+}
+
 function Get-DisableSet {
     # Default-deny: every enumerated feature not on the allowlist. Reported state IGNORED
     # (features list reflects user config; reviews run --ignore-user-config).
@@ -509,7 +539,7 @@ function Test-StackAcceptance {
     # absent) before any of them are read, so a wholly missing field takes the same "is missing"
     # Reason path below as every other validation failure, instead of throwing past the caller.
     foreach ($f in @('version','cli_sha256','cli_version','cli_path','schema_sha256','agents_md_sha256','model','invocation_profile_sha256')) {
-        if ($m.PSObject.Properties.Name -notcontains $f) { $m | Add-Member -NotePropertyName $f -NotePropertyValue $null }
+        if ((Get-PropertyNames -InputObject $m) -notcontains $f) { $m | Add-Member -NotePropertyName $f -NotePropertyValue $null }
     }
     if ($m.version -ne 1) { return (& $bad "unsupported premises version '$($m.version)'") }
     foreach ($f in @('cli_sha256','cli_version','cli_path','schema_sha256','agents_md_sha256','model','invocation_profile_sha256')) {
@@ -716,7 +746,7 @@ function Test-PremiseManifest {
     # Same StrictMode backfill discipline as Test-StackAcceptance above: a genuinely-absent
     # 'live_evidence' key (the normal case right after a fresh calibration) must fail closed with
     # a Reason, never throw PropertyNotFoundException past this function's contract.
-    if ($m.PSObject.Properties.Name -notcontains 'live_evidence') { $m | Add-Member -NotePropertyName 'live_evidence' -NotePropertyValue $null }
+    if ((Get-PropertyNames -InputObject $m) -notcontains 'live_evidence') { $m | Add-Member -NotePropertyName 'live_evidence' -NotePropertyValue $null }
     if ($null -eq $m.live_evidence -or $m.live_evidence -isnot [System.Management.Automation.PSCustomObject]) {
         return (& $bad "premises.json records stack acceptance but no live evidence (calibrate-premises.ps1 cannot provide it); run tests/live/live-schema-gate.ps1 and tests/live/live-security.ps1")
     }
@@ -757,13 +787,13 @@ function Test-PremiseManifest {
     }
     $gateRerun = @{ schema_gate = 'tests/live/live-schema-gate.ps1'; security_battery = 'tests/live/live-security.ps1' }
     foreach ($gateName in @('schema_gate','security_battery')) {
-        if ($le.PSObject.Properties.Name -notcontains $gateName) { $le | Add-Member -NotePropertyName $gateName -NotePropertyValue $null }
+        if ((Get-PropertyNames -InputObject $le) -notcontains $gateName) { $le | Add-Member -NotePropertyName $gateName -NotePropertyValue $null }
         $rec = $le.$gateName
         if ($null -eq $rec -or $rec -isnot [System.Management.Automation.PSCustomObject]) {
             return (& $bad "premises.json has no live evidence for '$gateName'; run $($gateRerun[$gateName])")
         }
         foreach ($f in @('gate','utc','cli_path','cli_version','cli_sha256','schema_sha256','agents_md_sha256','invocation_profile_sha256','wrapper_fingerprint','gate_fingerprint')) {
-            if ($rec.PSObject.Properties.Name -notcontains $f) { $rec | Add-Member -NotePropertyName $f -NotePropertyValue $null }
+            if ((Get-PropertyNames -InputObject $rec) -notcontains $f) { $rec | Add-Member -NotePropertyName $f -NotePropertyValue $null }
         }
         foreach ($f in @('gate','utc','cli_path','cli_version','cli_sha256','schema_sha256','agents_md_sha256','invocation_profile_sha256','wrapper_fingerprint','gate_fingerprint')) {
             if ($null -eq $rec.$f -or "$($rec.$f)" -eq '') { return (& $bad "live-evidence record '$gateName' is missing '$f'; run $($gateRerun[$gateName])") }
@@ -831,20 +861,20 @@ function Write-LiveEvidence {
         wrapper_fingerprint = (Get-WrapperFingerprint -SkillRoot $SkillRoot)
         gate_fingerprint = (Get-GateFingerprint -RepoRoot $repoRoot)
     }
-    # $x.PSObject.Properties.Name is UNSAFE on an EMPTY pscustomobject under
-    # Set-StrictMode -Version Latest: with zero members, .Name is neither a real property of the
-    # PSMemberInfoCollection nor resolvable by member enumeration, and strict mode turns that into
-    # "The property 'Name' cannot be found on this object." The empty case is not exotic here --
-    # it is the NORMAL state of a freshly calibrated manifest (calibration deliberately drops the
-    # whole live_evidence object), so this fired on EVERY first stamp. Worse, it surfaced as a
+    # `$x.PSObject.Properties.Name` is UNSAFE on an EMPTY pscustomobject under
+    # Set-StrictMode -Version Latest -- see Get-PropertyNames's own docstring (above, near the top
+    # of this file) for the full mechanism. The empty case is not exotic here: it is the NORMAL
+    # state of a freshly calibrated manifest (calibration deliberately drops the whole
+    # live_evidence object), so this fired on EVERY first stamp. Worse, it surfaced as a
     # statement-terminating error that live-schema-gate.ps1 did not notice: the gate still printed
-    # "8 passed, 0 failed" and exited 0 while having stamped NOTHING (observed directly). Enumerate
-    # the collection instead -- @(...) over the properties yields @() when empty, never throws.
-    $propNames = { param($o) @($o.PSObject.Properties | ForEach-Object { $_.Name }) }
-    $evidence = if (((& $propNames $m) -contains 'live_evidence') -and ($null -ne $m.live_evidence)) { $m.live_evidence } else { [pscustomobject]@{} }
-    if ((& $propNames $evidence) -contains $Gate) { $evidence.$Gate = $record }
+    # "8 passed, 0 failed" and exited 0 while having stamped NOTHING (observed directly). This was
+    # the FIRST fix for this hazard (originally an inline local scriptblock, before
+    # Get-PropertyNames existed as a shared helper); it now calls that shared helper like every
+    # other site in this file does (see docs/build-log/task-14-report.md, FINDING 3).
+    $evidence = if (((Get-PropertyNames -InputObject $m) -contains 'live_evidence') -and ($null -ne $m.live_evidence)) { $m.live_evidence } else { [pscustomobject]@{} }
+    if ((Get-PropertyNames -InputObject $evidence) -contains $Gate) { $evidence.$Gate = $record }
     else { $evidence | Add-Member -NotePropertyName $Gate -NotePropertyValue $record }
-    if ((& $propNames $m) -contains 'live_evidence') { $m.live_evidence = $evidence }
+    if ((Get-PropertyNames -InputObject $m) -contains 'live_evidence') { $m.live_evidence = $evidence }
     else { $m | Add-Member -NotePropertyName 'live_evidence' -NotePropertyValue $evidence }
     $m | ConvertTo-Json -Depth 6 | Set-Content -Path $path -Encoding utf8
 
@@ -852,8 +882,8 @@ function Write-LiveEvidence {
     # good enough when the failure mode we just fixed was a silent non-write. Throwing here is
     # what converts a future silent-stamp regression into a loud gate failure.
     $verify = Get-Content -Raw $path | ConvertFrom-Json
-    if (((& $propNames $verify) -notcontains 'live_evidence') -or ($null -eq $verify.live_evidence) -or
-        ((& $propNames $verify.live_evidence) -notcontains $Gate)) {
+    if (((Get-PropertyNames -InputObject $verify) -notcontains 'live_evidence') -or ($null -eq $verify.live_evidence) -or
+        ((Get-PropertyNames -InputObject $verify.live_evidence) -notcontains $Gate)) {
         throw "live-evidence stamp for '$Gate' did not persist to $path"
     }
 }
@@ -945,12 +975,12 @@ function Get-RunUsage {
             $shape = if ($null -eq $parsed) { 'null' } else { $parsed.GetType().Name }
             return (& $bad "event stream line did not parse to a JSON object (got $shape)")
         }
-        if ($parsed.PSObject.Properties.Name -notcontains 'type') {
+        if ((Get-PropertyNames -InputObject $parsed) -notcontains 'type') {
             return (& $bad "event stream line is a JSON object with no 'type' field")
         }
         $events.Add([pscustomobject]@{ Raw = $line; Parsed = $parsed })
     }
-    $isType = { param($e, $t) ($e.Parsed.PSObject.Properties.Name -contains 'type') -and ($e.Parsed.type -ceq $t) }
+    $isType = { param($e, $t) ((Get-PropertyNames -InputObject $e.Parsed) -contains 'type') -and ($e.Parsed.type -ceq $t) }
     if (@($events | Where-Object { & $isType $_ 'error' }).Count -gt 0) {
         return (& $bad "the event stream reported a top-level error event")
     }
@@ -961,10 +991,10 @@ function Get-RunUsage {
     if ($completed.Count -eq 0) { return (& $bad "no turn.completed event in the event stream") }
     if ($completed.Count -gt 1) { return (& $bad "$($completed.Count) turn.completed events in the event stream (expected exactly one)") }
     $ev = $completed[0]
-    $hasUsage = $ev.Parsed.PSObject.Properties.Name -contains 'usage'
+    $hasUsage = (Get-PropertyNames -InputObject $ev.Parsed) -contains 'usage'
     $usage = if ($hasUsage) { $ev.Parsed.usage } else { $null }
     if (-not $hasUsage -or $null -eq $usage) { return (& $bad "turn.completed carries no usage object") }
-    if ($usage.PSObject.Properties.Name -notcontains 'input_tokens') { return (& $bad "usage carries no input_tokens") }
+    if ((Get-PropertyNames -InputObject $usage) -notcontains 'input_tokens') { return (& $bad "usage carries no input_tokens") }
     $it = $usage.input_tokens
     if ($it -isnot [int] -and $it -isnot [long]) { return (& $bad "usage.input_tokens is not an integer (got '$it')") }
     if ([long]$it -le 0) { return (& $bad "usage.input_tokens must be a positive integer (got $it)") }
@@ -1148,7 +1178,7 @@ function Test-CarryOverLedger {
         return (& $bad "ledger JSON must be an object, got '$(if ($null -eq $ledger) { 'null' } else { $ledger.GetType().Name })'")
     }
     foreach ($f in @('version','round','entries')) {
-        if ($ledger.PSObject.Properties.Name -notcontains $f) { $ledger | Add-Member -NotePropertyName $f -NotePropertyValue $null }
+        if ((Get-PropertyNames -InputObject $ledger) -notcontains $f) { $ledger | Add-Member -NotePropertyName $f -NotePropertyValue $null }
     }
     if ($ledger.version -ne 1) { return (& $bad "unsupported ledger version '$($ledger.version)'") }
     if ($null -eq $ledger.round) { return (& $bad "ledger is missing 'round'") }
@@ -1162,7 +1192,7 @@ function Test-CarryOverLedger {
     foreach ($e in $entries) {
         if ($e -isnot [System.Management.Automation.PSCustomObject]) { return (& $bad "ledger entry is not an object") }
         foreach ($f in @('id','severity','location','issue','suggestion','status','reason')) {
-            if ($e.PSObject.Properties.Name -notcontains $f) { $e | Add-Member -NotePropertyName $f -NotePropertyValue $null }
+            if ((Get-PropertyNames -InputObject $e) -notcontains $f) { $e | Add-Member -NotePropertyName $f -NotePropertyValue $null }
         }
         # Checked explicitly (not left to the duplicate-id check below): Group-Object does not
         # treat repeated $null keys as a duplicate group, so two id-less entries would otherwise

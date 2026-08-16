@@ -294,26 +294,26 @@ try {
                 $shape = if ($null -eq $ev) { 'null' } else { $ev.GetType().Name }
                 return (& $bad "event stream line did not parse to a JSON object (got $shape)")
             }
-            if ($ev.PSObject.Properties.Name -notcontains 'type') {
+            if ((Get-PropertyNames -InputObject $ev) -notcontains 'type') {
                 return (& $bad "event stream line is a JSON object with no 'type' field")
             }
             $t = "$($ev.type)"
             if ($t -ceq 'turn.failed') { return (& $bad "event stream reported a turn.failed event") }
             if ($knownTop -notcontains $t -and $t) { $seen.Add("top:$t") }
-            if (($ev.PSObject.Properties.Name -contains 'item') -and $ev.item -and
-                ($ev.item.PSObject.Properties.Name -contains 'type')) {
+            if (((Get-PropertyNames -InputObject $ev) -contains 'item') -and $ev.item -and
+                ((Get-PropertyNames -InputObject $ev.item) -contains 'type')) {
                 $it = "$($ev.item.type)"
                 $isInertWait = $false
-                if ($it -ceq 'collab_tool_call' -and ($ev.item.PSObject.Properties.Name -contains 'tool') -and $ev.item.tool -ceq 'wait') {
-                    $hasAgents = ($ev.item.PSObject.Properties.Name -contains 'agents_states') -and $ev.item.agents_states -and
+                if ($it -ceq 'collab_tool_call' -and ((Get-PropertyNames -InputObject $ev.item) -contains 'tool') -and $ev.item.tool -ceq 'wait') {
+                    $hasAgents = ((Get-PropertyNames -InputObject $ev.item) -contains 'agents_states') -and $ev.item.agents_states -and
                         (@($ev.item.agents_states.PSObject.Properties).Count -gt 0)
-                    $hasReceivers = ($ev.item.PSObject.Properties.Name -contains 'receiver_thread_ids') -and (@($ev.item.receiver_thread_ids).Count -gt 0)
+                    $hasReceivers = ((Get-PropertyNames -InputObject $ev.item) -contains 'receiver_thread_ids') -and (@($ev.item.receiver_thread_ids).Count -gt 0)
                     if (-not $hasAgents -and -not $hasReceivers) { $isInertWait = $true }
                 }
                 if ($knownItem -notcontains $it -and -not $isInertWait) {
                     $qualifier = $null
-                    if ($ev.item.PSObject.Properties.Name -contains 'server' -and $ev.item.server) { $qualifier = "server=$($ev.item.server)" }
-                    elseif ($ev.item.PSObject.Properties.Name -contains 'tool' -and $ev.item.tool) { $qualifier = "tool=$($ev.item.tool)" }
+                    if ((Get-PropertyNames -InputObject $ev.item) -contains 'server' -and $ev.item.server) { $qualifier = "server=$($ev.item.server)" }
+                    elseif ((Get-PropertyNames -InputObject $ev.item) -contains 'tool' -and $ev.item.tool) { $qualifier = "tool=$($ev.item.tool)" }
                     $sig = if ($qualifier) { "item:${it}:${qualifier}" } else { "item:$it" }
                     if ($it) { $seen.Add($sig) }
                 }
@@ -456,6 +456,17 @@ try {
     #      built with FREE (non-model) `codex plugin` subcommands so any format mistake is caught
     #      before a live call is spent. ------------------------------------------------------
     function New-McpCanaryScript {
+        # NOTE (FINDING 3, see docs/build-log/task-14-report.md): the generated script body below
+        # uses `$req.PSObject.Properties.Name -contains ...` at two spots (checked, not rewritten
+        # to Get-PropertyNames). Confirmed empirically these are NOT the same hazard: this text
+        # becomes a STANDALONE .ps1 file launched as its own `pwsh -NoProfile -File` CHILD PROCESS
+        # (never dot-sourced, so it never inherits this file's Set-StrictMode -Version Latest, and
+        # the body itself never sets it either) -- `("{}" | ConvertFrom-Json).PSObject.Properties.Name
+        # -contains 'x'` returns $false with no error outside strict mode (verified directly).
+        # Also, both call sites here are already wrapped in the surrounding `try { while ... }
+        # catch {}`, so even a hypothetical throw would be swallowed, not silently misread as
+        # $false the way it would be under lib.ps1's non-terminating-StrictMode-error hazard.
+        # Get-PropertyNames is not usable here regardless, since this text never dot-sources lib.ps1.
         param([Parameter(Mandatory)][string]$ScriptPath, [Parameter(Mandatory)][string]$MarkerPath, [Parameter(Mandatory)][string]$ServerName)
         $body = @"
 `$ErrorActionPreference = 'SilentlyContinue'
@@ -642,7 +653,7 @@ args = ['-NoProfile', '-File', '$mcpScript']
             # variable (case-insensitive) and is READ-ONLY; assigning to it throws "Cannot
             # overwrite variable HOME because it is read-only or constant" (hit live, confirmed).
             $ctlHome = New-ControlHome -Name "$($c.Name)-pos"
-            $webSearch = if ($c.PSObject.Properties.Name -contains 'WebSearch' -and $c.WebSearch) { $c.WebSearch } else { 'disabled' }
+            $webSearch = if ((Get-PropertyNames -InputObject $c) -contains 'WebSearch' -and $c.WebSearch) { $c.WebSearch } else { 'disabled' }
             $args1 = New-IsolatedArgs -AllowFeatures $c.AllowFeatures -WebSearch $webSearch -WorkingDirectory $cwd
             Assert-WebIsolation -ComposedArgs $args1 -ClassName $c.Name
             $res = Invoke-Control -CodexHome $ctlHome -CodexArgs $args1 -Prompt $c.Prompt -WorkingDirectory $cwd

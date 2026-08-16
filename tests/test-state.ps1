@@ -218,6 +218,24 @@ try { $rNoId = Test-CarryOverLedger -StateDir $cDir -Round 2 -LedgerPath (New-Ra
 Assert-True (-not $threw) "a ledger entry missing 'id' fails closed rather than throwing"
 Assert-True ($rNoId -and -not $rNoId.Valid -and $rNoId.Reason -match "missing 'id'") "a ledger entry missing 'id' reports the correct reason"
 
+# =====================================================================================
+# FINDING 3 (P2, see docs/build-log/task-14-report.md): the StrictMode empty-collection hazard.
+# `$obj.PSObject.Properties.Name` throws under Set-StrictMode -Version Latest when $obj has ZERO
+# properties -- a bare JSON `{}` is exactly that, and is a distinct case from every "field
+# entirely absent from an otherwise-normal object" case tested above (those objects still HAD
+# other properties; these have none at all). Both the ledger ENVELOPE and an individual ledger
+# ENTRY can independently be `{}`. Must fail closed with a Reason, never throw.
+# =====================================================================================
+$threw = $false; $rEmptyEnvelope = $null
+try { $rEmptyEnvelope = Test-CarryOverLedger -StateDir $cDir -Round 2 -LedgerPath (New-RawLedgerFile @{}) } catch { $threw = $true }
+Assert-True (-not $threw) "a wholly-empty ledger envelope ({} as the whole file) fails closed rather than throwing"
+Assert-True ($rEmptyEnvelope -and -not $rEmptyEnvelope.Valid) "a wholly-empty ledger envelope ({}) is reported invalid, not silently accepted"
+
+$threw = $false; $rEmptyEntry = $null
+try { $rEmptyEntry = Test-CarryOverLedger -StateDir $cDir -Round 2 -LedgerPath (New-RawLedgerFile @{ version=1; round=2; entries=@(@{}) }) } catch { $threw = $true }
+Assert-True (-not $threw) "a ledger entry that is an EMPTY object ({}) fails closed rather than throwing"
+Assert-True ($rEmptyEntry -and -not $rEmptyEntry.Valid -and $rEmptyEntry.Reason -match "missing 'id'") "a ledger entry that is {} is reported invalid (missing 'id', the first field checked)"
+
 $threw = $false; $rStringEntry = $null
 try { $rStringEntry = Test-CarryOverLedger -StateDir $cDir -Round 2 -LedgerPath (New-RawLedgerFile @{ version=1; round=2; entries=@('just a string') }) } catch { $threw = $true }
 Assert-True (-not $threw) "a non-object ledger entry fails closed rather than throwing"
