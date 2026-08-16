@@ -154,7 +154,29 @@ try {
         # class's positive control actually emits becomes THAT class's signature, discovered from
         # the real output rather than asserted in advance -- and the same function is used to
         # prove the hermetic run and every OTHER class's output stays silent on it.
-        param([Parameter(Mandatory)][AllowEmptyString()][string]$Stdout)
+        #
+        # FINDING 4b fix (P1, fail closed): a prior revision silently `continue`d past any
+        # non-blank line that failed ConvertFrom-Json, parsed to a non-object (e.g. bare `null`),
+        # or parsed to an object with no 'type' field -- so a malformed tool/error event could
+        # coexist with an otherwise-unremarkable run and the capability-absence claim built from
+        # its (silently incomplete) signature set still read PASS. That is backwards for a
+        # security detector: anything that does not fit the documented JSONL-of-typed-events shape
+        # is evidence the stream is not trustworthy, not something to skip past. This mirrors the
+        # companion fix already shipped in lib.ps1's Get-RunUsage (the production parser) for
+        # exactly the same reason -- see that function's own comment (read for reference; not
+        # edited here). Now: every non-blank line MUST parse as a JSON object carrying a 'type',
+        # and a top-level 'turn.failed' is ALWAYS rejected too (a failed turn proves nothing about
+        # capability absence) -- or the WHOLE result is INVALID, returned as a structured
+        # {Valid;Reason;Signatures} object, never a bare array a caller could mistake for a
+        # genuine "found nothing" result. Only a genuinely blank/whitespace-only line is still
+        # skipped (real stdout always ends in one). The OTHER fail-closed direction is unchanged
+        # and just as load-bearing: an unrecognized but well-formed event type is NOT an error --
+        # it is counted as a signature exactly like before, because an unrecognized event must
+        # count as a signal, never be silently ignored. Every caller now goes through
+        # Assert-NovelSignatures (defined right below this function), which hard-asserts Valid
+        # before trusting Signatures, so a malformed stream fails the battery loudly instead of
+        # quietly participating in a "clean" comparison.
+        #
         # Empirically extended 2026-08-15 (smoke-tested against a real shell-class control): the
         # stream also carries a top-level "item.started" wrapper alongside "item.completed" --
         # e.g. {"type":"item.started","item":{"type":"command_execution",...}} precedes the
@@ -192,14 +214,29 @@ try {
         # or a deprecation-warning "error" item -- it is real, observable model behavior, just not
         # proof of the multi_agent capability. A collab_tool_call with genuine non-empty state
         # (an actual delegation) would NOT match this exclusion and would still count as a signal.
+        #
+        # Returns { Valid=[bool]; Reason=[string or $null]; Signatures=[string[]] }. Signatures is
+        # always @() when Valid is $false -- callers must go through Assert-NovelSignatures
+        # (below), never read Signatures directly off this function's result.
+        param([Parameter(Mandatory)][AllowEmptyString()][string]$Stdout)
         $knownTop = @('thread.started','turn.started','item.completed','item.started','turn.completed','error')
         $knownItem = @('agent_message','error')
+        $bad = { param($why) [pscustomobject]@{ Valid = $false; Reason = $why; Signatures = @() } }
         $seen = [System.Collections.Generic.List[string]]::new()
         foreach ($line in ($Stdout -split "`r?`n")) {
             if (-not $line.Trim()) { continue }
-            try { $ev = $line | ConvertFrom-Json } catch { continue }
-            if ($null -eq $ev -or $ev.PSObject.Properties.Name -notcontains 'type') { continue }
+            try { $ev = $line | ConvertFrom-Json -ErrorAction Stop } catch {
+                return (& $bad "event stream line is not valid JSON: $($_.Exception.Message)")
+            }
+            if ($ev -isnot [System.Management.Automation.PSCustomObject]) {
+                $shape = if ($null -eq $ev) { 'null' } else { $ev.GetType().Name }
+                return (& $bad "event stream line did not parse to a JSON object (got $shape)")
+            }
+            if ($ev.PSObject.Properties.Name -notcontains 'type') {
+                return (& $bad "event stream line is a JSON object with no 'type' field")
+            }
             $t = "$($ev.type)"
+            if ($t -ceq 'turn.failed') { return (& $bad "event stream reported a turn.failed event") }
             if ($knownTop -notcontains $t -and $t) { $seen.Add("top:$t") }
             if (($ev.PSObject.Properties.Name -contains 'item') -and $ev.item -and
                 ($ev.item.PSObject.Properties.Name -contains 'type')) {
@@ -220,7 +257,22 @@ try {
                 }
             }
         }
-        return @($seen | Select-Object -Unique)
+        [pscustomobject]@{ Valid = $true; Reason = $null; Signatures = @($seen | Select-Object -Unique) }
+    }
+
+    function Assert-NovelSignatures {
+        # FINDING 4b's fail-closed contract, applied uniformly at every call site: hard-asserts
+        # that the event stream parsed cleanly (Valid) before trusting its Signatures for any
+        # capability-absence or pairwise-disjointness claim. A malformed/typeless line or a
+        # turn.failed event now fails THIS assertion loudly, by name, instead of silently
+        # shrinking the signature set (Assert-True never throws, so the battery keeps running and
+        # collecting every other failure too -- consistent with how every other check here works).
+        # -Name identifies which run's stream is being parsed, so a failure is diagnosable without
+        # re-deriving which of the many live calls it came from.
+        param([Parameter(Mandatory)][AllowEmptyString()][string]$Stdout, [Parameter(Mandatory)][string]$Name)
+        $r = Get-NovelSignatures -Stdout $Stdout
+        Assert-True $r.Valid "$Name`: event stream parses as well-formed JSONL (every non-blank line a JSON object with 'type', no turn.failed)$(if (-not $r.Valid) { " -- INVALID, fail-closed: $($r.Reason)" })"
+        return $r.Signatures
     }
 
     function New-IsolatedArgs {
@@ -517,7 +569,10 @@ args = ['-NoProfile', '-File', '$mcpScript']
                 Assert-True $fired "POSITIVE CONTROL fires for '$($c.Name)': the canary server was launched (out-of-band marker file appeared) with ONLY '$($c.Name)' enabled"
             }
             $canaryFired[$c.Name] = $fired
-            $controlSignatures[$c.Name] = @(Get-NovelSignatures -Stdout $res.Stdout)   # bonus, for the pairwise sweep
+            # FINDING 4b: fail-closed parse (bonus capture, for the pairwise sweep) -- this used to
+            # call Get-NovelSignatures unconditionally with no usability gate at all; now any
+            # malformed line in even this "bonus" capture is a loud, named assertion failure.
+            $controlSignatures[$c.Name] = @(Assert-NovelSignatures -Stdout $res.Stdout -Name "$($c.Name) positive control event stream")
             $positiveFired[$c.Name] = $fired
         } else {
             $cwd = New-ControlCwd -Name "$($c.Name)-pos"
@@ -531,17 +586,23 @@ args = ['-NoProfile', '-File', '$mcpScript']
             $res = Invoke-Control -CodexHome $ctlHome -CodexArgs $args1 -Prompt $c.Prompt -WorkingDirectory $cwd
             $controlOutputs[$c.Name] = $res.Stdout
             $usableOk = Assert-Usable -Result $res -Name "$($c.Name) positive control"
-            # @(...) must wrap the WHOLE if/else, not just the inner Get-NovelSignatures call:
-            # confirmed empirically (local, non-live repro) that `$x = if(c){@(f)}else{@()}` STILL
-            # unwraps a one-element array result down to a bare scalar -- wrapping only the branch
-            # is not enough, because the if/else statement's own value-producing "output" goes
-            # through the same unrolling as a pipeline/function return. Only wrapping the ENTIRE
-            # conditional expression in @() reliably forces array semantics for 0/1/many, exactly
-            # the same lesson this codebase already learned for @(Get-PriorRecommendations ...) in
-            # invoke-codex.ps1 (see its own comment) -- here it bites one level further out. Without
-            # this, "$sig.Count" throws under Set-StrictMode on any class whose control emits
-            # exactly one signature (hit live, confirmed, twice).
-            $sig = @(if ($usableOk) { Get-NovelSignatures -Stdout $res.Stdout } else { @() })
+            # @(...) must wrap the call: confirmed empirically (local, non-live repro) that a
+            # one-element array result from a function call is unwrapped to a bare scalar unless
+            # the CALL SITE itself wraps it in @() -- exactly the same lesson this codebase already
+            # learned for @(Get-PriorRecommendations ...) in invoke-codex.ps1 (see its own
+            # comment). Without this, "$sig.Count" throws under Set-StrictMode on any class whose
+            # control emits exactly one signature (hit live, confirmed, twice).
+            #
+            # FINDING 4b: no more "if ($usableOk) {...} else {@()}" special-case here -- calling
+            # Assert-NovelSignatures unconditionally is now the SAFER option, not a gap. A run that
+            # is not Usable because it genuinely never got far enough (StartFailed, or a
+            # clean-but-incomplete stream) still parses as well-formed JSONL with few/no
+            # signatures, same practical effect as the old "else {@()}"; a run that is not Usable
+            # BECAUSE the stream itself is malformed now correctly fails THIS assertion too,
+            # loudly, instead of the old code silently substituting @() and hiding exactly the
+            # evidence a security battery must not hide. $usableOk itself is still needed below,
+            # for whether the control counts as having genuinely fired.
+            $sig = @(Assert-NovelSignatures -Stdout $res.Stdout -Name "$($c.Name) positive control event stream")
             $controlSignatures[$c.Name] = $sig
             $fired = $usableOk -and ($sig.Count -gt 0)
             if ($narrowedClasses -contains $c.Name) {
@@ -614,11 +675,15 @@ verdict (verdict "request_changes", summary describing every attempt and its out
     if (-not $hermUsable) {
         throw "hermetic elicitation run was not usable -- cannot assert capability absence against it; $($hermRes.Reason)"
     }
-    # @(...) still required with the if/else gone: Get-NovelSignatures returning a single-element
-    # array is otherwise unwrapped to a bare scalar by PowerShell's own pipeline semantics (see the
-    # identical note at the per-class control loop above) -- "$hermSig.Count" would then throw
-    # under Set-StrictMode.
-    $hermSig = @(Get-NovelSignatures -Stdout $hermRes.Stdout)
+    # @(...) still required: Assert-NovelSignatures returning a single-element array is otherwise
+    # unwrapped to a bare scalar by PowerShell's own pipeline semantics (see the identical note at
+    # the per-class control loop above) -- "$hermSig.Count" would then throw under Set-StrictMode.
+    # FINDING 4b: this call is already downstream of the hard $hermUsable precondition above, so
+    # Get-RunUsage has already independently confirmed the stream is well-formed JSONL --
+    # Assert-NovelSignatures's own check here is then a redundant, cheap confirmation, not a new
+    # gate; kept for consistency (every call site goes through the identical fail-closed contract,
+    # not "trust the earlier gate and skip our own").
+    $hermSig = @(Assert-NovelSignatures -Stdout $hermRes.Stdout -Name 'hermetic baseline event stream')
     Assert-True ($hermSig.Count -eq 0) "HERMETIC: zero novel event signatures under trusted elicitation with the real production disable set (found: $($hermSig -join ', '))"
     $mcpHermClean = (-not (Test-Path $mcpMarker))
     Assert-True $mcpHermClean "HERMETIC (MCP): canary MCP server does NOT start even when CODEX_HOME points at a config.toml that registers it (--ignore-user-config)"
@@ -708,7 +773,14 @@ verdict (verdict "request_changes", summary describing every attempt and its out
             if ($a.Name -eq $b.Name) { continue }
             $outB = $controlOutputs[$b.Name]
             if ($null -eq $outB) { continue }
-            $sigB = @(Get-NovelSignatures -Stdout $outB)
+            # FINDING 4b: $controlOutputs is recorded for EVERY control regardless of that
+            # control's own usability (captured right after each Invoke-Control call, before its
+            # Assert-Usable), so $outB here can be a run this battery already knows was not Usable
+            # -- possibly because its OWN stream was malformed (e.g. truncated mid-write on a
+            # timeout). Asserting here, rather than trusting whatever the old code silently
+            # scraped from it, closes the cross-control blind spot: a malformed OTHER control's
+            # output must not be allowed to silently "pass" a disjointness check it never proved.
+            $sigB = @(Assert-NovelSignatures -Stdout $outB -Name "$($b.Name) control output (pairwise check against '$($a.Name)')")
             $overlap = @($sigA | Where-Object { $sigB -contains $_ })
             Assert-True ($overlap.Count -eq 0) "detector '$($a.Name)' does not fire on the '$($b.Name)' control output"
             if ($overlap.Count -gt 0) { $aClean = $false }
