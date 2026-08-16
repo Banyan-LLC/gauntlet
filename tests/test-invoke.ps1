@@ -213,9 +213,10 @@ Test-EmptyElementFailsClosed -LibPath "$PSScriptRoot\..\codex-review\scripts\lib
 # binding (CLI hash/version/path, schema hash, AGENTS.md hash, invocation-profile hash, model)
 # remains here; -BudgetBytes is no longer a Test-PremiseManifest parameter.
 # =====================================================================================
-$skillRoot = "$tmp\codex-review"   # directory MUST be literally named "codex-review": Get-SecuritySourceFingerprint
-                                    # resolves its fixed file list relative to -SkillRoot's PARENT, matching this
-                                    # repo's real layout (a sibling tests\live\ one level up from codex-review\)
+$skillRoot = "$tmp\codex-review"   # a sibling tests\live\ one level up mirrors this repo's own dev-repo
+                                    # layout, which Get-GateFingerprint/Test-PremiseManifest resolve relative
+                                    # to -SkillRoot's PARENT; Get-WrapperFingerprint no longer cares what
+                                    # -SkillRoot's parent looks like at all (see the P1 fix below)
 New-Item -ItemType Directory -Force "$skillRoot\schemas" | Out-Null
 Copy-Item "$PSScriptRoot\..\codex-review\schemas\verdict.schema.json" "$skillRoot\schemas\verdict.schema.json"
 $premisesSchemaSha = (Get-FileHash -Algorithm SHA256 "$skillRoot\schemas\verdict.schema.json").Hash.ToLowerInvariant()
@@ -226,15 +227,20 @@ $premisesProfileHash = Get-InvocationProfileHash -DisableSet $premisesDisableSet
 $premisesPath = "$skillRoot\premises.json"
 
 # =====================================================================================
-# Get-SecuritySourceFingerprint (FINDING 2, see docs/build-log/task-14-report.md): needs a
-# skill root that actually LOOKS like a shipped tree -- scripts + schema, with the two live-gate
-# scripts one level up under a sibling tests/live/ -- not merely the schemas-only stub the
-# pre-existing Test-PremiseManifest fixtures needed. Populate $skillRoot\scripts and a
-# tests\live sibling of $tmp (Get-SecuritySourceFingerprint resolves the fixed list relative to
-# -SkillRoot's PARENT) with copies of the REAL shipped files, so the fingerprint is computed over
-# genuine content and is sensitive to a real future edit. This tree is read only by
-# Get-SecuritySourceFingerprint's own file walk (directly here, and indirectly via
-# Test-PremiseManifest/Write-LiveEvidence below), so it does not need to be executable.
+# Get-WrapperFingerprint / Get-GateFingerprint (P1 fix, see docs/build-log/task-14-report.md,
+# the FINDING 2 follow-up): the old single Get-SecuritySourceFingerprint required tests/live/*.ps1
+# relative to -SkillRoot's PARENT UNCONDITIONALLY -- correct for this repo's own dev layout, but
+# install.ps1 ships ONLY codex-review/ and codex-reviewed-dev/ into ~/.claude/skills/, so an
+# installed tree has no tests/ directory anywhere nearby and the old function THREW on every real
+# review round run from an install (confirmed by direct repro against an installed-tree layout).
+# Split into Get-WrapperFingerprint (the shipped wrapper sources that EXECUTE at runtime, resolved
+# under -SkillRoot itself -- verified UNCONDITIONALLY, everywhere) and Get-GateFingerprint (the two
+# live gates, resolved under -SkillRoot's PARENT -- verified ONLY where they exist, i.e. the dev
+# repo; kept as stamping-time provenance elsewhere). Populate $skillRoot\scripts and a tests\live
+# sibling of $tmp with copies of the REAL shipped files, so both fingerprints are computed over
+# genuine content and are sensitive to a real future edit. This tree is read only by these two
+# functions' own file walks (directly here, and indirectly via Test-PremiseManifest/
+# Write-LiveEvidence below), so it does not need to be executable.
 # =====================================================================================
 New-Item -ItemType Directory -Force "$skillRoot\scripts" | Out-Null
 foreach ($f in 'lib.ps1','invoke-codex.ps1','publish-review.ps1','calibrate-premises.ps1') {
@@ -245,49 +251,63 @@ foreach ($f in 'live-schema-gate.ps1','live-security.ps1') {
     Copy-Item "$PSScriptRoot\live\$f" "$tmp\tests\live\$f"
 }
 
-$fp1 = Get-SecuritySourceFingerprint -SkillRoot $skillRoot
-$fp2 = Get-SecuritySourceFingerprint -SkillRoot $skillRoot
-Assert-True ($fp1 -match '^[0-9a-f]{64}$') "security source fingerprint is lowercase hex SHA-256"
-Assert-Eq $fp1 $fp2 "identical shipped sources produce an identical fingerprint"
+$wrapperFingerprint = Get-WrapperFingerprint -SkillRoot $skillRoot
+$wrapperFingerprint2 = Get-WrapperFingerprint -SkillRoot $skillRoot
+Assert-True ($wrapperFingerprint -match '^[0-9a-f]{64}$') "wrapper fingerprint is lowercase hex SHA-256"
+Assert-Eq $wrapperFingerprint $wrapperFingerprint2 "identical shipped wrapper sources produce an identical fingerprint"
 
-# FIX 2 regression (e): a change to ANY security-critical source file changes the fingerprint --
-# proven for the wrapper implementation (lib.ps1) and, separately, for a live gate script
-# (live-security.ps1), so the property is not an accident of which one file happens to be edited.
+$gateFingerprint = Get-GateFingerprint -RepoRoot $tmp
+$gateFingerprint2 = Get-GateFingerprint -RepoRoot $tmp
+Assert-True ($gateFingerprint -match '^[0-9a-f]{64}$') "gate fingerprint is lowercase hex SHA-256"
+Assert-Eq $gateFingerprint $gateFingerprint2 "identical shipped live-gate sources produce an identical fingerprint"
+
+# THE split's whole point, proven directly: editing a WRAPPER source changes ONLY the wrapper
+# fingerprint, and editing a LIVE-GATE script changes ONLY the gate fingerprint -- the two are
+# independently derived, not a relabeled version of the old combined fingerprint.
 Add-Content -Path "$skillRoot\scripts\lib.ps1" -Value "`n# fingerprint-test perturbation"
-$fpAfterLibEdit = Get-SecuritySourceFingerprint -SkillRoot $skillRoot
-Assert-True ($fpAfterLibEdit -ne $fp1) "editing lib.ps1 changes the security source fingerprint"
+$wrapperFpAfterLibEdit = Get-WrapperFingerprint -SkillRoot $skillRoot
+$gateFpAfterLibEdit = Get-GateFingerprint -RepoRoot $tmp
+Assert-True ($wrapperFpAfterLibEdit -ne $wrapperFingerprint) "editing lib.ps1 changes the wrapper fingerprint"
+Assert-Eq $gateFpAfterLibEdit $gateFingerprint "editing lib.ps1 does NOT change the gate fingerprint (independently derived)"
+Copy-Item "$PSScriptRoot\..\codex-review\scripts\lib.ps1" "$skillRoot\scripts\lib.ps1" -Force
+Assert-Eq (Get-WrapperFingerprint -SkillRoot $skillRoot) $wrapperFingerprint "restoring lib.ps1's original bytes restores the original wrapper fingerprint"
 
 Add-Content -Path "$tmp\tests\live\live-security.ps1" -Value "`n# fingerprint-test perturbation"
-$fpAfterGateEdit = Get-SecuritySourceFingerprint -SkillRoot $skillRoot
-Assert-True ($fpAfterGateEdit -ne $fpAfterLibEdit) "editing a live gate script (live-security.ps1) also changes the fingerprint"
-
-# Restore both files exactly (byte-for-byte) so every fingerprint computed AFTER this point --
-# including $securityFingerprint below, which every live-evidence fixture embeds -- reflects the
-# pristine copies, not these deliberate perturbations.
-Copy-Item "$PSScriptRoot\..\codex-review\scripts\lib.ps1" "$skillRoot\scripts\lib.ps1" -Force
+$gateFpAfterGateEdit = Get-GateFingerprint -RepoRoot $tmp
+$wrapperFpAfterGateEdit = Get-WrapperFingerprint -SkillRoot $skillRoot
+Assert-True ($gateFpAfterGateEdit -ne $gateFingerprint) "editing a live gate script (live-security.ps1) changes the gate fingerprint"
+Assert-Eq $wrapperFpAfterGateEdit $wrapperFingerprint "editing a live gate script does NOT change the wrapper fingerprint (independently derived)"
 Copy-Item "$PSScriptRoot\live\live-security.ps1" "$tmp\tests\live\live-security.ps1" -Force
-Assert-Eq (Get-SecuritySourceFingerprint -SkillRoot $skillRoot) $fp1 "restoring the original bytes restores the original fingerprint"
+Assert-Eq (Get-GateFingerprint -RepoRoot $tmp) $gateFingerprint "restoring live-security.ps1's original bytes restores the original gate fingerprint"
 
-# Missing required file -> fail closed (throws), never a smaller/silent fingerprint.
-$missingFileRoot = Join-Path $tmp 'fingerprint-missing'
-New-Item -ItemType Directory -Force "$missingFileRoot\codex-review\scripts","$missingFileRoot\codex-review\schemas","$missingFileRoot\tests\live" | Out-Null
+# Missing required file -> fail closed (throws), never a smaller/silent fingerprint -- each
+# function has its OWN independent fixed file list now, so each is proven separately.
+$missingWrapperRoot = Join-Path $tmp 'wrapper-fingerprint-missing'
+New-Item -ItemType Directory -Force "$missingWrapperRoot\codex-review\scripts","$missingWrapperRoot\codex-review\schemas" | Out-Null
 foreach ($f in 'lib.ps1','invoke-codex.ps1','publish-review.ps1') {
-    Copy-Item "$PSScriptRoot\..\codex-review\scripts\$f" "$missingFileRoot\codex-review\scripts\$f"
+    Copy-Item "$PSScriptRoot\..\codex-review\scripts\$f" "$missingWrapperRoot\codex-review\scripts\$f"
 }
 # calibrate-premises.ps1 deliberately NOT copied -- the missing required file.
-Copy-Item "$PSScriptRoot\..\codex-review\schemas\verdict.schema.json" "$missingFileRoot\codex-review\schemas\verdict.schema.json"
-Copy-Item "$PSScriptRoot\live\live-schema-gate.ps1" "$missingFileRoot\tests\live\live-schema-gate.ps1"
-Copy-Item "$PSScriptRoot\live\live-security.ps1" "$missingFileRoot\tests\live\live-security.ps1"
-Assert-Throws { Get-SecuritySourceFingerprint -SkillRoot "$missingFileRoot\codex-review" } "a missing required security-critical source file fails CLOSED (throws), not silently"
+Copy-Item "$PSScriptRoot\..\codex-review\schemas\verdict.schema.json" "$missingWrapperRoot\codex-review\schemas\verdict.schema.json"
+Assert-Throws { Get-WrapperFingerprint -SkillRoot "$missingWrapperRoot\codex-review" } "a missing required wrapper source file fails CLOSED (throws), not silently"
 
-$securityFingerprint = Get-SecuritySourceFingerprint -SkillRoot $skillRoot
+$missingGateRoot = Join-Path $tmp 'gate-fingerprint-missing'
+New-Item -ItemType Directory -Force "$missingGateRoot\tests\live" | Out-Null
+Copy-Item "$PSScriptRoot\live\live-security.ps1" "$missingGateRoot\tests\live\live-security.ps1"
+# live-schema-gate.ps1 deliberately NOT copied -- the missing required file.
+Assert-Throws { Get-GateFingerprint -RepoRoot $missingGateRoot } "a missing required live-gate source file fails CLOSED (throws), not silently"
 
-function New-LiveEvidenceRecord([string]$Gate) {
+function New-LiveEvidenceRecordWith([string]$Gate, [string]$WrapperFingerprint, [string]$GateFingerprint) {
     @{ gate = $Gate; utc = (Get-Date -AsUTC -Format o)
        cli_path = $pin.Path; cli_version = $pin.Version; cli_sha256 = $pin.Sha256
        schema_sha256 = $premisesSchemaSha; agents_md_sha256 = $premisesAgentsSha
        invocation_profile_sha256 = $premisesProfileHash
-       source_fingerprint = $securityFingerprint }
+       wrapper_fingerprint = $WrapperFingerprint; gate_fingerprint = $GateFingerprint }
+}
+function New-LiveEvidenceRecord([string]$Gate) {
+    # Bound to $skillRoot's own (dev-repo-shaped) fingerprints, computed above -- this keeps every
+    # PRE-EXISTING call site below (`New-LiveEvidenceRecord 'schema_gate'` etc.) working unchanged.
+    New-LiveEvidenceRecordWith -Gate $Gate -WrapperFingerprint $wrapperFingerprint -GateFingerprint $gateFingerprint
 }
 function New-ValidPremisesHashtable {
     @{
@@ -305,8 +325,9 @@ function New-ValidPremisesHashtable {
         # calibration plus one schema-gate pass authorize the WHOLE security-sensitive stack
         # without ever rerunning the security battery, and bound none of the wrapper
         # implementation. live_evidence now carries TWO required named sub-records, schema_gate
-        # and security_battery, each independently fingerprinted (including source_fingerprint
-        # over the shipped wrapper sources). This fixture simulates BOTH live gates having
+        # and security_battery, each independently fingerprinted (including wrapper_fingerprint
+        # over the shipped wrapper sources, and gate_fingerprint over the two live gates). This
+        # fixture simulates BOTH live gates having
         # already stamped MATCHING records, so the golden path below continues to exercise
         # "everything valid" through the FULL production/installer gate (Test-PremiseManifest).
         # Every case derived from this hashtable that breaks ONE OTHER top-level field still
@@ -422,8 +443,8 @@ Assert-True (-not $pmWrongHash.Valid -and $pmWrongHash.Reason -match 'Codex CLI 
 # actually exercises -- without ever rerunning the security battery, and bound none of the
 # wrapper implementation itself. live_evidence is now an object with TWO required named
 # sub-records, schema_gate and security_battery, each independently fingerprinted (CLI, schema,
-# AGENTS.md, invocation profile, AND source_fingerprint over the shipped wrapper sources --
-# Get-SecuritySourceFingerprint, exercised directly above). All cases use $skillRoot (the temp
+# AGENTS.md, invocation profile, AND wrapper_fingerprint/gate_fingerprint -- Get-WrapperFingerprint
+# and Get-GateFingerprint, exercised directly above). All cases use $skillRoot (the temp
 # dir already in scope for this whole Test-PremiseManifest section, now also populated with
 # scripts/ + a sibling tests/live/, see above) -- never the real codex-review/premises.json.
 # =====================================================================================
@@ -511,6 +532,115 @@ $recalibrated = New-ValidPremisesHashtable; $recalibrated.Remove('live_evidence'
 Write-Premises $recalibrated
 Assert-True (-not (Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash).Valid) "recalibrating after both stamps drops the whole live_evidence object -- both gates must rerun"
 
+# =====================================================================================
+# P1 FIX: installed-tree fingerprint split (Part A, docs/build-log/task-14-report.md). The four
+# regressions the fix brief named explicitly. install.ps1 ships ONLY codex-review/ and
+# codex-reviewed-dev/ into ~/.claude/skills/ -- no tests/ directory anywhere nearby -- so this
+# fixture reproduces that exact shape: scripts+schema under codex-review/, no tests/ sibling at
+# all, unlike every $skillRoot fixture above (which always carries a real tests\live sibling,
+# i.e. a dev-repo shape).
+# =====================================================================================
+$installedRoot = Join-Path $tmp 'installed-tree'
+New-Item -ItemType Directory -Force "$installedRoot\codex-review\scripts","$installedRoot\codex-review\schemas","$installedRoot\codex-reviewed-dev" | Out-Null
+foreach ($f in 'lib.ps1','invoke-codex.ps1','publish-review.ps1','calibrate-premises.ps1') {
+    Copy-Item "$PSScriptRoot\..\codex-review\scripts\$f" "$installedRoot\codex-review\scripts\$f"
+}
+Copy-Item "$PSScriptRoot\..\codex-review\schemas\verdict.schema.json" "$installedRoot\codex-review\schemas\verdict.schema.json"
+Assert-True (-not (Test-Path "$installedRoot\tests")) "fixture sanity: the installed-tree layout has NO tests/ sibling at all"
+$installedSkillRoot = "$installedRoot\codex-review"
+
+# (a) THE regression: an installed-tree layout computes a wrapper fingerprint successfully (never
+# throws) and Test-PremiseManifest VALIDATES when the manifest matches -- the exact case that used
+# to throw before ever reaching Codex (see the reproduction in this task's report).
+$installedWrapperFp = $null
+$installedThrew = $false
+try { $installedWrapperFp = Get-WrapperFingerprint -SkillRoot $installedSkillRoot } catch { $installedThrew = $true }
+Assert-True (-not $installedThrew) "Get-WrapperFingerprint succeeds against an installed-tree layout with no tests/ sibling (THE P1: Get-SecuritySourceFingerprint used to throw here)"
+Assert-True ($installedWrapperFp -match '^[0-9a-f]{64}$') "installed-tree wrapper fingerprint is lowercase hex SHA-256"
+
+function New-InstalledManifest([hashtable]$LiveEvidence) {
+    @{ version=1; model='gpt-5.6-sol'
+       cli_path=$pin.Path; cli_sha256=$pin.Sha256; cli_version=$pin.Version
+       schema_sha256=$premisesSchemaSha; agents_md_sha256=$premisesAgentsSha
+       invocation_profile_sha256=$premisesProfileHash; recorded_utc=(Get-Date -AsUTC -Format o)
+       live_evidence=$LiveEvidence }
+}
+function Write-InstalledPremises($ObjOrHashtable) { ($ObjOrHashtable | ConvertTo-Json -Depth 6) | Set-Content -Path "$installedSkillRoot\premises.json" -Encoding utf8 }
+
+# gate_fingerprint here is PROVENANCE carried over from whenever this premises.json was stamped in
+# the dev repo (install.ps1 copies the whole codex-review/ directory, premises.json included) --
+# never recomputed against this installed tree, since there is nothing under it to recompute
+# against. Its exact value does not matter for regression (a); only that it is present (the
+# schema still requires the field) and that it is NOT what invalidates the result.
+Write-InstalledPremises (New-InstalledManifest @{
+    schema_gate = (New-LiveEvidenceRecordWith -Gate 'schema_gate' -WrapperFingerprint $installedWrapperFp -GateFingerprint ('e' * 64))
+    security_battery = (New-LiveEvidenceRecordWith -Gate 'security_battery' -WrapperFingerprint $installedWrapperFp -GateFingerprint ('e' * 64))
+})
+$pmInstalledThrew = $false; $pmInstalled = $null
+try { $pmInstalled = Test-PremiseManifest -SkillRoot $installedSkillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash }
+catch { $pmInstalledThrew = $true }
+Assert-True (-not $pmInstalledThrew) "Test-PremiseManifest does not throw against an installed-tree layout (THE P1 fix, exercised through the real production gate)"
+Assert-True ($pmInstalled -and $pmInstalled.Valid) "a matching manifest VALIDATES successfully in an installed tree with no tests/live sibling -- gate_fingerprint is accepted as provenance, not re-verified"
+
+# (b) editing ANY wrapper source invalidates its OWN sub-record's wrapper_fingerprint check,
+# independent of the OTHER sub-record -- proven with a mirror pair (same technique as the
+# staleSecurity/staleSchemaGate pair in the dev-repo FIX-2 battery above): the sub-record NOT
+# under test carries a genuinely CURRENT (post-edit) wrapper_fingerprint, so it cannot be the
+# reason for refusal, and the Reason is asserted to name the SPECIFIC stale sub-record -- not
+# merely whichever gate name Test-PremiseManifest's loop happens to reach first (schema_gate is
+# checked before security_battery; an early version of this test left security_battery entirely
+# ABSENT for its half, which made the loop short-circuit on "no live evidence for schema_gate"
+# before ever reaching security_battery's own check -- passing for the wrong reason. Confirmed by
+# running that version: it failed with Reason "no live evidence for 'schema_gate'", not a
+# wrapper-sources mismatch).
+Add-Content -Path "$installedRoot\codex-review\scripts\lib.ps1" -Value "`n# wrapper-edit perturbation"
+$installedWrapperFpAfterEdit = Get-WrapperFingerprint -SkillRoot $installedSkillRoot
+Assert-True ($installedWrapperFpAfterEdit -ne $installedWrapperFp) "fixture sanity: editing the installed tree's lib.ps1 actually changed its wrapper fingerprint"
+
+Write-InstalledPremises (New-InstalledManifest @{
+    schema_gate = (New-LiveEvidenceRecordWith -Gate 'schema_gate' -WrapperFingerprint $installedWrapperFp -GateFingerprint ('e' * 64))
+    security_battery = (New-LiveEvidenceRecordWith -Gate 'security_battery' -WrapperFingerprint $installedWrapperFpAfterEdit -GateFingerprint ('e' * 64))
+})
+$pmStaleWrapperSchema = Test-PremiseManifest -SkillRoot $installedSkillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+Assert-True (-not $pmStaleWrapperSchema.Valid -and $pmStaleWrapperSchema.Reason -match "'schema_gate'" -and $pmStaleWrapperSchema.Reason -match 'wrapper sources') "editing a wrapper source invalidates schema_gate's recorded wrapper_fingerprint (security_battery's own, current fingerprint is not enough to save it)"
+
+Write-InstalledPremises (New-InstalledManifest @{
+    schema_gate = (New-LiveEvidenceRecordWith -Gate 'schema_gate' -WrapperFingerprint $installedWrapperFpAfterEdit -GateFingerprint ('e' * 64))
+    security_battery = (New-LiveEvidenceRecordWith -Gate 'security_battery' -WrapperFingerprint $installedWrapperFp -GateFingerprint ('e' * 64))
+})
+$pmStaleWrapperSecurity = Test-PremiseManifest -SkillRoot $installedSkillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+Assert-True (-not $pmStaleWrapperSecurity.Valid -and $pmStaleWrapperSecurity.Reason -match "'security_battery'" -and $pmStaleWrapperSecurity.Reason -match 'wrapper sources') "editing a wrapper source invalidates security_battery's recorded wrapper_fingerprint too (both sub-records, not just whichever is checked first)"
+
+# Restore the installed tree's lib.ps1 so the (still-pre-edit) $installedWrapperFp is accurate
+# again for what follows.
+Copy-Item "$PSScriptRoot\..\codex-review\scripts\lib.ps1" "$installedRoot\codex-review\scripts\lib.ps1" -Force
+Assert-Eq (Get-WrapperFingerprint -SkillRoot $installedSkillRoot) $installedWrapperFp "restoring the installed tree's lib.ps1 restores its original wrapper fingerprint"
+
+# (c) editing a gate script changes gate_fingerprint and IS REJECTED when run from the dev repo
+# (tests/live/* present next to -SkillRoot's parent) -- the mirror of (b) for the OTHER
+# fingerprint. Uses $skillRoot (a real tests\live sibling), not the installed tree.
+Write-Premises (New-ValidPremisesHashtable)
+Assert-True (Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash).Valid "fixture sanity: baseline manifest is valid before the gate-script edit"
+Add-Content -Path "$tmp\tests\live\live-schema-gate.ps1" -Value "`n# gate-edit perturbation"
+$pmStaleGate = Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+Assert-True (-not $pmStaleGate.Valid -and $pmStaleGate.Reason -match 'live-gate sources') "editing a live-gate script (live-schema-gate.ps1) invalidates the recorded gate_fingerprint and IS rejected when tests/live/ is present (the dev repo)"
+Copy-Item "$PSScriptRoot\live\live-schema-gate.ps1" "$tmp\tests\live\live-schema-gate.ps1" -Force
+Assert-True (Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash).Valid "restoring live-schema-gate.ps1 restores validity"
+
+# The asymmetry's other half: the IDENTICAL kind of stale gate_fingerprint that gets REJECTED
+# above (dev repo, tests/live present) is accepted as provenance-only in the installed-tree
+# layout, where there is nothing to recompute it against.
+Write-InstalledPremises (New-InstalledManifest @{
+    schema_gate = (New-LiveEvidenceRecordWith -Gate 'schema_gate' -WrapperFingerprint $installedWrapperFp -GateFingerprint ('d' * 64))
+    security_battery = (New-LiveEvidenceRecordWith -Gate 'security_battery' -WrapperFingerprint $installedWrapperFp -GateFingerprint ('d' * 64))
+})
+$pmInstalledStaleGate = Test-PremiseManifest -SkillRoot $installedSkillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash
+Assert-True $pmInstalledStaleGate.Valid "an arbitrary/stale gate_fingerprint value is accepted as provenance-only in an installed tree (no tests/live sibling to verify it against) -- the documented asymmetry"
+
+# (d) still refused when a sub-record is missing entirely: already proven above (dev-repo
+# $skillRoot) by the "only schema_gate present" / "only security_battery present" cases earlier
+# in this section, now exercising the renamed wrapper_fingerprint/gate_fingerprint fields.
+
 Write-Premises (New-ValidPremisesHashtable)   # leave $premisesPath fully valid for anything appended later
 
 Remove-Item Env:\CODEX_TEST_CANARY
@@ -532,11 +662,12 @@ $copyRoot = Join-Path $tmp 'entry-skillroot'
 New-Item -ItemType Directory -Force $copyRoot | Out-Null
 Copy-Item -Recurse "$PSScriptRoot\..\codex-review" $copyRoot
 $copySkillRoot = Join-Path $copyRoot 'codex-review'
-# Get-SecuritySourceFingerprint (FINDING 2) resolves its fixed file list relative to -SkillRoot's
-# PARENT -- i.e. as siblings of codex-review/, matching this repo's real layout. The Copy-Item
-# -Recurse above already brought scripts/ + schemas/ along; add the two live-gate scripts as a
-# tests\live sibling of $copyRoot so Set-TestManifest below (and invoke-codex.ps1's own internal
-# Test-PremiseManifest call) can compute a real fingerprint against this copy.
+# Get-GateFingerprint (FINDING 2) resolves its fixed file list relative to -SkillRoot's PARENT --
+# i.e. as siblings of codex-review/, matching this repo's real dev-repo layout (Get-WrapperFingerprint
+# no longer needs this at all -- it resolves entirely under -SkillRoot itself, see the P1 fix). The
+# Copy-Item -Recurse above already brought scripts/ + schemas/ along; add the two live-gate scripts
+# as a tests\live sibling of $copyRoot so Set-TestManifest below (and invoke-codex.ps1's own internal
+# Test-PremiseManifest call) can compute a real gate fingerprint against this copy.
 New-Item -ItemType Directory -Force (Join-Path $copyRoot 'tests\live') | Out-Null
 foreach ($f in 'live-schema-gate.ps1','live-security.ps1') {
     Copy-Item "$PSScriptRoot\live\$f" (Join-Path $copyRoot "tests\live\$f")
@@ -573,13 +704,14 @@ function Set-TestManifest([string]$ShimPath) {
     $schemaSha = (Get-FileHash -Algorithm SHA256 "$copySkillRoot\schemas\verdict.schema.json").Hash.ToLowerInvariant()
     $agentsSha = $(if (Test-Path $agentsPath) { (Get-FileHash -Algorithm SHA256 $agentsPath).Hash.ToLowerInvariant() } else { 'absent' })
     $profileHash = (Get-InvocationProfileHash -DisableSet (Get-DisableSet -FeatureNames $probe.FeatureNames))
-    $srcFingerprint = Get-SecuritySourceFingerprint -SkillRoot $copySkillRoot
+    $wrapperFp = Get-WrapperFingerprint -SkillRoot $copySkillRoot
+    $gateFp = Get-GateFingerprint -RepoRoot $copyRoot
     $evidenceFor = {
         param($Gate)
         @{ gate=$Gate; utc=(Get-Date -AsUTC -Format o)
            cli_path=$probe.Path; cli_version=$probe.Version; cli_sha256=$probe.Sha256
            schema_sha256=$schemaSha; agents_md_sha256=$agentsSha; invocation_profile_sha256=$profileHash
-           source_fingerprint=$srcFingerprint }
+           wrapper_fingerprint=$wrapperFp; gate_fingerprint=$gateFp }
     }
     @{ version=1; model='gpt-5.6-sol'
        cli_path=$probe.Path; cli_sha256=$probe.Sha256; cli_version=$probe.Version

@@ -530,43 +530,84 @@ function Test-StackAcceptance {
     [pscustomobject]@{ Valid=$true; Reason=$null; Manifest=$m }
 }
 
-function Get-SecuritySourceFingerprint {
-    <# Deterministic SHA-256 over a FIXED, SORTED list of the security-critical shipped sources:
-       the wrapper implementation (lib.ps1, invoke-codex.ps1, publish-review.ps1,
-       calibrate-premises.ps1), the verdict schema, and the two live gates that alone are
-       authorized to stamp live evidence (tests/live/live-schema-gate.ps1,
-       tests/live/live-security.ps1). Binds each stamped live-evidence sub-record (see
-       Write-LiveEvidence/Test-PremiseManifest below) to the exact bytes of these files at
-       stamping time -- so an edit to the WRAPPER ITSELF, not merely a CLI/schema/AGENTS.md
-       change, also invalidates the corresponding stamp and forces its gate to rerun (added: see
-       docs/build-log/task-14-report.md, FINDING 2 -- previously a single generic live_evidence
-       record bound none of the wrapper implementation at all).
+function Get-WrapperFingerprint {
+    <# Deterministic SHA-256 over a FIXED, SORTED list of the SHIPPED wrapper sources that
+       EXECUTE at runtime: lib.ps1, invoke-codex.ps1, publish-review.ps1, calibrate-premises.ps1,
+       and the verdict schema -- resolved relative to -SkillRoot ITSELF (the `codex-review`
+       directory), never to a sibling `tests/`. These are exactly the files install.ps1 copies
+       into ~/.claude/skills/codex-review, so this fingerprint resolves identically whether it
+       runs from the dev repo or an installed tree.
 
-       -SkillRoot is the `codex-review` directory (same meaning as everywhere else in this file);
-       the fixed list below is repo-relative to ITS PARENT, since the two live-gate scripts live
-       under a sibling `tests/live/`, not under `codex-review/` itself.
+       Split out of the old single Get-SecuritySourceFingerprint (P1 fix, see
+       docs/build-log/task-14-report.md, FINDING 2 follow-up): that function additionally
+       required tests/live/live-schema-gate.ps1 and tests/live/live-security.ps1 relative to
+       -SkillRoot's PARENT -- correct for this repo's own layout, but install.ps1 ships ONLY
+       codex-review/ and codex-reviewed-dev/ into ~/.claude/skills/, so an installed tree has no
+       tests/ directory anywhere nearby. invoke-codex.ps1 resolves its own -SkillRoot as
+       `Split-Path $PSScriptRoot -Parent`, which from an installed
+       ~/.claude/skills/codex-review/scripts/invoke-codex.ps1 is ~/.claude/skills/codex-review --
+       whose parent, ~/.claude/skills, has no tests/ child. Every real review round threw before
+       ever reaching Codex (confirmed by direct repro: Get-SecuritySourceFingerprint against an
+       installed-tree layout threw "missing required file 'tests\live\live-schema-gate.ps1'").
+
+       This is the RUNTIME-CRITICAL binding: an edited wrapper source changes what will actually
+       execute, in every environment that can reach this function -- so it is verified
+       UNCONDITIONALLY, on every call to Test-PremiseManifest (see below), never skipped.
 
        Per file: hash (path-prefix bytes + file bytes) -- so a file that moved to a different
        logical path, even with byte-identical content, still changes its own digest. Concatenate
-       those per-file hex digests in the FIXED sorted order above (never filesystem enumeration
+       those per-file hex digests in the FIXED sorted order below (never filesystem enumeration
        order) and hash the concatenation once more. A listed file that is MISSING throws rather
        than being silently omitted: a security-critical source that cannot be found is a
        fail-closed condition, never a smaller/quieter fingerprint. #>
     param([Parameter(Mandatory)][string]$SkillRoot)
-    $repoRoot = Split-Path $SkillRoot -Parent
     $relPaths = @(
-        'codex-review\scripts\lib.ps1',
-        'codex-review\scripts\invoke-codex.ps1',
-        'codex-review\scripts\publish-review.ps1',
-        'codex-review\scripts\calibrate-premises.ps1',
-        'codex-review\schemas\verdict.schema.json',
+        'schemas\verdict.schema.json',
+        'scripts\calibrate-premises.ps1',
+        'scripts\invoke-codex.ps1',
+        'scripts\lib.ps1',
+        'scripts\publish-review.ps1'
+    ) | Sort-Object
+    $perFileHashes = foreach ($rel in $relPaths) {
+        $full = Join-Path $SkillRoot $rel
+        if (-not (Test-Path -LiteralPath $full -PathType Leaf)) {
+            throw "wrapper fingerprint: missing required file '$rel' (resolved '$full')"
+        }
+        $prefixed = [byte[]]([Text.Encoding]::UTF8.GetBytes($rel) + [System.IO.File]::ReadAllBytes($full))
+        -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash($prefixed) | ForEach-Object { $_.ToString('x2') })
+    }
+    $material = ($perFileHashes -join '')
+    -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($material)) | ForEach-Object { $_.ToString('x2') })
+}
+
+function Get-GateFingerprint {
+    <# Deterministic SHA-256 over a FIXED, SORTED list of the two live gates alone authorized to
+       stamp live evidence: tests/live/live-schema-gate.ps1, tests/live/live-security.ps1 --
+       resolved relative to -RepoRoot (the checkout root, sibling of `codex-review/`). These
+       files exist ONLY in the dev repo (install.ps1 never ships tests/), so this is computed
+       only where they are genuinely present: at STAMPING time from Write-LiveEvidence below
+       (always the dev repo -- its only two callers are tests/live/live-schema-gate.ps1 and
+       tests/live/live-security.ps1, each living next to a real tests/live/), and at
+       VERIFICATION time from Test-PremiseManifest, but ONLY after it has confirmed both files
+       exist next to -SkillRoot's parent -- see the asymmetry documented on Test-PremiseManifest.
+       Where they are absent (an installed tree), the recorded value already on a live-evidence
+       sub-record is kept purely as STAMPING-TIME PROVENANCE: what the gate sources hashed to
+       when they last stamped a passing live run in the dev repo -- install.ps1 copies the whole
+       codex-review/ directory, premises.json included, so that provenance travels with the
+       install -- never a value this function is asked to reproduce where it structurally cannot.
+
+       Same per-file construction as Get-WrapperFingerprint above (path-prefix bytes + file
+       bytes, fixed sorted order, hash of the concatenation). A listed file that is missing
+       throws -- callers are expected to only invoke this once presence is already established. #>
+    param([Parameter(Mandatory)][string]$RepoRoot)
+    $relPaths = @(
         'tests\live\live-schema-gate.ps1',
         'tests\live\live-security.ps1'
     ) | Sort-Object
     $perFileHashes = foreach ($rel in $relPaths) {
-        $full = Join-Path $repoRoot $rel
+        $full = Join-Path $RepoRoot $rel
         if (-not (Test-Path -LiteralPath $full -PathType Leaf)) {
-            throw "security source fingerprint: missing required file '$rel' (resolved '$full')"
+            throw "gate fingerprint: missing required file '$rel' (resolved '$full')"
         }
         $prefixed = [byte[]]([Text.Encoding]::UTF8.GetBytes($rel) + [System.IO.File]::ReadAllBytes($full))
         -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash($prefixed) | ForEach-Object { $_.ToString('x2') })
@@ -593,17 +634,37 @@ function Test-PremiseManifest {
        let calibration plus ONE schema-gate pass authorize the WHOLE security-sensitive stack --
        including capabilities (shell/web/apps/MCP/plugins hermeticity) that only
        tests/live/live-security.ps1 actually exercises -- without ever rerunning the security
-       battery, and bound none of the wrapper implementation itself (fixed by
-       Get-SecuritySourceFingerprint above). `live_evidence` is now an object with TWO REQUIRED
-       named sub-records, `schema_gate` and `security_battery`; EACH must independently carry a
-       matching fingerprint (CLI path/version/hash, schema hash, AGENTS.md hash,
-       invocation-profile hash, AND source_fingerprint) before this passes. Either sub-record
-       absent, or either one's fingerprint stale, refuses -- naming exactly which live gate to
-       rerun. `live_evidence` is stamped ONLY by Write-LiveEvidence (below), called only from
-       tests/live/live-schema-gate.ps1 (schema_gate) and tests/live/live-security.ps1
-       (security_battery), each after an actual passing run against the real API --
-       calibrate-premises.ps1 never writes or refreshes either sub-record, so recalibrating always
-       drops the WHOLE live_evidence object and both live gates must rerun. #>
+       battery, and bound none of the wrapper implementation itself. `live_evidence` is now an
+       object with TWO REQUIRED named sub-records, `schema_gate` and `security_battery`; EACH
+       must independently carry a matching fingerprint (CLI path/version/hash, schema hash,
+       AGENTS.md hash, invocation-profile hash, AND the two fingerprints below) before this
+       passes. Either sub-record absent, or either one's fingerprint stale, refuses -- naming
+       exactly which live gate to rerun. `live_evidence` is stamped ONLY by Write-LiveEvidence
+       (below), called only from tests/live/live-schema-gate.ps1 (schema_gate) and
+       tests/live/live-security.ps1 (security_battery), each after an actual passing run against
+       the real API -- calibrate-premises.ps1 never writes or refreshes either sub-record, so
+       recalibrating always drops the WHOLE live_evidence object and both live gates must rerun.
+
+       ASYMMETRIC fingerprint verification (P1 fix, see docs/build-log/task-14-report.md, the
+       FINDING 2 follow-up). The old single `source_fingerprint` required tests/live/*.ps1
+       relative to -SkillRoot's PARENT unconditionally -- correct in this repo, but install.ps1
+       ships only codex-review/ and codex-reviewed-dev/ into ~/.claude/skills/, so an installed
+       tree has no tests/ directory anywhere nearby and this function THREW on every real review
+       round run from an install. Each sub-record now carries two independent fingerprints:
+         - `wrapper_fingerprint` (Get-WrapperFingerprint) -- the shipped wrapper sources that
+           EXECUTE at runtime, resolved under -SkillRoot itself. ALWAYS verified against the
+           current stack, in EVERY environment: this is the runtime-critical binding, and every
+           environment that can reach this function ships these files under -SkillRoot.
+         - `gate_fingerprint` (Get-GateFingerprint) -- the two live gates alone authorized to
+           stamp live evidence. Verified ONLY when tests/live/live-schema-gate.ps1 AND
+           tests/live/live-security.ps1 are both present next to -SkillRoot's parent (the dev
+           repo). An installed tree never has them, so there is nothing to recompute against --
+           the recorded value is kept purely as STAMPING-TIME PROVENANCE there, never compared to
+           a value this environment structurally cannot reproduce.
+       In short: we VERIFY, in every environment, what RUNS in that environment; we BIND, only
+       where it can be recomputed, what STAMPED the evidence. It remains impossible for a
+       missing or mismatched wrapper_fingerprint to pass, anywhere -- only gate_fingerprint's
+       verification is environment-conditional. #>
     param([Parameter(Mandatory)][string]$SkillRoot,
           [Parameter(Mandatory)][pscustomobject]$ActualCli,
           [Parameter(Mandatory)][string]$InvocationProfileHash,
@@ -621,7 +682,17 @@ function Test-PremiseManifest {
         return (& $bad "premises.json records stack acceptance but no live evidence (calibrate-premises.ps1 cannot provide it); run tests/live/live-schema-gate.ps1 and tests/live/live-security.ps1")
     }
     $le = $m.live_evidence
-    $securitySourceFingerprint = Get-SecuritySourceFingerprint -SkillRoot $SkillRoot
+    # wrapper_fingerprint: ALWAYS computed and verified -- see the docstring's asymmetry above.
+    $wrapperFingerprint = Get-WrapperFingerprint -SkillRoot $SkillRoot
+    # gate_fingerprint: only verifiable where tests/live/*.ps1 actually exist to recompute it
+    # against. Split-Path/Join-Path/Test-Path are pure string+filesystem checks -- this never
+    # throws even when $SkillRoot's parent does not exist or has no tests/ child, which is
+    # exactly the installed-tree case this whole fix exists for.
+    $repoRoot = Split-Path $SkillRoot -Parent
+    $gateScriptRelPaths = @('tests\live\live-schema-gate.ps1', 'tests\live\live-security.ps1')
+    $missingGateFiles = @($gateScriptRelPaths | Where-Object { -not (Test-Path -LiteralPath (Join-Path $repoRoot $_) -PathType Leaf) })
+    $gatesPresent = ($missingGateFiles.Count -eq 0)
+    $gateFingerprint = if ($gatesPresent) { Get-GateFingerprint -RepoRoot $repoRoot } else { $null }
     $gateRerun = @{ schema_gate = 'tests/live/live-schema-gate.ps1'; security_battery = 'tests/live/live-security.ps1' }
     foreach ($gateName in @('schema_gate','security_battery')) {
         if ($le.PSObject.Properties.Name -notcontains $gateName) { $le | Add-Member -NotePropertyName $gateName -NotePropertyValue $null }
@@ -629,23 +700,27 @@ function Test-PremiseManifest {
         if ($null -eq $rec -or $rec -isnot [System.Management.Automation.PSCustomObject]) {
             return (& $bad "premises.json has no live evidence for '$gateName'; run $($gateRerun[$gateName])")
         }
-        foreach ($f in @('gate','utc','cli_path','cli_version','cli_sha256','schema_sha256','agents_md_sha256','invocation_profile_sha256','source_fingerprint')) {
+        foreach ($f in @('gate','utc','cli_path','cli_version','cli_sha256','schema_sha256','agents_md_sha256','invocation_profile_sha256','wrapper_fingerprint','gate_fingerprint')) {
             if ($rec.PSObject.Properties.Name -notcontains $f) { $rec | Add-Member -NotePropertyName $f -NotePropertyValue $null }
         }
-        foreach ($f in @('gate','utc','cli_path','cli_version','cli_sha256','schema_sha256','agents_md_sha256','invocation_profile_sha256','source_fingerprint')) {
+        foreach ($f in @('gate','utc','cli_path','cli_version','cli_sha256','schema_sha256','agents_md_sha256','invocation_profile_sha256','wrapper_fingerprint','gate_fingerprint')) {
             if ($null -eq $rec.$f -or "$($rec.$f)" -eq '') { return (& $bad "live-evidence record '$gateName' is missing '$f'; run $($gateRerun[$gateName])") }
         }
         # Compared against the MANIFEST's own top-level fields, not re-derived here: Test-StackAcceptance
         # just proved those are exactly the CURRENT stack, so this is "matches the current stack" with
-        # no second round of hashing (source_fingerprint is the one exception -- it has no top-level
-        # manifest counterpart, so it is compared directly against the freshly-computed value above).
+        # no second round of hashing (the two fingerprints are the exception -- they have no top-level
+        # manifest counterpart, so each is compared directly against its freshly-computed value below).
         if ($rec.cli_path -cne $m.cli_path -or $rec.cli_version -cne $m.cli_version -or $rec.cli_sha256 -cne $m.cli_sha256) {
             return (& $bad "live-evidence record '$gateName' was stamped for a different CLI than the one that would run this round; rerun $($gateRerun[$gateName])")
         }
         if ($rec.schema_sha256 -cne $m.schema_sha256) { return (& $bad "live-evidence record '$gateName' predates the current verdict schema; rerun $($gateRerun[$gateName])") }
         if ($rec.agents_md_sha256 -cne $m.agents_md_sha256) { return (& $bad "live-evidence record '$gateName' predates the current AGENTS.md; rerun $($gateRerun[$gateName])") }
         if ($rec.invocation_profile_sha256 -cne $m.invocation_profile_sha256) { return (& $bad "live-evidence record '$gateName' predates the current invocation profile; rerun $($gateRerun[$gateName])") }
-        if ($rec.source_fingerprint -cne $securitySourceFingerprint) { return (& $bad "live-evidence record '$gateName' predates the current security-critical wrapper sources (lib.ps1/invoke-codex.ps1/publish-review.ps1/calibrate-premises.ps1/schema/live gates); rerun $($gateRerun[$gateName])") }
+        # RUNTIME-CRITICAL, verified unconditionally: see the asymmetry in the docstring above.
+        if ($rec.wrapper_fingerprint -cne $wrapperFingerprint) { return (& $bad "live-evidence record '$gateName' predates the current wrapper sources (lib.ps1/invoke-codex.ps1/publish-review.ps1/calibrate-premises.ps1/schema); rerun $($gateRerun[$gateName])") }
+        # Verified ONLY where the live-gate sources exist to recompute it against; otherwise the
+        # recorded value is stamping-time provenance and is never compared.
+        if ($gatesPresent -and $rec.gate_fingerprint -cne $gateFingerprint) { return (& $bad "live-evidence record '$gateName' predates the current live-gate sources (tests/live/live-schema-gate.ps1, tests/live/live-security.ps1); rerun $($gateRerun[$gateName])") }
     }
     [pscustomobject]@{ Valid=$true; Reason=$null; Manifest=$m }
 }
@@ -658,9 +733,12 @@ function Write-LiveEvidence {
        (-Gate 'security_battery'), each only after an actual live round against the real API has
        succeeded. Requires premises.json to already exist (calibrate-premises.ps1 must run first)
        -- this stamps a live-evidence sub-object onto the existing stack-acceptance manifest, it
-       does not create one. source_fingerprint is ALWAYS derived here via
-       Get-SecuritySourceFingerprint, never accepted as a caller-supplied value, so a stamp always
-       reflects what is genuinely on disk at stamping time. #>
+       does not create one. Stamps BOTH `wrapper_fingerprint` (Get-WrapperFingerprint, relative
+       to -SkillRoot) and `gate_fingerprint` (Get-GateFingerprint, relative to -SkillRoot's
+       parent) -- this script always runs in the dev repo (its only two callers each live next to
+       a real tests/live/), so both are always genuinely computable here. Neither is ever
+       accepted as a caller-supplied value, so a stamp always reflects what is genuinely on disk
+       at stamping time. #>
     param([Parameter(Mandatory)][string]$SkillRoot,
           [Parameter(Mandatory)][ValidateSet('schema_gate','security_battery')][string]$Gate,
           [Parameter(Mandatory)][pscustomobject]$ActualCli,
@@ -670,12 +748,14 @@ function Write-LiveEvidence {
     $path = Join-Path $SkillRoot 'premises.json'
     if (-not (Test-Path $path)) { throw "premises.json is absent; run calibrate-premises.ps1 before stamping live evidence" }
     $m = Get-Content -Raw $path | ConvertFrom-Json
+    $repoRoot = Split-Path $SkillRoot -Parent
     $record = [pscustomobject]@{
         gate = $Gate; utc = (Get-Date -AsUTC -Format o)
         cli_path = $ActualCli.Path; cli_version = $ActualCli.Version; cli_sha256 = $ActualCli.Sha256
         schema_sha256 = $SchemaSha256; agents_md_sha256 = $AgentsMdSha256
         invocation_profile_sha256 = $InvocationProfileHash
-        source_fingerprint = (Get-SecuritySourceFingerprint -SkillRoot $SkillRoot)
+        wrapper_fingerprint = (Get-WrapperFingerprint -SkillRoot $SkillRoot)
+        gate_fingerprint = (Get-GateFingerprint -RepoRoot $repoRoot)
     }
     $evidence = if (($m.PSObject.Properties.Name -contains 'live_evidence') -and ($null -ne $m.live_evidence)) { $m.live_evidence } else { [pscustomobject]@{} }
     if ($evidence.PSObject.Properties.Name -contains $Gate) { $evidence.$Gate = $record }

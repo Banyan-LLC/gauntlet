@@ -60,7 +60,7 @@ Trivial document. Nothing to report.
     if ($script:Failures.Count -eq 0) {
         $agentsPath = "$env:USERPROFILE\.codex\AGENTS.md"
         $agentsSha = if (Test-Path $agentsPath) { (Get-FileHash -Algorithm SHA256 $agentsPath).Hash.ToLowerInvariant() } else { 'absent' }
-        Write-LiveEvidence -SkillRoot $skillRoot -Gate 'live-schema-gate' -ActualCli $cli `
+        Write-LiveEvidence -SkillRoot $skillRoot -Gate 'schema_gate' -ActualCli $cli `
             -SchemaSha256 (Get-FileHash -Algorithm SHA256 $schema).Hash.ToLowerInvariant() `
             -AgentsMdSha256 $agentsSha -InvocationProfileHash (Get-InvocationProfileHash -DisableSet $disable)
         Write-Host "stamped live-evidence record in premises.json" -ForegroundColor Green
