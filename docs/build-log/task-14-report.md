@@ -361,3 +361,197 @@ building that state from `New-ValidPremisesHashtable` with `live_evidence` expli
    the same argument shapes the gate script now uses) and a static parse check of the gate script
    itself. The first real run of `tests/live/live-schema-gate.ps1` will be the actual end-to-end
    proof.
+
+---
+
+# Task 14 follow-up: three security fixes from external review (2026-08-16)
+
+Status: complete, all green. Baseline 395 (composer 36, discovery 27, invoke 194, policy 15,
+publish 53, schema 9, state 61) -> final 432 (composer 37, discovery 27, invoke 230, policy 15,
+publish 53, schema 9, state 61). Three commits, one per finding, on `main` in this repo (not
+pushed). No live model calls, no GitHub calls, no network: every test uses fake CLI shims.
+Nothing under `tests/live/` was run, per the task's explicit instruction.
+
+- `dd46ad0` -- fix(codex-review): run review sessions --ephemeral, no rollout persistence to CODEX_HOME
+- `3dd64c2` -- fix(codex-review): make Get-RunUsage fail closed on malformed evidence
+- `7e09b88` -- fix(codex-review): bind live evidence to both gates and the wrapper sources
+
+## FINDING 1 (P1): `--ephemeral` missing from every review session
+
+`New-CodexArgs` omitted `--ephemeral`, so every round persisted session/rollout files -- which
+embed the UNTRUSTED review material -- to the real `CODEX_HOME`, outside every state directory
+this skill audits. `codex exec --help` advertises `--ephemeral  Run without persisting session
+files to disk`.
+
+Wired through the whole chain so an arg set missing it is rejected, not silently accepted:
+`$script:RequiredExecFlags` (compatibility probe -- a CLI that doesn't advertise it fails
+discovery), `New-CodexArgs` (composed args, grouped with the other hermetic flags right after
+`--skip-git-repo-check`), `Get-InvocationAudit` Layer 1's explicit presence-check list (Layer 2's
+canonical rebuild already covered it automatically, via `New-CodexArgs`). `Get-InvocationProfileHash`
+derives from `New-CodexArgs`'s output, so the profile hash now automatically differs between an
+arg set with and without `--ephemeral` -- proven by shadowing the builder (the flag is
+unconditional, so there is no toggle to flip directly).
+
+Tests (+2, both in the two files the finding named plus the derived fixture in test-invoke.ps1):
+`test-composer.ps1` -- an arg array missing `--ephemeral` fails `Get-InvocationAudit`; kept the
+LAYER1 shadow builder's "only the sandbox value differs" comment true by adding `--ephemeral`
+there too. `test-invoke.ps1` -- the invocation-profile hash of a with- vs without-`--ephemeral`
+arg set differ (shadowed `New-CodexArgs`, same technique as the file's existing FIXED-ARRAY
+discriminator). `test-discovery.ps1`'s hand-written `exec --help` fixture updated so the probe
+still passes; `test-invoke.ps1`'s fixture already derives from `$script:RequiredExecFlags`
+automatically, so it needed no manual edit. Documented in `docs/design.md` (hermetic-invocation
+bullet list, plus the "Exec set" flag enumeration for consistency) and `codex-review/SKILL.md`
+(hermeticity line).
+
+## FINDING 4a (P1): `Get-RunUsage` discarded malformed evidence instead of failing closed
+
+`Get-RunUsage` `continue`d past a line that failed to parse as JSON, parsed to a non-object JSON
+value, or parsed to an object with no `type` field -- so a genuine, valid `turn.completed` could
+coexist with a malformed or adversarial line ELSEWHERE in the stream and the run was still
+ACCEPTED. Fixed to fail closed on all of those, plus reject `turn.failed` the same way a
+top-level `error` event already was. Blank/whitespace-only lines are still skipped.
+
+**Discrimination proof, run BEFORE writing the fix (TDD red step), against the pre-fix code
+still in `lib.ps1` at that point:**
+
+| Run | Result |
+|---|---|
+| Regressions added, fix NOT yet applied (`pwsh -NoProfile -File tests/test-invoke.ps1`) | `198 passed, 20 failed` -- all 20 failures were exactly the new regressions (7 direct `Get-RunUsage` unit-level + 13 end-to-end via `invoke-codex.ps1`); the pre-existing 198 were unaffected |
+| Fix applied, same file rerun | `218 passed, 0 failed` (run twice for stability) |
+
+The 20 pre-fix failures, verbatim (each is "expected closed, observed accepted"):
+non-blank unparseable line, bare JSON `null`, bare JSON array `[1,2,3]`, bare JSON number `42`,
+bare JSON string `"..."`, well-formed object with no `type`, and a `turn.failed` event -- each of
+those 7 as a direct `Get-RunUsage -EventLines` call combining the bad line with a genuine valid
+`turn.completed`; and the same 4 cases named by the task (unparseable / null / no-type-object /
+turn.failed) end-to-end through `invoke-codex.ps1` via 4 new fake-shim `-UsageBehavior` values
+(`unparseable-line`, `null-line`, `no-type-object`, `turn-failed`, each emitting a GENUINE valid
+terminal `turn.completed` plus, separately, one bad line) -- each left exit code `0` and a
+canonical verdict where the fixed contract now requires exit `11` and no canonical verdict.
+
+Fixing the regressions surfaced a real latent test-fixture bug the old fail-open behavior had
+been silently masking, not a flaw in the fix: the fake CLI shim's `.cmd` wrapper had no
+`@echo off`, so once a test appends an un-prefixed line to simulate binary tampering (e.g. `rem
+tampered-between-rounds`, used elsewhere in this suite to exercise `Test-BinaryUnchanged`),
+`cmd.exe` echoes that line back to stdout on every LATER run of that same shim. The old
+`Get-RunUsage` silently discarded that stray line; the new one correctly rejected it as
+unparseable -- which broke 14 unrelated, previously-passing golden-path tests that reused the
+same tampered shim later in the file. Root-caused and fixed in `helpers.ps1`'s
+`New-FakeCodexShim` (added `@echo off` to the `.cmd` template) rather than by weakening the fix;
+confirmed the fix was correct by re-running twice with no flakiness.
+
+## FINDING 2 (P1): a schema-only stamp authorized the whole security-sensitive stack
+
+`Test-PremiseManifest` accepted ONE generic `live_evidence` record, written only by the schema
+gate -- so calibration plus one schema-gate pass could authorize production without ever
+rerunning the security battery, and no part of `live_evidence` bound the wrapper implementation
+(`lib.ps1`/`invoke-codex.ps1`/`publish-review.ps1`) itself. This commit builds the SHAPE and the
+verification; stamping by the gates themselves (wiring `live-schema-gate.ps1` /
+`live-security.ps1` to call `Write-LiveEvidence` with the new `-Gate` values) is explicitly
+deferred to a later task, per the brief.
+
+**`Get-SecuritySourceFingerprint -SkillRoot <root>`** (new): deterministic SHA-256 over a FIXED,
+SORTED list of the security-critical shipped sources, resolved relative to `-SkillRoot`'s
+PARENT (matching this repo's real layout -- the two live gates live under a sibling `tests/live/`,
+not under `codex-review/`):
+
+- `codex-review/scripts/lib.ps1`
+- `codex-review/scripts/invoke-codex.ps1`
+- `codex-review/scripts/publish-review.ps1`
+- `codex-review/scripts/calibrate-premises.ps1`
+- `codex-review/schemas/verdict.schema.json`
+- `tests/live/live-schema-gate.ps1`
+- `tests/live/live-security.ps1`
+
+Per file: hash `(repo-relative-path bytes + file bytes)`; concatenate the per-file hex digests in
+the fixed sorted order; hash the concatenation once more. A listed file that is missing throws
+(fail closed) rather than being silently omitted.
+
+`live_evidence` is now an object with two required named sub-records, `schema_gate` and
+`security_battery`, each carrying `gate`/`utc`/`cli_path`/`cli_version`/`cli_sha256`/
+`schema_sha256`/`agents_md_sha256`/`invocation_profile_sha256`/`source_fingerprint`.
+`Test-PremiseManifest` requires BOTH present and each one's full fingerprint (including
+`source_fingerprint`) matching the CURRENT stack; absent either sub-record, or any mismatch,
+refuses with a message naming exactly which live gate to rerun. Same StrictMode backfill
+discipline as the rest of the file: a wholly-absent key fails closed with a `Reason`, never
+throws. `Write-LiveEvidence` takes `-Gate <schema_gate|security_battery>` (`ValidateSet`) and
+writes/updates only that named sub-record, leaving the other completely untouched;
+`source_fingerprint` is always derived internally via `Get-SecuritySourceFingerprint`, never
+accepted as a caller-supplied value. `calibrate-premises.ps1` already drops the whole
+`live_evidence` object on every (re)write (it's a full-file overwrite with no `live_evidence` key
+in its own output) -- confirmed this still holds for the two-sub-record shape; updated its
+docstring to say so explicitly (both live gates must rerun after a recalibration, not just
+whichever one drifted).
+
+**Offline regressions (`test-invoke.ps1`, synthesized manifests under a temp skill root literally
+named `codex-review` so `Get-SecuritySourceFingerprint`'s fixed relative paths resolve -- never
+the real gitignored `premises.json`, confirmed byte-identical before/after the whole file run):**
+
+| Case | Result |
+|---|---|
+| (a) only `schema_gate` present | refused, reason names `security_battery` and `tests/live/live-security.ps1` |
+| mirror: only `security_battery` present | refused, reason names `schema_gate` and `tests/live/live-schema-gate.ps1` |
+| (b) both present, `security_battery` fingerprinted for a stale CLI hash | refused, reason names `security_battery` and its own live gate, even though `schema_gate` matches |
+| mirror: `schema_gate` stamped for a stale schema hash | refused, reason names `schema_gate`, even though `security_battery` matches |
+| (c) both present and matching | accepted (`.Valid -eq $true`) |
+| (d) `Write-LiveEvidence -Gate security_battery` onto a manifest with only `schema_gate` stamped | `schema_gate` byte-for-byte unchanged (`ConvertTo-Json -Compress` before/after equal); manifest then valid |
+| mirror: `Write-LiveEvidence -Gate schema_gate` onto a manifest with only `security_battery` stamped | `security_battery` byte-for-byte unchanged |
+| recalibrating (fresh stack-only manifest, no `live_evidence` key) after both were stamped | refused again -- both sub-records dropped at once |
+| (e) `Get-SecuritySourceFingerprint`: deterministic (two calls, same input, equal) | equal |
+| (e) editing `lib.ps1` | fingerprint changes |
+| (e) editing a live gate script (`live-security.ps1`) | fingerprint ALSO changes (proves the fixed list spans both directories, not just `codex-review/scripts/`) |
+| (e) restoring both files' original bytes | fingerprint returns to the original value |
+| missing required file (`calibrate-premises.ps1` omitted from a synthesized tree) | `Get-SecuritySourceFingerprint` throws |
+
+`Set-TestManifest` (used by every `invoke-codex.ps1` entry-behavior test elsewhere in the file)
+updated to stamp both matching sub-records, so the large pre-existing pin/harness/retry/budget/
+carry-over battery continues to exercise the full, now-stricter production gate unchanged.
+`invoke-codex.ps1`'s and `install.ps1`'s exit-12/refusal messages no longer hardcode "run
+tests/live/live-schema-gate.ps1" (would now be actively misleading when `security_battery` alone
+is the stale one) -- they point at the specific gate the `Reason` string already names.
+
+## Verification commands (all run from the worktree root, individually per the task's
+instruction -- the aggregator `run-tests.ps1` was not used for the final counts)
+
+```
+pwsh -NoProfile -File tests/test-composer.ps1    # 37 passed, 0 failed
+pwsh -NoProfile -File tests/test-discovery.ps1   # 27 passed, 0 failed
+pwsh -NoProfile -File tests/test-invoke.ps1      # 230 passed, 0 failed (run twice, stable)
+pwsh -NoProfile -File tests/test-policy.ps1      # 15 passed, 0 failed
+pwsh -NoProfile -File tests/test-publish.ps1     # 53 passed, 0 failed
+pwsh -NoProfile -File tests/test-schema.ps1      # 9 passed, 0 failed
+pwsh -NoProfile -File tests/test-state.ps1       # 61 passed, 0 failed
+```
+
+Progression across the three commits: 395 (baseline) -> 397 (after FINDING 1) -> 420 (after
+FINDING 4a) -> 432 (after FINDING 2). `git status` clean after the full run; no stray
+`codex-review/premises.json` was created (confirmed by both the file's own byte-identical
+before/after assertion and a direct directory listing).
+
+## Concerns (full list, this follow-up)
+
+1. **Production wiring gap (FINDING 2 is intentionally incomplete by design):**
+   `Get-SecuritySourceFingerprint` resolves `tests/live/*.ps1` as siblings of `-SkillRoot`'s
+   parent -- this repo's own layout. `install.ps1` only copies `codex-review/` and
+   `codex-reviewed-dev/` to `~/.claude/skills/`; it does not ship `tests/`. Once the deferred
+   follow-up task wires `live-schema-gate.ps1`/`live-security.ps1` to call `Write-LiveEvidence`,
+   an INSTALLED tree will have no `tests/live/` sibling for `Get-SecuritySourceFingerprint` to
+   find, and it will throw (fail closed, but not usefully). Either `install.ps1` needs to also
+   ship `tests/live/`, or the fingerprint's file-resolution needs to be revisited before that
+   follow-up task lands. Not fixed here -- flagged per the brief's own "stamping is a later task"
+   scope, and also raised as a spawned background-task suggestion.
+2. `tests/live/live-schema-gate.ps1`'s existing `Write-LiveEvidence` call still passes
+   `-Gate 'live-schema-gate'`, a value the new `[ValidateSet('schema_gate','security_battery')]`
+   rejects. Left as-is deliberately (the brief: "the gates will call this in a later task; just
+   build and unit-test it here") and never executed in this session. The later task that wires
+   the gates must update this call site (and add the equivalent call to
+   `tests/live/live-security.ps1`, which does not currently call `Write-LiveEvidence` at all).
+3. `docs/design.md` and both `SKILL.md` files still describe `live_evidence` as a single record
+   authorized by the schema gate alone (the FINDING-1 doc updates were scoped narrowly to the
+   hermeticity/`--ephemeral` lines the task named; FINDING 2 had no explicit "document it"
+   instruction and its production behavior doesn't exist yet -- wiring the gates in the later
+   task is the natural point to also sync these docs). Flagging so it isn't forgotten once that
+   task lands.
+4. `docs/implementation-plan.md` was not synced for any of these three findings (consistent with
+   how it was already left behind after earlier live-evidence rounds, per this same file's
+   Concern #1 in the prior follow-up section above).
