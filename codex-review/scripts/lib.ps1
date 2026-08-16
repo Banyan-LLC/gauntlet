@@ -1258,12 +1258,20 @@ function ConvertTo-CarryOverText {
 # --- Task 8: publication, dismissal, handoff freshness -----------------------------------
 
 function Get-ReviewMarker {
+    # -BaseRefName/-BaseTipOid (P1 fix, see docs/build-log/task-14-report.md, drill 6): threaded
+    # through into the marker itself as durable, on-GitHub provenance of what the base was
+    # believed to be at review time. Both are PASSED IN (never freshly queried here), exactly
+    # like -Base/-Head -- so a marker recomputed for the SAME publish attempt (retry after a
+    # transient failure) is byte-identical and idempotency recovery via .Contains($marker) still
+    # finds the already-posted review. The separate LIVE drift check (Get-BaseBranchTip) is what
+    # decides whether to publish at all; it never feeds into this string.
     param([Parameter(Mandatory)][int]$Pr, [Parameter(Mandatory)][string]$Base,
-          [Parameter(Mandatory)][string]$Head, [Parameter(Mandatory)][int]$Round,
+          [Parameter(Mandatory)][string]$Head, [Parameter(Mandatory)][string]$BaseRefName,
+          [Parameter(Mandatory)][string]$BaseTipOid, [Parameter(Mandatory)][int]$Round,
           [Parameter(Mandatory)][string]$NormalizedJson)
     $sha = [System.Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($NormalizedJson))
     $digest = (-join ($sha | ForEach-Object { $_.ToString('x2') })).Substring(0, 12)
-    "<!-- codex-review:pr=${Pr}:base=${Base}:head=${Head}:round=${Round}:digest=${digest} -->"
+    "<!-- codex-review:pr=${Pr}:base=${Base}:base_ref=${BaseRefName}:base_tip=${BaseTipOid}:head=${Head}:round=${Round}:digest=${digest} -->"
 }
 
 function ConvertTo-ReviewBody {
@@ -1334,22 +1342,56 @@ function Invoke-Gh {
 }
 
 function Get-PrOids {
+    # -json also carries baseRefName now (P1 fix, see docs/build-log/task-14-report.md, drill 6):
+    # baseRefOid is STATIC, frozen at PR-open time -- it never tracks the base branch actually
+    # advancing. baseRefName is what lets a caller then ask the LIVE branch-tip endpoint
+    # (Get-BaseBranchTip) whether the base has moved. One extra --json field, no extra call.
     param([string]$Token, [string]$OwnerRepo, [int]$Pr)
-    $r = Invoke-Gh -Token $Token -GhArgs @('pr','view',"$Pr",'--repo',$OwnerRepo,'--json','baseRefOid,headRefOid')
+    $r = Invoke-Gh -Token $Token -GhArgs @('pr','view',"$Pr",'--repo',$OwnerRepo,'--json','baseRefOid,headRefOid,baseRefName')
     if ($r.ExitCode -ne 0) { throw "TRANSIENT: gh pr view failed" }
     $o = $r.Stdout | ConvertFrom-Json
-    [pscustomobject]@{ BaseOid = $o.baseRefOid; HeadOid = $o.headRefOid }
+    [pscustomobject]@{ BaseOid = $o.baseRefOid; HeadOid = $o.headRefOid; BaseRefName = $o.baseRefName }
+}
+
+function Get-BaseBranchTip {
+    <# Live tip of a PR's base branch: repos/<o>/<r>/git/ref/heads/<branch>. P1 fix (see
+       docs/build-log/task-14-report.md, drill 6): Get-PrOids's baseRefOid is STATIC, frozen at
+       PR-open time -- confirmed empirically live (scratch repo's main advanced from 8fa5aafa to
+       3dc0738; baseRefOid stayed 8fa5aafa, unchanged after a 20s wait). This is the endpoint that
+       actually moves. Structured {Ok;Sha;Reason} result, never throws for an ordinary
+       unreadable/malformed-ref outcome, so callers (Publish-CodexReview, Test-HandoffFresh) can
+       fail closed with a precise, distinct reason instead of routing every failure through a
+       generic transport catch. #>
+    param([Parameter(Mandatory)][string]$Token, [Parameter(Mandatory)][string]$OwnerRepo,
+          [Parameter(Mandatory)][string]$BaseRefName)
+    try {
+        $r = Invoke-Gh -Token $Token -GhArgs @('api',"repos/$OwnerRepo/git/ref/heads/$BaseRefName")
+    } catch {
+        return [pscustomobject]@{ Ok=$false; Sha=$null; Reason="base branch ref transport failed: $($_.Exception.Message)" }
+    }
+    if ($r.ExitCode -ne 0) { return [pscustomobject]@{ Ok=$false; Sha=$null; Reason='base branch ref unreadable' } }
+    $o = try { $r.Stdout | ConvertFrom-Json } catch { $null }
+    $sha = if ($null -ne $o) { try { $o.object.sha } catch { $null } } else { $null }
+    if (-not $sha) { return [pscustomobject]@{ Ok=$false; Sha=$null; Reason='base branch ref unreadable (malformed response)' } }
+    [pscustomobject]@{ Ok=$true; Sha=$sha; Reason=$null }
 }
 
 function Publish-CodexReview {
+    # -BaseRefName/-BaseTipOid (P1 fix, see docs/build-log/task-14-report.md, drill 6): the base
+    # provenance captured BEFORE the review was composed. -BaseOid stays exactly what it always
+    # was -- the DIFF BASE the reviewed diff was computed from -- and is not repurposed. These two
+    # new fields drive an INDEPENDENT live check against the base branch's actual tip (the
+    # endpoint that moves; baseRefOid does not), enforced both here (pre- and post-publication)
+    # and again at handoff (Test-HandoffFresh).
     param(
         [Parameter(Mandatory)][string]$Token, [Parameter(Mandatory)][string]$OwnerRepo,
         [Parameter(Mandatory)][int]$Pr, [Parameter(Mandatory)][pscustomobject]$NormalizedVerdict,
         [Parameter(Mandatory)][string]$BaseOid, [Parameter(Mandatory)][string]$HeadSha,
+        [Parameter(Mandatory)][string]$BaseRefName, [Parameter(Mandatory)][string]$BaseTipOid,
         [Parameter(Mandatory)][int]$Round, [Parameter(Mandatory)][string]$NormalizedJson,
         [Parameter(Mandatory)][string]$StateDir, [string]$Reviewer = 'BanyanLLC'
     )
-    $marker = Get-ReviewMarker -Pr $Pr -Base $BaseOid -Head $HeadSha -Round $Round -NormalizedJson $NormalizedJson
+    $marker = Get-ReviewMarker -Pr $Pr -Base $BaseOid -Head $HeadSha -BaseRefName $BaseRefName -BaseTipOid $BaseTipOid -Round $Round -NormalizedJson $NormalizedJson
     $digest = [regex]::Match($marker, 'digest=([0-9a-f]{12})').Groups[1].Value
     $expectedState = if ($NormalizedVerdict.verdict -eq 'approve') { 'APPROVED' } else { 'CHANGES_REQUESTED' }
     $event = if ($NormalizedVerdict.verdict -eq 'approve') { 'APPROVE' } else { 'REQUEST_CHANGES' }
@@ -1369,8 +1411,15 @@ function Publish-CodexReview {
     }
 
     $oids = Get-PrOids -Token $Token -OwnerRepo $OwnerRepo -Pr $Pr
-    if ($oids.BaseOid -ne $BaseOid -or $oids.HeadOid -ne $HeadSha) {
+    if ($oids.BaseOid -ne $BaseOid -or $oids.HeadOid -ne $HeadSha -or $oids.BaseRefName -cne $BaseRefName) {
         Write-Warning "drift before publication; aborting without mutation"
+        return 2
+    }
+    # Base branch TIP, independently of the (static) baseRefOid check just above -- see
+    # Get-BaseBranchTip's own comment for why baseRefOid alone cannot detect this.
+    $preTip = Get-BaseBranchTip -Token $Token -OwnerRepo $OwnerRepo -BaseRefName $BaseRefName
+    if (-not $preTip.Ok -or $preTip.Sha -ne $BaseTipOid) {
+        Write-Warning "base branch drift before publication; aborting without mutation"
         return 2
     }
 
@@ -1398,11 +1447,17 @@ function Publish-CodexReview {
     # StrictMode-safe: a read-back missing `user`/`login` must read as "not this reviewer", not
     # throw — a validator reading API JSON returns its documented failure result on a missing key.
     $authorLogin = try { $rv.user.login } catch { $null }
+    # Base branch TIP, re-verified again post-POST (same reasoning as the pre-publication check
+    # above, same paranoid double-check pattern this function already applies to BaseOid/HeadOid).
+    $postTip = Get-BaseBranchTip -Token $Token -OwnerRepo $OwnerRepo -BaseRefName $BaseRefName
     $verified = ($rv.commit_id -eq $HeadSha) -and ($rv.state -eq $expectedState) -and
                 ($now.BaseOid -eq $BaseOid) -and ($now.HeadOid -eq $HeadSha) -and
+                ($now.BaseRefName -ceq $BaseRefName) -and
+                ($postTip.Ok) -and ($postTip.Sha -eq $BaseTipOid) -and
                 ($authorLogin -ceq $Reviewer)
     if ($verified) {
-        @{ base_oid=$BaseOid; reviewed_head_sha=$HeadSha; round=$Round; github_review_id=$reviewId
+        @{ base_oid=$BaseOid; base_ref_name=$BaseRefName; base_tip_oid=$BaseTipOid
+           reviewed_head_sha=$HeadSha; round=$Round; github_review_id=$reviewId
            event=$event; marker=$marker; digest=$digest; timestamp=(Get-Date -AsUTC -Format o) } |
             ConvertTo-Json | Set-Content (Join-Path $StateDir 'publication.json') -Encoding utf8
         return 0
@@ -1443,7 +1498,19 @@ function Test-HandoffFresh {
     }
     $now = Get-PrOids -Token $Token -OwnerRepo $OwnerRepo -Pr $Pr
     if ($now.HeadOid -ne $pub.reviewed_head_sha)      { return (& $fail 'head advanced') }
-    if ($now.BaseOid -ne $pub.base_oid)               { return (& $fail 'base advanced') }
+    # P1 FIX (see docs/build-log/task-14-report.md, drill 6): the guard used to read
+    # `$now.BaseOid -ne $pub.base_oid` -- both sides ultimately backed by the PR's `baseRefOid`,
+    # which GitHub freezes at PR-open time, so this compared a value to ITSELF and could never
+    # fire (proven live: main advanced, baseRefOid did not). base_oid stays the DIFF BASE and is
+    # deliberately not read here again. Replaced by two independent, REAL checks against what
+    # was captured before this review was composed: the base ref's NAME (retargeting a PR to a
+    # different base branch is a distinct, worse problem than the tip merely advancing) and the
+    # base branch's LIVE TIP (Get-BaseBranchTip -- the endpoint that actually moves). An
+    # unreadable ref is never evidence of "unchanged" -- fail closed, never pass.
+    if ($now.BaseRefName -cne $pub.base_ref_name)     { return (& $fail 'base ref renamed') }
+    $tip = Get-BaseBranchTip -Token $Token -OwnerRepo $OwnerRepo -BaseRefName $now.BaseRefName
+    if (-not $tip.Ok)                                 { return (& $fail "base ref unreadable: $($tip.Reason)") }
+    if ($tip.Sha -ne $pub.base_tip_oid)               { return (& $fail 'base advanced') }
     # CI must be green on the REVIEWED sha (spec: approval + green CI on that same commit).
     $cr = Invoke-Gh -Token $Token -GhArgs @('api','--paginate','--slurp',"repos/$OwnerRepo/commits/$($pub.reviewed_head_sha)/check-runs")
     if ($cr.ExitCode -ne 0) { return (& $fail 'check-runs read failed') }

@@ -45,7 +45,7 @@ One artifact, one bounded loop. Modes: `doc` (spec/plan) and `pr`. The reviewer 
 
 3. One round (one attempt). Pass the ledger with `-CarryOverFile` on every round after the first:
    `pwsh -File <skill>/scripts/invoke-codex.ps1 -Mode doc -PromptFile <f> -StateDir <dir> -Round <n> -RepoRoot <repo> -ArtifactPath <p> -ArtifactCommit <sha> [-CarryOverFile <ledger>]`
-   `pwsh -File <skill>/scripts/invoke-codex.ps1 -Mode pr  -PromptFile <f> -StateDir <dir> -Round <n> -RepoRoot <repo> -PrNumber <n> -BaseOid <oid> -HeadSha <sha> [-CarryOverFile <ledger>]`
+   `pwsh -File <skill>/scripts/invoke-codex.ps1 -Mode pr  -PromptFile <f> -StateDir <dir> -Round <n> -RepoRoot <repo> -PrNumber <n> -BaseOid <oid> -HeadSha <sha> -BaseRefName <name> -BaseTipOid <tip> [-CarryOverFile <ledger>]`
    - **0** → verdict ready in `round-N-verdict.json`.
    - **11** → retry the SAME round **once** (it becomes attempt 2; nothing is overwritten). A second failure exhausts the allowance: the next invocation returns **14** and flags, so stop and escalate rather than trying again.
    - **13** → the pinned reviewer binary changed or its pin is missing. Re-invoke the SAME round with `-AcceptNewBinary`. The round number never resets, so the cap still bites.
@@ -66,7 +66,7 @@ One artifact, one bounded loop. Modes: `doc` (spec/plan) and `pr`. The reviewer 
      human flag.
    - **10 / 14** → human flag (budget overflow; round cap, attempt cap, or a round that already completed).
 4. `pr` mode: publish:
-   `pwsh -File <skill>/scripts/publish-review.ps1 -OwnerRepo <o/r> -Pr <n> -Round <n> -VerdictFile <round-N-verdict.json> -StateDir <pr state dir> -BaseOid <oid> -HeadSha <sha>`
+   `pwsh -File <skill>/scripts/publish-review.ps1 -OwnerRepo <o/r> -Pr <n> -Round <n> -VerdictFile <round-N-verdict.json> -StateDir <pr state dir> -BaseOid <oid> -HeadSha <sha> -BaseRefName <name> -BaseTipOid <tip>`
    - 0 → done. 2/3 → refresh oids, re-review (counts a round). 4 → HUMAN FLAG now. 5 → retry once, then human flag. 11/12 → human flag.
 5. `approve` → done; report outstanding nits at the human gate (never dropped).
 6. `request_changes` → address with judgment (receiving-code-review discipline). Where a recommendation is wrong, the place to push back is the ledger's `reason` on a `disputed` entry — that is what the reviewer will see. Commit. Round+1 → step 2b, rebuilding the ledger from every `round-*-verdict.json`.
@@ -96,5 +96,18 @@ One artifact, one bounded loop. Modes: `doc` (spec/plan) and `pr`. The reviewer 
 ## pr-mode inputs
 
 Before each pr round (author side, geoffroth token):
-`gh pr view <n> --json baseRefOid,headRefOid,title,body,statusCheckRollup` → record `(baseOid, headSha)`; diff: `git fetch origin && git diff <baseOid>...<headSha>`. All of it goes into REVIEW MATERIAL (untrusted).
-Handoff: `Test-HandoffFresh` from `lib.ps1` must return `Fresh` before notifying the human.
+`gh pr view <n> --json baseRefOid,headRefOid,baseRefName,title,body,statusCheckRollup` → record
+`(baseOid, headSha, baseRefName)`. Also capture the base branch's **live tip**: `gh api
+repos/<owner>/<repo>/git/ref/heads/<baseRefName>` → `.object.sha` → record as `baseTipOid`. This
+is NOT the same as `baseRefOid` above — GitHub freezes `baseRefOid` at the commit the PR was
+opened against, so it never tracks the base branch actually advancing (confirmed live: it stayed
+unchanged after main advanced 20s earlier). `baseTipOid` is the endpoint that actually moves, and
+it is what `Test-HandoffFresh`'s base-drift guard (below) checks against — see
+`Get-BaseBranchTip` in `lib.ps1` and docs/build-log/task-14-report.md, drill 6, for the full
+incident. Pass `-BaseRefName`/`-BaseTipOid` into `invoke-codex.ps1` and `publish-review.ps1`
+alongside `-BaseOid`/`-HeadSha` (all pr-mode required); diff: `git fetch origin && git diff
+<baseOid>...<headSha>`. All of it goes into REVIEW MATERIAL (untrusted).
+
+Handoff: `Test-HandoffFresh` from `lib.ps1` must return `Fresh` before notifying the human — this
+now independently re-verifies the base ref's name AND its live tip (`Get-BaseBranchTip`), not
+just `headRefOid`.

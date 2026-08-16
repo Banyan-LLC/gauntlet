@@ -521,3 +521,17 @@ OUTSTANDING before push/Task 13 (user decision): task-14 hard gates (premise liv
   DRILL 7 idempotency: PASS. Re-running publish-review.ps1 with identical inputs exited 0 and the
     review count stayed at 2 (no duplicate review).
   DRILL 8 transient fault injection: NOT RUN - stopped per instruction on the drill-6 mismatch.
+
+=== DRILL-6 FIX (P1) SHIPPED - base_ref_name/base_tip_oid replace the dead base_oid check ===
+  See docs/build-log/task-14-report.md ("Task 14 follow-up: two P1 fixes from the live e2e drill")
+  for full detail. base_oid kept as the diff base; two new fields (base_ref_name, the LIVE base
+  branch tip via a NEW Get-BaseBranchTip call against repos/<o>/<r>/git/ref/heads/<branch>, a
+  genuinely separate endpoint from baseRefOid) threaded through attempt meta, the review marker,
+  and publication.json, and enforced at pre-publication, post-publication, AND handoff (not just
+  handoff). Test-HandoffFresh's dead `$now.BaseOid -ne $pub.base_oid` line is gone, replaced by a
+  base-ref-rename check + a live-tip check that reuses the 'base advanced' reason string.
+  Discrimination proven: reverting Test-HandoffFresh to the exact original line and re-running
+  tests/test-publish.ps1 sends the new case-(a) assertion (and 6 others) RED; restored -> GREEN.
+  Suite 485 -> 504 (test-invoke +6, test-publish +13). Drill 6 itself not yet re-run against the
+  scratch e2e repo (offline fix + regressions only, per this task's scope). FIX 2 (stale-head
+  protection, round-9 waste) follows in a separate commit.

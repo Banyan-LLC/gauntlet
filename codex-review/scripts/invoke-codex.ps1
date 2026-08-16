@@ -25,6 +25,13 @@ param(
     [int]$PrNumber,                 # pr mode (required)
     [string]$BaseOid,               # pr mode (required)
     [string]$HeadSha,               # pr mode (required)
+    # base ref NAME + the base branch's LIVE TIP, captured by the caller BEFORE composing this
+    # round (P1 fix, see docs/build-log/task-14-report.md, drill 6): this script is hermetic and
+    # must NOT call gh itself, so these are accepted as provenance, not derived here. Threaded
+    # into attempt metadata only; the actual drift ENFORCEMENT lives in Publish-CodexReview and
+    # Test-HandoffFresh (lib.ps1), which do call gh.
+    [string]$BaseRefName,           # pr mode (required)
+    [string]$BaseTipOid,            # pr mode (required)
     [string]$CarryOverFile,         # required for round > 1 (validated ledger; see Test-CarryOverLedger)
     [switch]$AcceptNewBinary,       # re-probe and re-pin after exit 13, same round number
     [ValidateRange(1, 100)][int]$RoundCap = 10,
@@ -45,7 +52,7 @@ $schemaPath = "$PSScriptRoot\..\schemas\verdict.schema.json"
 New-Item -ItemType Directory -Force $StateDir | Out-Null
 
 if ($Mode -eq 'doc' -and -not ($ArtifactPath -and $ArtifactCommit)) { Write-Error "doc mode requires -ArtifactPath and -ArtifactCommit"; exit 12 }
-if ($Mode -eq 'pr' -and -not ($PrNumber -and $BaseOid -and $HeadSha)) { Write-Error "pr mode requires -PrNumber, -BaseOid, -HeadSha"; exit 12 }
+if ($Mode -eq 'pr' -and -not ($PrNumber -and $BaseOid -and $HeadSha -and $BaseRefName -and $BaseTipOid)) { Write-Error "pr mode requires -PrNumber, -BaseOid, -HeadSha, -BaseRefName, -BaseTipOid"; exit 12 }
 
 # --- BOUNDS FIRST. Both caps are checked before any probe, pin, harness, or process work, so a
 #     refused invocation launches nothing and leaves pin/harness state untouched.
@@ -231,7 +238,10 @@ $meta = @{
     timestamp=(Get-Date -AsUTC -Format o)
 }
 if ($Mode -eq 'doc') { $meta.artifact_path = $ArtifactPath; $meta.artifact_commit = $ArtifactCommit }
-else { $meta.pr_number = $PrNumber; $meta.base_oid = $BaseOid; $meta.head_sha = $HeadSha }
+else {
+    $meta.pr_number = $PrNumber; $meta.base_oid = $BaseOid; $meta.head_sha = $HeadSha
+    $meta.base_ref_name = $BaseRefName; $meta.base_tip_oid = $BaseTipOid
+}
 Write-AttemptMeta -StateDir $StateDir -Round $Round -Attempt $attempt -Meta $meta
 # Persist what the reviewer actually received, under our own control: the normalized ledger and
 # the exact rendered carry-over. The caller's ledger file can change or vanish; these cannot.

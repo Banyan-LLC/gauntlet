@@ -1393,7 +1393,8 @@ Set-TestManifest $shim2
 # standard doc mode already is above, reusing the same fake-shim/manifest fixtures.
 # =====================================================================================
 Set-TestManifest $shim2
-$pr = @{ Mode='pr'; RepoRoot=$repo; PrNumber=101; BaseOid='abc1234'; HeadSha='def5678'; CliPathOverride=$shim2 }
+$pr = @{ Mode='pr'; RepoRoot=$repo; PrNumber=101; BaseOid='abc1234'; HeadSha='def5678'
+         BaseRefName='main'; BaseTipOid='tip9abc'; CliPathOverride=$shim2 }
 
 # --- Golden path: mirrors the doc-mode "round 1 ok" block above, property for property. ---
 $statePr = "$tmp\statePr"; New-Item -ItemType Directory -Force $statePr | Out-Null
@@ -1408,6 +1409,8 @@ $mPr1 = Get-Content -Raw "$statePr\round-1-attempt-1-meta.json" | ConvertFrom-Js
 Assert-Eq $mPr1.pr_number 101 "meta records pr number"
 Assert-Eq $mPr1.base_oid 'abc1234' "meta records base oid"
 Assert-Eq $mPr1.head_sha 'def5678' "meta records head sha"
+Assert-Eq $mPr1.base_ref_name 'main' "meta records base ref name"
+Assert-Eq $mPr1.base_tip_oid 'tip9abc' "meta records base tip oid"
 # The property that makes an attempt record identify what was reviewed: pr mode's meta must
 # carry pr provenance and must NOT carry doc mode's artifact fields (the mutually exclusive
 # if/else at invoke-codex.ps1's meta assembly). Checked via PSObject.Properties rather than a
@@ -1422,26 +1425,37 @@ Assert-Eq $stPr.round 1 "pr mode state round"; Assert-Eq $stPr.verdict 'approve'
 Assert-True ($stPr.harness_dir -notlike "$repo*") "pr mode: harness recorded and OUTSIDE the repo"
 
 # --- Missing provenance is rejected before anything runs -- pr mode's equivalent of the
-# doc-mode "without artifact provenance exits 12" check above. Unlike doc mode's two required
-# fields, pr mode's gate is a single AND across THREE ($PrNumber -and $BaseOid -and $HeadSha),
-# so each one must independently trip it when the other two are supplied.
+# doc-mode "without artifact provenance exits 12" check above. pr mode's gate is a single AND
+# across FIVE ($PrNumber -and $BaseOid -and $HeadSha -and $BaseRefName -and $BaseTipOid -- the
+# latter two added by the P1 base-drift fix, see docs/build-log/task-14-report.md, drill 6), so
+# each one must independently trip it when the other four are supplied.
 Remove-Item "$tmp\shim2\receipt.json" -Force -ErrorAction SilentlyContinue
 $stateNoPrNum = "$tmp\sPrNoNum"
-pwsh -NoProfile -File $entry -Mode pr -PromptFile $promptFile -StateDir $stateNoPrNum -Round 1 -RepoRoot $repo -BaseOid 'abc1234' -HeadSha 'def5678' -CliPathOverride $shim2
+pwsh -NoProfile -File $entry -Mode pr -PromptFile $promptFile -StateDir $stateNoPrNum -Round 1 -RepoRoot $repo -BaseOid 'abc1234' -HeadSha 'def5678' -BaseRefName 'main' -BaseTipOid 'tip9abc' -CliPathOverride $shim2
 Assert-Eq $LASTEXITCODE 12 "pr mode without -PrNumber exits 12"
 Assert-True (-not (Test-Path "$stateNoPrNum\round-1-attempt-1-meta.json")) "no attempt record when -PrNumber is missing"
 Assert-True (-not (Test-Path "$stateNoPrNum\cli-pin.json")) "provenance refusal (-PrNumber) wrote no pin"
 Assert-True (-not (Test-Path "$tmp\shim2\receipt.json")) "provenance refusal (-PrNumber) launched no codex process"
 
 $stateNoBase = "$tmp\sPrNoBase"
-pwsh -NoProfile -File $entry -Mode pr -PromptFile $promptFile -StateDir $stateNoBase -Round 1 -RepoRoot $repo -PrNumber 101 -HeadSha 'def5678' -CliPathOverride $shim2
+pwsh -NoProfile -File $entry -Mode pr -PromptFile $promptFile -StateDir $stateNoBase -Round 1 -RepoRoot $repo -PrNumber 101 -HeadSha 'def5678' -BaseRefName 'main' -BaseTipOid 'tip9abc' -CliPathOverride $shim2
 Assert-Eq $LASTEXITCODE 12 "pr mode without -BaseOid exits 12"
 Assert-True (-not (Test-Path "$stateNoBase\round-1-attempt-1-meta.json")) "no attempt record when -BaseOid is missing"
 
 $stateNoHead = "$tmp\sPrNoHead"
-pwsh -NoProfile -File $entry -Mode pr -PromptFile $promptFile -StateDir $stateNoHead -Round 1 -RepoRoot $repo -PrNumber 101 -BaseOid 'abc1234' -CliPathOverride $shim2
+pwsh -NoProfile -File $entry -Mode pr -PromptFile $promptFile -StateDir $stateNoHead -Round 1 -RepoRoot $repo -PrNumber 101 -BaseOid 'abc1234' -BaseRefName 'main' -BaseTipOid 'tip9abc' -CliPathOverride $shim2
 Assert-Eq $LASTEXITCODE 12 "pr mode without -HeadSha exits 12"
 Assert-True (-not (Test-Path "$stateNoHead\round-1-attempt-1-meta.json")) "no attempt record when -HeadSha is missing"
+
+$stateNoBaseRef = "$tmp\sPrNoBaseRef"
+pwsh -NoProfile -File $entry -Mode pr -PromptFile $promptFile -StateDir $stateNoBaseRef -Round 1 -RepoRoot $repo -PrNumber 101 -BaseOid 'abc1234' -HeadSha 'def5678' -BaseTipOid 'tip9abc' -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 12 "pr mode without -BaseRefName exits 12"
+Assert-True (-not (Test-Path "$stateNoBaseRef\round-1-attempt-1-meta.json")) "no attempt record when -BaseRefName is missing"
+
+$stateNoBaseTip = "$tmp\sPrNoBaseTip"
+pwsh -NoProfile -File $entry -Mode pr -PromptFile $promptFile -StateDir $stateNoBaseTip -Round 1 -RepoRoot $repo -PrNumber 101 -BaseOid 'abc1234' -HeadSha 'def5678' -BaseRefName 'main' -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 12 "pr mode without -BaseTipOid exits 12"
+Assert-True (-not (Test-Path "$stateNoBaseTip\round-1-attempt-1-meta.json")) "no attempt record when -BaseTipOid is missing"
 
 # --- A bound applies identically in pr mode: replaying an ALREADY-COMPLETED round is refused
 # (exit 14) with nothing mutated -- mirrors the doc-mode state12 replay test above (same

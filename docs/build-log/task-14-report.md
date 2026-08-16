@@ -1157,3 +1157,144 @@ task's own instructions was observed.
    after earlier rounds, per this same file's own prior Concern entries) -- none of the four
    findings named a doc-sync requirement beyond FINDING 4's own two named locations, which were
    fixed. Flagging for a decision rather than expanding scope unilaterally.
+
+---
+
+# Task 14 follow-up: two P1 fixes from the live e2e drill (2026-08-16)
+
+Status: FIX 1 complete, all green. Baseline 485 (composer 37, discovery 27, invoke 279, policy 15,
+publish 53, schema 9, state 65), confirmed by running every `tests/test-*.ps1` individually before
+touching anything. Scope: drill 6 (unreachable base-drift guard) and drill-9-round-9 (stale-head
+wasted a round), both found by `docs/build-log/progress.md`'s "TASK 13 STEP 2 (PARTIAL)" entry.
+No live model calls, no GitHub calls, no `tests/live/` run -- fake `gh` shims only, per instruction.
+
+## FIX 1 (P1): the base-drift guard was unreachable
+
+Root cause (evidence already gathered by the controller, not re-derived here): `Get-PrOids`
+(`lib.ps1`) reads `baseRefOid` from `gh pr view`, which GitHub freezes at the commit the PR was
+opened against -- it never tracks the base branch actually advancing. `publication.json`'s
+`base_oid` was recorded from that same static field, so `Test-HandoffFresh`'s
+`if ($now.BaseOid -ne $pub.base_oid) { ... 'base advanced' }` compared a value to itself and could
+never fire.
+
+**Fix**: `base_oid` is untouched -- it stays exactly what it always was, the DIFF BASE. Two new,
+independently-sourced fields are threaded through instead:
+- `base_ref_name` -- the PR's base branch name (`gh pr view --json baseRefName`, folded into the
+  existing `Get-PrOids` call -- one extra `--json` field, no extra round trip).
+- `base_tip_oid` -- the LIVE tip of that branch, from a genuinely different REST endpoint:
+  `repos/<o>/<r>/git/ref/heads/<branch>` -> `.object.sha`. New `Get-BaseBranchTip` (`lib.ps1`)
+  wraps it, returning a structured `{Ok;Sha;Reason}` (never throws for an ordinary
+  unreadable/malformed-ref outcome) so callers fail closed with a precise, distinct reason instead
+  of a generic transport catch.
+
+**Threaded through all three places named in the brief**:
+- **Attempt metadata**: `invoke-codex.ps1` gained `-BaseRefName`/`-BaseTipOid` (pr-mode required,
+  alongside `-PrNumber`/`-BaseOid`/`-HeadSha` in the same manual AND-gate -> exit 12 if any of the
+  five is missing). Hermetic -- accepted as caller-supplied parameters, never calls `gh` itself.
+  Recorded into `round-N-attempt-M-meta.json` as `base_ref_name`/`base_tip_oid`.
+- **Idempotency marker**: `Get-ReviewMarker` gained `-BaseRefName`/`-BaseTipOid`, both PASSED IN
+  (never freshly queried inside the function) exactly like the existing `-Base`/`-Head`, so a
+  marker recomputed for a retried publish attempt with the same inputs is byte-identical and
+  `.Contains($marker)` recovery still finds an already-posted review. New marker shape:
+  `<!-- codex-review:pr=P:base=B:base_ref=R:base_tip=T:head=H:round=N:digest=D -->`.
+- **`publication.json`**: `Publish-CodexReview` now writes `base_ref_name`/`base_tip_oid` alongside
+  the unchanged `base_oid`, recording the LIVE values it just independently re-verified (see next).
+
+**Enforced at all three points named in the brief, not just handoff** (`Publish-CodexReview` and
+`Test-HandoffFresh`, `lib.ps1`):
+- *Pre-publication*: the existing `Get-PrOids`-based drift check now also compares
+  `oids.BaseRefName`; a separate `Get-BaseBranchTip` call then compares the live tip against the
+  caller-supplied `-BaseTipOid`. Either mismatch (or an unreadable ref) aborts with the existing
+  exit 2 ("drift"), no mutation -- reusing the established contract rather than adding a new code.
+- *Post-publication verify*: the same two checks are folded into the existing `$verified` boolean
+  (which already re-fetches `Get-PrOids` and now also calls `Get-BaseBranchTip` again,
+  unconditionally, mirroring how `$now` was already fetched unconditionally) -- a drift here still
+  triggers the existing dismiss-and-report path (exit 3/4).
+- *Handoff* (`Test-HandoffFresh`): the dead `$now.BaseOid -ne $pub.base_oid` line is replaced by
+  `$now.BaseRefName -cne $pub.base_ref_name` (fail reason `'base ref renamed'`) then
+  `Get-BaseBranchTip` compared against `$pub.base_tip_oid` (fail reason `'base advanced'` --
+  preserved verbatim, per instruction). An unreadable ref fails closed, never passes.
+
+### Regression tests (`tests/test-publish.ps1`)
+
+The fake `gh` now models the PR-view and git-ref-heads endpoints as genuinely independent fixtures
+(`New-OidsResponse` — unchanged `baseRefOid`/new `baseRefName` field; new `New-RefResponse` — a
+SEPARATE, movable tip) so a test can move one without the other, which is the exact shape the old
+suite lacked. `Test-HandoffFresh` cases, all present:
+- (a) tip moved, `baseRefOid` unchanged -> `Fresh=False`, `Reason -eq 'base advanced'`.
+- (b) nothing moved -> `Fresh=True`.
+- (c) base ref renamed -> fails closed, distinct reason (`-match 'renamed'`).
+- (d) branch ref unreadable (403) -> fails closed, distinct reason (`-match 'unreadable'`).
+- (e) head advanced -> still `Reason -eq 'head advanced'`, unaffected by the base-tip fix.
+
+Also added: `Publish-CodexReview` pre-publication drift for a renamed base ref and a moved base
+tip (2 new cases, exit 2 each); the existing post-POST drift `foreach` loop gained a third case
+(`base_tip`, alongside the pre-existing `base`/`head`) so post-publication tip drift is proven to
+trigger the dismiss-and-report path exactly like the other two. Every existing `Publish-CodexReview`
+call site updated to pass the two new mandatory parameters; every queue that reaches the pre- or
+post-publication tip check gained one `New-RefResponse` entry at the matching position.
+
+### Discrimination proof for case (a)
+
+With the fix reverted (`Test-HandoffFresh`'s base check restored verbatim to
+`if ($now.BaseOid -ne $pub.base_oid) { return (& $fail 'base advanced') }`, no `BaseRefName`/tip
+logic at all) and `tests/test-publish.ps1` run unchanged:
+
+```
+FAIL: (b) fresh handoff passes -- nothing moved
+FAIL: (a) TIP-ONLY drift (baseRefOid unchanged) caught as 'base advanced'
+FAIL: (c) base ref NAME changed fails closed
+FAIL: (d) base branch ref unreadable fails closed
+FAIL: RED CI on the reviewed sha caught
+FAIL: check-runs read failure fails closed
+FAIL: commit-status read failure fails closed
+59 passed, 7 failed
+```
+
+Case (a) fails exactly as required. The other six also go red -- an artifact of the reverted
+(2-gh-call) function consuming a test queue shaped for the fixed (3-gh-call) function positionally
+out of step, cascading into StrictMode property-access exceptions on later, mismatched-shape
+responses (caught by the function's own outer catch as "malformed response", not a silent pass).
+Restored immediately after, verified `66 passed, 0 failed` on `test-publish.ps1` alone and
+`504 passed, 0 failed` across the full suite (composer 37, discovery 27, invoke 285, policy 15,
+publish 66, schema 9, state 65 -- `test-invoke.ps1`'s own `285` includes its own +6 from this fix,
+see below).
+
+### `invoke-codex.ps1` / `test-invoke.ps1`
+
+pr mode's required-provenance gate is now a single AND across five parameters instead of three;
+each of the two new ones (`-BaseRefName`, `-BaseTipOid`) gets its own isolated "missing -> exit
+12, no attempt record" regression, mirroring the existing three. `+6` assertions (2 meta-field
+checks + 2 new missing-provenance tests x 2 assertions each -- wait, that's 2+4=6, matches):
+279 -> 285.
+
+## Commit
+
+Staged explicitly by path (not `git add -A`): `codex-review/scripts/lib.ps1`,
+`codex-review/scripts/invoke-codex.ps1`, `codex-review/scripts/publish-review.ps1`,
+`codex-review/SKILL.md`, `tests/test-invoke.ps1`, `tests/test-publish.ps1`,
+`docs/build-log/task-14-report.md`, `docs/build-log/progress.md`.
+
+## Verification (every `tests/test-*.ps1`, run individually)
+
+```
+pwsh -NoProfile -File tests\test-composer.ps1    # 37 passed, 0 failed
+pwsh -NoProfile -File tests\test-discovery.ps1   # 27 passed, 0 failed
+pwsh -NoProfile -File tests\test-invoke.ps1      # 285 passed, 0 failed
+pwsh -NoProfile -File tests\test-policy.ps1      # 15 passed, 0 failed
+pwsh -NoProfile -File tests\test-publish.ps1     # 66 passed, 0 failed
+pwsh -NoProfile -File tests\test-schema.ps1      # 9 passed, 0 failed
+pwsh -NoProfile -File tests\test-state.ps1       # 65 passed, 0 failed
+```
+= 504 total (+19 over the 485 baseline: +6 `test-invoke.ps1`, +13 `test-publish.ps1`). All green,
+`git status` shows only the files listed above modified, no stray `premises.json`.
+
+## Concerns / not done
+
+1. `docs/implementation-plan.md` carries a full embedded code listing of `Get-PrOids`,
+   `Get-ReviewMarker`, `Publish-CodexReview`, and `Test-HandoffFresh` (marked as "the current,
+   shipped content") that was NOT updated for this fix -- consistent with how this same plan doc
+   has been left behind after every prior round per this file's own Concern entries, but flagging
+   again since this is a genuine behavior change, not a doc-only fix. Deferred rather than
+   expanding scope unilaterally into a ~3300-line plan document not named by the task.
+2. FIX 2 (stale-head protection) is a separate section below / a separate commit, per instruction.

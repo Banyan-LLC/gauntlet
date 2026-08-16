@@ -9,6 +9,12 @@ param(
     [Parameter(Mandatory)][string]$StateDir,
     [Parameter(Mandatory)][string]$BaseOid,
     [Parameter(Mandatory)][string]$HeadSha,
+    # Base provenance captured before review (P1 fix, see docs/build-log/task-14-report.md,
+    # drill 6): forwarded into Publish-CodexReview, which captures/verifies the LIVE base branch
+    # tip at publication time (Get-BaseBranchTip) and records it -- this is what makes the
+    # base-drift guard at handoff (Test-HandoffFresh) actually enforceable.
+    [Parameter(Mandatory)][string]$BaseRefName,
+    [Parameter(Mandatory)][string]$BaseTipOid,
     [string]$Reviewer = 'BanyanLLC'
 )
 . "$PSScriptRoot\lib.ps1"
@@ -37,7 +43,8 @@ $token = $tokenRes.Stdout.Trim()
 if (-not $token) { Write-Error "empty gh token for '$Reviewer'"; exit 12 }
 try {
     exit (Publish-CodexReview -Token $token -OwnerRepo $OwnerRepo -Pr $Pr -NormalizedVerdict $verdict.Normalized `
-        -BaseOid $BaseOid -HeadSha $HeadSha -Round $Round -NormalizedJson $verdict.NormalizedJson -StateDir $StateDir `
+        -BaseOid $BaseOid -HeadSha $HeadSha -BaseRefName $BaseRefName -BaseTipOid $BaseTipOid `
+        -Round $Round -NormalizedJson $verdict.NormalizedJson -StateDir $StateDir `
         -Reviewer $Reviewer)
 } catch {
     if ($_.Exception.Message -like 'OVERSIZED*') { Write-Error $_.Exception.Message; exit 11 }
