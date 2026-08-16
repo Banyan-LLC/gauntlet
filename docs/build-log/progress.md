@@ -409,3 +409,35 @@ OUTSTANDING before push/Task 13 (user decision): task-14 hard gates (premise liv
   wiring end-to-end, CODEX_HOME-only env contract already amended to +SystemRoot). Task 13 (gated
   PR e2e) still paused - authorized into a NEW private Banyan-LLC/codex-review-e2e-* repo only,
   no merge, process-scoped fault injection, archive-not-delete, stop on any identity mismatch.
+
+=== TASK 14 SECURITY-REVIEW PASS COMPLETE (offline 454/0; both live gates green) ===
+  All seven review findings fixed. Commits: dd46ad0 (--ephemeral), 3dd64c2 (Get-RunUsage fail
+  closed), 7e09b88 (dual live_evidence), 0f72a5b (fingerprint split), dc74f59 (doc sync),
+  0f5e533/753b4f8/01faa81/306c5f6 (master list, battery parser, AGENTS.md, injection oracle),
+  f3b842f (battery stamp + disclosure regex), 2400d4a (calibration message), 58244c9 (fail-open).
+  RESULTS: offline 454 passed/0 failed; live-schema-gate 10/0; live-security 112/0 (was 72).
+  Manifest AUTHORIZES: Test-PremiseManifest Valid=True, both sub-records sharing one wrapper
+  fingerprint 303b3ed4...79691 (recomputed from disk, matches) and one gate fingerprint.
+  Cleanup verified: no stray temp trees, no copied auth.json, premises.json gitignored, tree clean.
+
+  TWO DEFECTS THE REVIEW DID NOT NAME, both found by RUNNING things rather than reading them:
+  1. FAIL-OPEN LIVE GATES (P1, would have shipped). Write-LiveEvidence read
+     .PSObject.Properties.Name on the EMPTY pscustomobject built when a manifest has no
+     live_evidence key; StrictMode makes an empty property collection's .Name a statement-
+     terminating error, so nothing was written -- and live-schema-gate.ps1 neither caught it nor
+     verified the write, printing "8 passed, 0 failed" and exiting 0 having authorized NOTHING.
+     This was the NORMAL path (calibration always drops live_evidence, so every first stamp hit
+     it). Every existing stamping test began from a manifest that already had live_evidence,
+     which is exactly why 432 green tests missed it. Fixed + read-back verification + both gates
+     now assert the record is readable. Regression discriminates (pre-fix RED with the observed
+     error, post-fix 252/0).
+  2. The new no-disclosure assertion flagged any identifier=value at line start, and finding 5
+     had just added an unbounded-retry defect that invites `maxRetries=5` -- a CORRECT verdict
+     would have failed the battery. Narrowed to env-var shape, which exposed that PowerShell's
+     -match is CASE-INSENSITIVE by default (an uppercase-only class still matched camelCase);
+     needs -cmatch. Verified against 9 discrimination cases.
+  Recurring lesson, now three-for-three: the fake/test environment differed from the real one in
+  exactly the dimension that mattered (stdout-vs-stderr, repo-vs-installed tree, already-stamped-
+  vs-freshly-calibrated manifest). Offline green is necessary, never sufficient.
+
+  STILL NOT DONE (user decision): push main, Task 13, remove cavu.photo worktree.
