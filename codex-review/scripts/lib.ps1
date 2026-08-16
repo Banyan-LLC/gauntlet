@@ -757,12 +757,31 @@ function Write-LiveEvidence {
         wrapper_fingerprint = (Get-WrapperFingerprint -SkillRoot $SkillRoot)
         gate_fingerprint = (Get-GateFingerprint -RepoRoot $repoRoot)
     }
-    $evidence = if (($m.PSObject.Properties.Name -contains 'live_evidence') -and ($null -ne $m.live_evidence)) { $m.live_evidence } else { [pscustomobject]@{} }
-    if ($evidence.PSObject.Properties.Name -contains $Gate) { $evidence.$Gate = $record }
+    # $x.PSObject.Properties.Name is UNSAFE on an EMPTY pscustomobject under
+    # Set-StrictMode -Version Latest: with zero members, .Name is neither a real property of the
+    # PSMemberInfoCollection nor resolvable by member enumeration, and strict mode turns that into
+    # "The property 'Name' cannot be found on this object." The empty case is not exotic here --
+    # it is the NORMAL state of a freshly calibrated manifest (calibration deliberately drops the
+    # whole live_evidence object), so this fired on EVERY first stamp. Worse, it surfaced as a
+    # statement-terminating error that live-schema-gate.ps1 did not notice: the gate still printed
+    # "8 passed, 0 failed" and exited 0 while having stamped NOTHING (observed directly). Enumerate
+    # the collection instead -- @(...) over the properties yields @() when empty, never throws.
+    $propNames = { param($o) @($o.PSObject.Properties | ForEach-Object { $_.Name }) }
+    $evidence = if (((& $propNames $m) -contains 'live_evidence') -and ($null -ne $m.live_evidence)) { $m.live_evidence } else { [pscustomobject]@{} }
+    if ((& $propNames $evidence) -contains $Gate) { $evidence.$Gate = $record }
     else { $evidence | Add-Member -NotePropertyName $Gate -NotePropertyValue $record }
-    if ($m.PSObject.Properties.Name -contains 'live_evidence') { $m.live_evidence = $evidence }
+    if ((& $propNames $m) -contains 'live_evidence') { $m.live_evidence = $evidence }
     else { $m | Add-Member -NotePropertyName 'live_evidence' -NotePropertyValue $evidence }
     $m | ConvertTo-Json -Depth 6 | Set-Content -Path $path -Encoding utf8
+
+    # Read back and PROVE the record landed. A stamp is an authorization: "I wrote it" is not
+    # good enough when the failure mode we just fixed was a silent non-write. Throwing here is
+    # what converts a future silent-stamp regression into a loud gate failure.
+    $verify = Get-Content -Raw $path | ConvertFrom-Json
+    if (((& $propNames $verify) -notcontains 'live_evidence') -or ($null -eq $verify.live_evidence) -or
+        ((& $propNames $verify.live_evidence) -notcontains $Gate)) {
+        throw "live-evidence stamp for '$Gate' did not persist to $path"
+    }
 }
 
 function Invoke-CodexProcess {

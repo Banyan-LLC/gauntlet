@@ -1051,11 +1051,27 @@ if ($script:Failures.Count -eq 0) {
         $stampSchema    = "$stampSkillRoot\schemas\verdict.schema.json"
         $stampAgents    = "$env:USERPROFILE\.codex\AGENTS.md"
         $stampAgentsSha = if (Test-Path $stampAgents) { (Get-FileHash -Algorithm SHA256 $stampAgents).Hash.ToLowerInvariant() } else { 'absent' }
-        Write-LiveEvidence -SkillRoot $stampSkillRoot -Gate 'security_battery' -ActualCli $cli `
-            -SchemaSha256 (Get-FileHash -Algorithm SHA256 $stampSchema).Hash.ToLowerInvariant() `
-            -AgentsMdSha256 $stampAgentsSha `
-            -InvocationProfileHash (Get-InvocationProfileHash -DisableSet (Get-DisableSet -FeatureNames $cli.FeatureNames))
-        Write-Host "stamped security_battery live-evidence record in premises.json" -ForegroundColor Green
+        # try/catch + POST-STAMP ASSERTION for the same reason live-schema-gate.ps1 has them: a
+        # strict-mode error inside Write-LiveEvidence previously stamped nothing while the gate
+        # still reported all-green and exited 0. After a ~4.5-minute battery, a silent non-stamp
+        # is especially expensive to discover later, so it is asserted here rather than assumed.
+        $stampErr = $null
+        try {
+            Write-LiveEvidence -SkillRoot $stampSkillRoot -Gate 'security_battery' -ActualCli $cli `
+                -SchemaSha256 (Get-FileHash -Algorithm SHA256 $stampSchema).Hash.ToLowerInvariant() `
+                -AgentsMdSha256 $stampAgentsSha `
+                -InvocationProfileHash (Get-InvocationProfileHash -DisableSet (Get-DisableSet -FeatureNames $cli.FeatureNames))
+        } catch { $stampErr = $_.Exception.Message }
+        Assert-True ($null -eq $stampErr) "security_battery live-evidence stamp completed without error$(if ($stampErr) { " -- $stampErr" })"
+        $stamped = $false
+        if (Test-Path "$stampSkillRoot\premises.json") {
+            $pj = Get-Content -Raw "$stampSkillRoot\premises.json" | ConvertFrom-Json
+            $pjNames = @($pj.PSObject.Properties | ForEach-Object { $_.Name })
+            $stamped = ($pjNames -contains 'live_evidence') -and ($null -ne $pj.live_evidence) -and
+                       (@($pj.live_evidence.PSObject.Properties | ForEach-Object { $_.Name }) -contains 'security_battery')
+        }
+        Assert-True $stamped "security_battery live-evidence record is READABLE in premises.json after stamping"
+        if ($stamped) { Write-Host "stamped security_battery live-evidence record in premises.json" -ForegroundColor Green }
     }
 } else {
     Write-Host "NOT stamping security_battery live evidence: $($script:Failures.Count) assertion(s) failed" -ForegroundColor Yellow

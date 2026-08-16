@@ -60,10 +60,27 @@ Trivial document. Nothing to report.
     if ($script:Failures.Count -eq 0) {
         $agentsPath = "$env:USERPROFILE\.codex\AGENTS.md"
         $agentsSha = if (Test-Path $agentsPath) { (Get-FileHash -Algorithm SHA256 $agentsPath).Hash.ToLowerInvariant() } else { 'absent' }
-        Write-LiveEvidence -SkillRoot $skillRoot -Gate 'schema_gate' -ActualCli $cli `
-            -SchemaSha256 (Get-FileHash -Algorithm SHA256 $schema).Hash.ToLowerInvariant() `
-            -AgentsMdSha256 $agentsSha -InvocationProfileHash (Get-InvocationProfileHash -DisableSet $disable)
-        Write-Host "stamped live-evidence record in premises.json" -ForegroundColor Green
+        # try/catch + a POST-STAMP ASSERTION, both required. Without them this gate FAILED OPEN:
+        # Write-LiveEvidence hit a strict-mode property error on the freshly-calibrated (empty)
+        # live_evidence object, stamped nothing, and the gate still printed "8 passed, 0 failed"
+        # and exited 0 -- a green gate that authorized nothing but claimed to. Observed directly,
+        # not hypothesized. The assertion is what makes a silent non-write impossible to miss.
+        $stampErr = $null
+        try {
+            Write-LiveEvidence -SkillRoot $skillRoot -Gate 'schema_gate' -ActualCli $cli `
+                -SchemaSha256 (Get-FileHash -Algorithm SHA256 $schema).Hash.ToLowerInvariant() `
+                -AgentsMdSha256 $agentsSha -InvocationProfileHash (Get-InvocationProfileHash -DisableSet $disable)
+        } catch { $stampErr = $_.Exception.Message }
+        Assert-True ($null -eq $stampErr) "live-evidence stamp completed without error$(if ($stampErr) { " -- $stampErr" })"
+        $stamped = $false
+        if (Test-Path "$skillRoot\premises.json") {
+            $pj = Get-Content -Raw "$skillRoot\premises.json" | ConvertFrom-Json
+            $pjNames = @($pj.PSObject.Properties | ForEach-Object { $_.Name })
+            $stamped = ($pjNames -contains 'live_evidence') -and ($null -ne $pj.live_evidence) -and
+                       (@($pj.live_evidence.PSObject.Properties | ForEach-Object { $_.Name }) -contains 'schema_gate')
+        }
+        Assert-True $stamped "schema_gate live-evidence record is READABLE in premises.json after stamping"
+        if ($stamped) { Write-Host "stamped live-evidence record in premises.json" -ForegroundColor Green }
     }
 
     Remove-Item $harness -Recurse -Force -ErrorAction SilentlyContinue

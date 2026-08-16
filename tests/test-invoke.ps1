@@ -515,6 +515,30 @@ Assert-True ($null -ne $afterStamp.live_evidence.security_battery) "Write-LiveEv
 Assert-Eq ($afterStamp.live_evidence.schema_gate | ConvertTo-Json -Depth 6 -Compress) $schemaGateBeforeJson "stamping security_battery leaves the pre-existing schema_gate record byte-for-byte untouched"
 Assert-True (Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -InvocationProfileHash $premisesProfileHash).Valid "after both gates have been stamped (one by fixture, one by Write-LiveEvidence), the manifest is accepted"
 
+# --- REGRESSION (live, observed): stamping onto a FRESHLY-CALIBRATED manifest, i.e. one with NO
+# live_evidence key at all. Every stamping test above starts from a manifest that ALREADY carries
+# live_evidence, which is exactly why this shipped broken: Write-LiveEvidence read
+# $evidence.PSObject.Properties.Name on the empty [pscustomobject]@{} it creates for that case,
+# and under Set-StrictMode -Version Latest an EMPTY property collection has no .Name -- statement-
+# terminating error, nothing written. Because live-schema-gate.ps1 neither caught it nor verified
+# the write, the gate printed "8 passed, 0 failed" and exited 0 having stamped NOTHING. This is
+# the FIRST stamp after every calibration, so it was the normal path, not an edge case. ---
+$freshCalibrated = New-ValidPremisesHashtable; $freshCalibrated.Remove('live_evidence')
+Write-Premises $freshCalibrated
+$freshStampErr = $null
+try {
+    Write-LiveEvidence -SkillRoot $skillRoot -Gate 'schema_gate' -ActualCli $pin `
+        -SchemaSha256 $premisesSchemaSha -AgentsMdSha256 $premisesAgentsSha -InvocationProfileHash $premisesProfileHash
+} catch { $freshStampErr = $_.Exception.Message }
+Assert-True ($null -eq $freshStampErr) "stamping onto a freshly-calibrated manifest (no live_evidence key) does not error$(if ($freshStampErr) { " -- $freshStampErr" })"
+$afterFresh = Get-Content -Raw $premisesPath | ConvertFrom-Json
+Assert-True (($afterFresh.PSObject.Properties.Name -contains 'live_evidence') -and ($null -ne $afterFresh.live_evidence) -and ($null -ne $afterFresh.live_evidence.schema_gate)) "the first stamp after calibration actually PERSISTS a readable schema_gate record"
+# And the second gate can then stamp alongside it, which is the real post-calibration sequence.
+Write-LiveEvidence -SkillRoot $skillRoot -Gate 'security_battery' -ActualCli $pin `
+    -SchemaSha256 $premisesSchemaSha -AgentsMdSha256 $premisesAgentsSha -InvocationProfileHash $premisesProfileHash
+$afterBothFresh = Get-Content -Raw $premisesPath | ConvertFrom-Json
+Assert-True (($null -ne $afterBothFresh.live_evidence.schema_gate) -and ($null -ne $afterBothFresh.live_evidence.security_battery)) "both gates stamping in sequence onto a freshly-calibrated manifest yields BOTH records"
+
 # The mirror image: stamping schema_gate must not disturb an existing security_battery record.
 $otherStamped = New-ValidPremisesHashtable; $otherStamped.live_evidence = @{ security_battery = (New-LiveEvidenceRecord 'security_battery') }
 Write-Premises $otherStamped
