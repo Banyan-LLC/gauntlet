@@ -471,3 +471,17 @@ OUTSTANDING before push/Task 13 (user decision): task-14 hard gates (premise liv
   ("Ship tests/live/ so Get-SecuritySourceFingerprint works installed") was started in a separate
   session; its premise is OBSOLETE (superseded by the wrapper/gate split) and it would edit this
   same repo concurrently. Flagged to the user; do not push until it is stopped or resolved.
+
+=== DOCSTRING RESIDUAL FIXED + FULL SEQUENCE RERUN (commit 7024a7e) ===
+  Test-PremiseManifest's gate_fingerprint bullet still said "the two live gates" (three sources
+  since helpers.ps1 joined) and described absence as unconditional provenance-only, contradicting
+  the -AllowProvenanceOnlyGateSources rule six lines below. Docstrings are the spec here, so a
+  bullet contradicting the authoritative rule is a defect. Fixed + two stale test comments.
+  calibrate-premises.ps1's "two live gates" left alone: it means the two GATES, still correct.
+  Rerun because lib.ps1 is inside the wrapper fingerprint: offline 485/0 -> recalibrate ->
+  schema 10/0 -> security 112/0. NEW wrapper_fp c969b5f4...03a8; gate_fp UNCHANGED at
+  82ab0290...2cf0 -- correct, since only wrapper sources changed. Both recomputed and matching,
+  both records self-identifying, Valid=True, tree clean.
+  Two concurrency worries raised by the parallel session, both checked and UNFOUNDED: tests use a
+  GUID-unique temp skill root ($tmp = codexinv-<guid>), never the real premises.json, so the suite
+  neither clobbers live evidence nor races itself. That session made no commits.
