@@ -1396,7 +1396,13 @@ function Wait-PrHeadSynced {
     param(
         [Parameter(Mandatory)][string]$Token, [Parameter(Mandatory)][string]$OwnerRepo,
         [Parameter(Mandatory)][int]$Pr, [Parameter(Mandatory)][string]$ExpectedHead,
-        [Parameter(Mandatory)][string]$StaleHead,
+        # OPTIONAL on purpose. -StaleHead only sharpens the DIAGNOSIS: when supplied, a head
+        # matching it is reported as "still stale" and any OTHER non-expected head as "unexpected"
+        # (someone else pushed). A caller syncing for the first time has no prior head to name, and
+        # making this mandatory made the helper uncallable in exactly that case -- the common one.
+        # Absent it, any non-expected head is simply not-yet-synced until the deadline. The GATE
+        # itself is unchanged either way: only ExpectedHead can ever produce Synced=$true.
+        [string]$StaleHead,
         [ValidateRange(1, 3600)][int]$TimeoutSec = 60,
         [ValidateRange(1, 60)][int]$PollIntervalSec = 3
     )
@@ -1559,6 +1565,17 @@ function Test-HandoffFresh {
     # different base branch is a distinct, worse problem than the tip merely advancing) and the
     # base branch's LIVE TIP (Get-BaseBranchTip -- the endpoint that actually moves). An
     # unreadable ref is never evidence of "unchanged" -- fail closed, never pass.
+    # A publication written BEFORE the drill-6 fix carries no base_ref_name/base_tip_oid at all.
+    # Under StrictMode, reading them throws PropertyNotFoundException, which the outer catch then
+    # reported as "transport or malformed response" -- a misleading diagnosis for an operator
+    # (nothing is wrong with the network; the record simply predates these fields, and cannot
+    # evidence base freshness). Hit live immediately after shipping the fix. Fail closed with a
+    # reason that names the actual remedy.
+    $pubNames = Get-PropertyNames -InputObject $pub
+    $missingProv = @(@('base_ref_name','base_tip_oid') | Where-Object { $pubNames -notcontains $_ -or -not $pub.$_ })
+    if ($missingProv.Count -gt 0) {
+        return (& $fail "publication.json predates base-tip provenance (missing: $($missingProv -join ', ')); it cannot evidence base freshness -- re-publish this round to record it")
+    }
     if ($now.BaseRefName -cne $pub.base_ref_name)     { return (& $fail 'base ref renamed') }
     $tip = Get-BaseBranchTip -Token $Token -OwnerRepo $OwnerRepo -BaseRefName $now.BaseRefName
     if (-not $tip.Ok)                                 { return (& $fail "base ref unreadable: $($tip.Reason)") }
