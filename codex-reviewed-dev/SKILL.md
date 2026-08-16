@@ -24,10 +24,21 @@ author `geoffroth` · reviewer `BanyanLLC` · round cap 10/phase · CI-fix cap 3
       (`GH_TOKEN=$(gh auth token -u geoffroth) gh pr create …` from Git Bash).
    b. CI gate (author-owned): `GH_TOKEN=$(gh auth token -u geoffroth) gh pr checks <n> --watch`;
       fix+re-push; 3 consecutive failures → human flag. Only green builds reach review.
-   c. codex-review pr mode: record `(baseOid, headSha)`; prompt = metadata + exact-base diff (ALL untrusted);
-      invoke-codex → publish-review as BanyanLLC. Exits 2/3 → refresh oids, re-review (a round). Exit 4 → human flag NOW. Exit 5 → retry once.
-   d. request_changes → fix, push, green CI, then a FRESH round whose ledger records each prior finding as addressed/disputed/outstanding; re-review the new `(baseOid, headSha)`.
-5. **Handoff**: `Test-HandoffFresh` (lib.ps1) must return Fresh — APPROVED state, commit match, both current oids equal the reviewed pair. Stale → re-sync, re-enter review. Then notify the user (message + push notification). **The user merges. Never merge.**
+   c. codex-review pr mode: record `(baseOid, headSha, baseRefName, baseTipOid)` — the latter two
+      are the base branch's live tip (a SEPARATE endpoint from the PR's static `baseRefOid`; see
+      codex-review/SKILL.md's pr-mode-inputs section and docs/build-log/task-14-report.md).
+      **Before composing the prompt, confirm the pushed head is actually live**:
+      `Wait-PrHeadSynced` (lib.ps1) must return `Synced=true` for the exact commit just pushed —
+      never compose or spend a round on an unsynced head. WHY: a live drill had `gh pr view`
+      return the pre-push head seconds after pushing, so a round was composed against the OLD
+      blob and wasted a full round of the 10-round cap re-reporting an already-fixed defect.
+      prompt = metadata + exact-base diff (ALL untrusted); invoke-codex → publish-review as
+      BanyanLLC. Exits 2/3 → refresh oids, re-review (a round). Exit 4 → human flag NOW. Exit 5 → retry once.
+   d. request_changes → fix, push, green CI, confirm the new head is synced (`Wait-PrHeadSynced`,
+      same requirement as (c) — this is the exact push→re-review transition the live drill's
+      wasted round happened on), then a FRESH round whose ledger records each prior finding as
+      addressed/disputed/outstanding; re-review the new `(baseOid, headSha, baseRefName, baseTipOid)`.
+5. **Handoff**: `Test-HandoffFresh` (lib.ps1) must return Fresh — APPROVED state, commit match, head oid unchanged, AND the base ref's name/live tip unchanged (a separate, independently-checked endpoint from the PR's static base oid — see docs/build-log/task-14-report.md). Stale → re-sync, re-enter review. Then notify the user (message + push notification). **The user merges. Never merge.**
 
 ## Identity
 

@@ -1376,6 +1376,58 @@ function Get-BaseBranchTip {
     [pscustomobject]@{ Ok=$true; Sha=$sha; Reason=$null }
 }
 
+function Wait-PrHeadSynced {
+    <# P1 fix (see docs/build-log/task-14-report.md, drill/round 9 of the live e2e): in a real
+       drill, `gh pr view --json headRefOid` returned the PRE-PUSH head SECONDS after a push
+       completed, so a review round was composed against the OLD blob and re-reported an
+       already-fixed defect -- wasting a full round of the 10-round cap. This is the bounded poll
+       a caller MUST run, and wait on, BEFORE composing a pr-mode prompt: never invoke
+       invoke-codex.ps1 -- never spend a round or an attempt -- on an unsynced head.
+
+       Never throws for the normal mismatch/timeout path: returns a structured
+       {Synced;ActualHead;Reason} result so the caller can react without a try/catch. Bounded --
+       does not busy-loop -- by -TimeoutSec, polling every -PollIntervalSec.
+
+       -StaleHead (the head the caller knew about BEFORE pushing) is required so a genuinely
+       UNEXPECTED third head -- neither the expected just-pushed commit nor the known-stale one,
+       i.e. someone else pushed concurrently -- can be told apart from ordinary propagation lag
+       and reported with its OWN distinct reason. Treating it as "still stale" would poll all the
+       way to the timeout and mask a different, more serious problem. #>
+    param(
+        [Parameter(Mandatory)][string]$Token, [Parameter(Mandatory)][string]$OwnerRepo,
+        [Parameter(Mandatory)][int]$Pr, [Parameter(Mandatory)][string]$ExpectedHead,
+        [Parameter(Mandatory)][string]$StaleHead,
+        [ValidateRange(1, 3600)][int]$TimeoutSec = 60,
+        [ValidateRange(1, 60)][int]$PollIntervalSec = 3
+    )
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSec)
+    $lastSeen = $null
+    $lastErr = $null
+    while ($true) {
+        try {
+            $lastSeen = (Get-PrOids -Token $Token -OwnerRepo $OwnerRepo -Pr $Pr).HeadOid
+            $lastErr = $null
+        } catch {
+            # A transient read failure is not itself a sync failure -- keep polling within the
+            # same bound rather than aborting the whole wait on one flaky call.
+            $lastErr = $_.Exception.Message
+        }
+        if ($lastSeen -eq $ExpectedHead) {
+            return [pscustomobject]@{ Synced=$true; ActualHead=$lastSeen; Reason=$null }
+        }
+        if ($lastSeen -and $lastSeen -ne $StaleHead) {
+            return [pscustomobject]@{ Synced=$false; ActualHead=$lastSeen
+                Reason="unexpected head: '$lastSeen' is neither the expected commit '$ExpectedHead' nor the known-stale commit '$StaleHead' -- someone else may have pushed" }
+        }
+        if ([DateTime]::UtcNow -ge $deadline) {
+            $why = if ($lastSeen) { "still the stale commit '$lastSeen'" } else { "reads kept failing (last error: $lastErr)" }
+            return [pscustomobject]@{ Synced=$false; ActualHead=$lastSeen
+                Reason="timed out after ${TimeoutSec}s waiting for PR head to reach '$ExpectedHead' ($why)" }
+        }
+        Start-Sleep -Seconds $PollIntervalSec
+    }
+}
+
 function Publish-CodexReview {
     # -BaseRefName/-BaseTipOid (P1 fix, see docs/build-log/task-14-report.md, drill 6): the base
     # provenance captured BEFORE the review was composed. -BaseOid stays exactly what it always

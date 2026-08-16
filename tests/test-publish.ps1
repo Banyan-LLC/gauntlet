@@ -341,4 +341,60 @@ Test-EmptyElementFailsClosed -LibPath "$PSScriptRoot\..\codex-review\scripts\lib
     -CallExpression "Invoke-Gh -Token 'faketoken' -GhArgs @('pr', '')" `
     -Name 'Invoke-Gh -GhArgs'
 
+# =====================================================================================
+# Wait-PrHeadSynced (P1 fix, see docs/build-log/task-14-report.md, drill/round 9 of the live
+# e2e): a real drill found `gh pr view --json headRefOid` returning the PRE-PUSH head seconds
+# after a push, wasting a full round of the 10-round cap on a stale review. This is the bounded
+# poll a caller must run before composing any pr-mode prompt.
+#
+# Overrides Invoke-Gh with a COUNTING fake (not the fixed queue used above): a real poll loop's
+# call count depends on wall-clock timing (Start-Sleep, PollIntervalSec), not a scripted
+# sequence -- a finite queue would run out under ordinary timing jitter and fail the test for the
+# wrong reason. $script:HeadPollSequence is the ordered list of heads to report; once exhausted
+# it keeps repeating its LAST entry, so it stays correct regardless of exactly how many times the
+# loop polls before resolving.
+# =====================================================================================
+$staleHead = 'aaaaaaaaaa'; $expectedHead = 'bbbbbbbbbb'; $thirdHead = 'cccccccccc'
+$script:HeadPollCount = 0
+$script:HeadPollSequence = @($staleHead)
+function Invoke-Gh { param([string]$Token,[string[]]$GhArgs,[string]$InputFile)
+    $script:HeadPollCount++
+    $idx = [Math]::Min($script:HeadPollCount, $script:HeadPollSequence.Count) - 1
+    [pscustomobject]@{ ExitCode=0; Stdout=(@{baseRefOid='b0e1'; headRefOid=$script:HeadPollSequence[$idx]; baseRefName='main'} | ConvertTo-Json) }
+}
+
+# (i) stale, then becomes the expected head within the timeout -> Synced=true.
+$script:HeadPollCount = 0
+$script:HeadPollSequence = @($staleHead, $staleHead, $expectedHead)
+$r1 = Wait-PrHeadSynced -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -ExpectedHead $expectedHead -StaleHead $staleHead -TimeoutSec 5 -PollIntervalSec 1
+Assert-True $r1.Synced "(i) becomes synced within the timeout"
+Assert-Eq $r1.ActualHead $expectedHead "(i) reports the actual (now-synced) head"
+Assert-True ($script:HeadPollCount -ge 2) "(i) actually polled more than once (proves it waited, not a lucky first read)"
+
+# (ii) permanently stale -> Synced=false, bounded, with a clear reason naming the timeout.
+$script:HeadPollCount = 0
+$script:HeadPollSequence = @($staleHead)
+$swStale = [System.Diagnostics.Stopwatch]::StartNew()
+$r2 = Wait-PrHeadSynced -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -ExpectedHead $expectedHead -StaleHead $staleHead -TimeoutSec 2 -PollIntervalSec 1
+$swStale.Stop()
+Assert-True (-not $r2.Synced) "(ii) permanently stale never syncs"
+Assert-Eq $r2.ActualHead $staleHead "(ii) reports the still-stale head"
+Assert-True ($r2.Reason -match 'timed out') "(ii) reason names the timeout"
+Assert-True ($swStale.Elapsed.TotalSeconds -lt 10) "(ii) bounded -- returned near the 2s timeout, not hung"
+
+# (iii) an UNEXPECTED third head (neither the expected commit nor the known-stale one) ->
+# Synced=false with a DISTINCT reason from plain staleness, detected WITHOUT waiting out the
+# timeout: someone else pushed is not "still propagating", so polling further would only waste
+# time on a wrong assumption.
+$script:HeadPollCount = 0
+$script:HeadPollSequence = @($thirdHead)
+$swThird = [System.Diagnostics.Stopwatch]::StartNew()
+$r3 = Wait-PrHeadSynced -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -ExpectedHead $expectedHead -StaleHead $staleHead -TimeoutSec 30 -PollIntervalSec 5
+$swThird.Stop()
+Assert-True (-not $r3.Synced) "(iii) unexpected third head is not synced"
+Assert-Eq $r3.ActualHead $thirdHead "(iii) reports the unexpected head"
+Assert-True ($r3.Reason -notmatch 'timed out') "(iii) reason is distinct from a plain timeout"
+Assert-True ($r3.Reason -match 'unexpected') "(iii) reason flags the head as unexpected"
+Assert-True ($swThird.Elapsed.TotalSeconds -lt 5) "(iii) detected immediately, not after waiting out a 30s timeout"
+
 Write-TestResult

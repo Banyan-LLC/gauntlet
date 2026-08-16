@@ -535,3 +535,16 @@ OUTSTANDING before push/Task 13 (user decision): task-14 hard gates (premise liv
   Suite 485 -> 504 (test-invoke +6, test-publish +13). Drill 6 itself not yet re-run against the
   scratch e2e repo (offline fix + regressions only, per this task's scope). FIX 2 (stale-head
   protection, round-9 waste) follows in a separate commit.
+
+=== ROUND-9 FIX (P1) SHIPPED - Wait-PrHeadSynced makes stale-head protection executable ===
+  New bounded-poll helper in lib.ps1 (Get-PrOids-backed): Wait-PrHeadSynced -ExpectedHead
+  -StaleHead [-TimeoutSec] [-PollIntervalSec] -> {Synced;ActualHead;Reason}, never throws for the
+  normal mismatch/timeout path. -StaleHead lets it tell "still propagating" apart from an
+  UNEXPECTED third head (someone else pushed concurrently) with its own distinct reason, instead
+  of polling a genuinely different problem all the way to the timeout. Documented as a hard
+  MUST-confirm-before-composing requirement in both codex-review/SKILL.md (pr-mode inputs) and
+  codex-reviewed-dev/SKILL.md (PR pipeline bullets c and d -- (d) is the exact push-then-re-review
+  transition round 9 wasted). Not yet wired into invoke-codex.ps1 itself (hermetic, must not call
+  gh) or publish-review.ps1 -- an orchestrator-level precondition, same pattern as
+  Test-HandoffFresh. Suite 504 -> 516 (+12, test-publish.ps1, 3 cases: becomes-synced,
+  permanently-stale-bounded, unexpected-third-head-distinct-reason). Task overall: 485 -> 516.

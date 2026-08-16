@@ -1298,3 +1298,92 @@ pwsh -NoProfile -File tests\test-state.ps1       # 65 passed, 0 failed
    again since this is a genuine behavior change, not a doc-only fix. Deferred rather than
    expanding scope unilaterally into a ~3300-line plan document not named by the task.
 2. FIX 2 (stale-head protection) is a separate section below / a separate commit, per instruction.
+
+## FIX 2 (P1): stale-head protection made executable
+
+Root cause: in the live drill, `gh pr view --json headRefOid` returned the PRE-PUSH head seconds
+after a real push, so a review round was composed against the OLD blob and re-reported an
+already-fixed defect -- wasting a full round of the 10-round cap. The requirement ("confirm the
+head before reviewing") existed only as prose, nowhere enforced in code.
+
+**New `Wait-PrHeadSynced -Token -OwnerRepo -Pr -ExpectedHead -StaleHead [-TimeoutSec] [-PollIntervalSec]`**
+(`lib.ps1`, right after `Get-BaseBranchTip`): bounded-polls `Get-PrOids` until `HeadOid` equals
+`-ExpectedHead`. Returns a structured `{Synced;ActualHead;Reason}` -- never throws for the normal
+mismatch/timeout path, so a caller reacts without a try/catch. `-StaleHead` (the head the caller
+knew about BEFORE pushing) is required so a genuinely unexpected THIRD head -- neither expected
+nor stale, i.e. someone else pushed concurrently -- gets its own distinct reason instead of being
+silently treated as "still propagating" and polled all the way to the timeout. A transient
+`Get-PrOids` read failure inside the loop does not abort the wait; it's treated like "no new
+information yet" and polling continues within the same bound. Bounded by `-TimeoutSec`
+(`Start-Sleep -Seconds -PollIntervalSec` between polls) -- never busy-loops.
+
+### Unit tests (`tests/test-publish.ps1`, appended at the end of the file so this fix's diff in a
+file shared with FIX 1 is a clean addition, not interleaved edits)
+
+`Invoke-Gh` is locally overridden a second time with a COUNTING fake (`$script:HeadPollSequence`,
+an ordered list of heads to report that keeps repeating its last entry once exhausted) rather than
+reusing the fixed queue used everywhere else in the file: a real poll loop's call count depends on
+wall-clock timing, not a scripted sequence, and a finite queue would run out under ordinary timing
+jitter and fail for the wrong reason.
+
+- (i) stale, then becomes the expected head within the timeout -> `Synced=true`, reports the
+  actual head, and polled more than once (proving it actually waited, not a lucky first read).
+- (ii) permanently stale -> `Synced=false`, reason names the timeout, returns near the bound
+  (asserted `< 10s` against a 2s timeout) -- never hangs.
+- (iii) an unexpected third head (neither expected nor stale) -> `Synced=false` with a reason
+  DISTINCT from plain staleness (`-notmatch 'timed out'`, `-match 'unexpected'`), detected
+  immediately rather than waiting out a 30s timeout (asserted `< 5s`) -- someone else pushing is a
+  different, more serious problem than propagation lag, and treating it identically would poll
+  pointlessly and delay surfacing it.
+
+`+12` assertions (3/4/5 per case): `test-publish.ps1` 66 -> 78.
+
+### Documentation
+
+Both `SKILL.md` files updated, per instruction:
+- `codex-review/SKILL.md` (`## pr-mode inputs`, ~line 111): the exact call shape and the WHY,
+  immediately after the existing base-provenance-capture paragraph (FIX 1).
+- `codex-reviewed-dev/SKILL.md` (PR pipeline, bullets c/d, ~line 27-40): the requirement stated at
+  BOTH push→review transitions the pipeline has (initial round in (c), and the fix→push→re-review
+  loop in (d) -- (d) is the exact transition the live drill's wasted round happened on). Also
+  updated bullet (c)/(d)'s `(baseOid, headSha)` mentions to the full four-field tuple and bullet 5
+  (Handoff)'s stale "both current oids equal the reviewed pair" wording, for consistency with FIX
+  1 -- neither was in FIX 2's own scope, but both sat directly in the lines already being touched
+  and would otherwise have left this file's PR pipeline description inaccurate against the
+  now-shipped call signatures.
+
+## Commit
+
+Staged explicitly by path: `codex-review/scripts/lib.ps1`, `codex-review/SKILL.md`,
+`codex-reviewed-dev/SKILL.md`, `tests/test-publish.ps1`, `docs/build-log/task-14-report.md`,
+`docs/build-log/progress.md`.
+
+## Verification (every `tests/test-*.ps1`, run individually; test-publish.ps1 run twice for
+stability given the new timing-based assertions)
+
+```
+pwsh -NoProfile -File tests\test-composer.ps1    # 37 passed, 0 failed
+pwsh -NoProfile -File tests\test-discovery.ps1   # 27 passed, 0 failed
+pwsh -NoProfile -File tests\test-invoke.ps1      # 285 passed, 0 failed
+pwsh -NoProfile -File tests\test-policy.ps1      # 15 passed, 0 failed
+pwsh -NoProfile -File tests\test-publish.ps1     # 78 passed, 0 failed (run twice, stable)
+pwsh -NoProfile -File tests\test-schema.ps1      # 9 passed, 0 failed
+pwsh -NoProfile -File tests\test-state.ps1       # 65 passed, 0 failed
+```
+= 516 total (+12 over FIX 1's 504, all in `test-publish.ps1`). Overall this task: 485 -> 516
+(+31: +6 FIX 1 `test-invoke.ps1`, +13 FIX 1 `test-publish.ps1`, +12 FIX 2 `test-publish.ps1`).
+
+## Concerns / not done (FIX 2)
+
+1. `Wait-PrHeadSynced` is not yet CALLED from anywhere in the shipped scripts -- like
+   `Test-HandoffFresh`, it is a library primitive the ORCHESTRATOR (a human or the
+   codex-reviewed-dev pipeline, operating outside this hermetic skill's own scripts) is
+   responsible for invoking before composing a prompt. This mirrors how `Test-HandoffFresh`
+   itself was already only ever invoked by the orchestrator, never by `invoke-codex.ps1` or
+   `publish-review.ps1`. Documented as a hard requirement in both `SKILL.md` files; not wired
+   into `invoke-codex.ps1` itself, since that script is hermetic by design (must not call `gh`)
+   and pr mode already accepts `-HeadSha` as a caller-supplied, pre-verified value.
+2. Not re-run against the live scratch e2e repo (round 9 itself) -- offline fix + regressions
+   only, per this task's hard constraint against anything under `tests/live/` or live network
+   calls.
+3. `docs/implementation-plan.md` not synced (same deferral as FIX 1's concern #1 above).

@@ -108,6 +108,18 @@ incident. Pass `-BaseRefName`/`-BaseTipOid` into `invoke-codex.ps1` and `publish
 alongside `-BaseOid`/`-HeadSha` (all pr-mode required); diff: `git fetch origin && git diff
 <baseOid>...<headSha>`. All of it goes into REVIEW MATERIAL (untrusted).
 
+**Before composing ANY pr-mode prompt — round 1 or a re-review after a push — confirm the PR
+head is actually synced first.** Call `Wait-PrHeadSynced -Token <t> -OwnerRepo <o/r> -Pr <n>
+-ExpectedHead <the sha you just pushed> -StaleHead <the head you knew about before the push>`
+(`lib.ps1`) and do NOT invoke `invoke-codex.ps1` — do not spend a round or an attempt — unless it
+returns `Synced=true`. WHY: in the live e2e drill, `gh pr view --json headRefOid` returned the
+PRE-PUSH head SECONDS after a real push completed, so a round was composed against the OLD blob
+and re-reported an already-fixed defect, wasting a full round of the 10-round cap (see
+docs/build-log/task-14-report.md). `Synced=false` means stop: `Reason` distinguishes a bounded
+timeout (still stale — retry the wait, it will not busy-loop forever) from an unexpected third
+head (someone else pushed concurrently — investigate, don't just retry). Never compose the
+prompt anyway.
+
 Handoff: `Test-HandoffFresh` from `lib.ps1` must return `Fresh` before notifying the human — this
 now independently re-verifies the base ref's name AND its live tip (`Get-BaseBranchTip`), not
 just `headRefOid`.
