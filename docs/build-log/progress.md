@@ -485,3 +485,39 @@ OUTSTANDING before push/Task 13 (user decision): task-14 hard gates (premise liv
   Two concurrency worries raised by the parallel session, both checked and UNFOUNDED: tests use a
   GUID-unique temp skill root ($tmp = codexinv-<guid>), never the real premises.json, so the suite
   neither clobbers live evidence nor races itself. That session made no commits.
+
+=== TASK 13 STEP 2 (PARTIAL) - STOPPED ON A P1 FOUND BY DRILL 6 ===
+  Scratch repo: Banyan-LLC/codex-review-e2e-20260816 (private). NOT archived yet - drill 6 must be
+  re-run after the fix below. Nothing merged. Two PRs, both authored geoffroth, reviewed BanyanLLC.
+
+  PR #1 (fetcher.js, deliberate unbounded-retry fixture): review loop ran ROUNDS 1-10 and hit the
+    ROUND CAP without approving. That is the designed escalation, not a failure: every round
+    returned request_changes on genuine findings, and the loop refused to approve. Fixed real
+    defects across rounds (unbounded retry; unbounded cache; JSON parsed inside the retry path;
+    501/505 retried; unencoded id; no deadline; body-transport vs JSON-syntax conflation;
+    AbortError-only retry classification; Symbol-id re-interpolation). Round 8 caught a
+    ReferenceError I had shipped (normalizeId referenced, never defined - my patch silently
+    no-matched and `node --check` only validates syntax, not references). I did NOT raise
+    RoundCap to force an approval.
+  ROUND 9 WASTED ON A STALE HEAD: the GitHub PR API returned the pre-push headRefOid seconds
+    after a push, so round 9 re-reviewed the old blob. GAP: the caller must confirm the PR head
+    equals the pushed commit BEFORE composing the prompt. SKILL.md does not say this.
+  PR #2 (trivial .gitignore, a second fixture created solely to exercise the approval path):
+    approved in one round, published APPROVED as BanyanLLC pinned to the reviewed head.
+
+  DRILL 5 head-drift: PASS. Baseline Fresh=True; after pushing a commit -> Fresh=False
+    'head advanced'.
+  DRILL 6 base-drift: *** FAILED - P1 DEFECT IN SHIPPED CODE ***
+    Advanced the scratch repo's main to 3dc0738 after approval. Expected Fresh=False
+    'base advanced'; got Fresh=True. ROOT CAUSE (verified, not inferred): Get-PrOids reads the
+    PR's `baseRefOid`, which GitHub keeps STATIC at the commit the PR was opened against - it does
+    NOT track the base branch tip. Evidence: main tip = 3dc0738 while baseRefOid stayed 8fa5aafa,
+    unchanged after a 20s wait. publication.json's base_oid was recorded from that same static
+    field, so lib.ps1:1446 `if ($now.BaseOid -ne $pub.base_oid)` compares a value to ITSELF and
+    the 'base advanced' branch is UNREACHABLE. One of the four handoff-freshness guards has never
+    worked. FIX: compare the recorded base against the base BRANCH TIP
+    (repos/<o>/<r>/git/ref/heads/<baseRefName>), not the PR's static baseRefOid; record that tip
+    at publication time; add a regression that moves the base branch and asserts 'base advanced'.
+  DRILL 7 idempotency: PASS. Re-running publish-review.ps1 with identical inputs exited 0 and the
+    review count stayed at 2 (no duplicate review).
+  DRILL 8 transient fault injection: NOT RUN - stopped per instruction on the drill-6 mismatch.
