@@ -69,5 +69,5 @@ $check = Test-StackAcceptance -SkillRoot $skillRoot -ActualCli $cli `
     -InvocationProfileHash (Get-InvocationProfileHash -DisableSet $disable)
 if (-not $check.Valid) { Write-Error "the recorded manifest does not pass its own stack-acceptance check: $($check.Reason)"; exit 1 }
 Write-Output "recorded premises.json (cli=$($cli.Version)) -- stack ACCEPTED, not live-verified."
-Write-Output "Run tests/live/live-schema-gate.ps1 before this authorizes any review round or install."
+Write-Output "Run BOTH tests/live/live-schema-gate.ps1 AND tests/live/live-security.ps1 before this authorizes any review round or install (calibration drops both live-evidence sub-records, so each gate must be rerun)."
 exit 0
