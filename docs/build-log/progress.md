@@ -598,3 +598,37 @@ OUTSTANDING before push/Task 13 (user decision): task-14 hard gates (premise liv
   Scratch repo ARCHIVED (not deleted), still private, 0 merged PRs, both PRs left open.
   REMAINING: Task 13 Step 1 activation checklist - a manual gate the user runs in a fresh session
     after install.ps1; four exact prompts, record observed skill routing.
+
+=== FOUR-FINDING FOLLOW-UP COMPLETE + INSTALLED (commits 3030f38, 0f783c7, de69306, e7d5b71) ===
+  Decision honored: base_tip_oid STAYS in the marker; superseded tool-owned reviews are dismissed
+  instead of loosening the marker.
+  P1 verdict binding: publish-review.ps1 now requires the canonical round-N-verdict.json, locates
+    the successful attempt's immutable metadata, and exactly compares PR, round, base_oid,
+    base_ref_name, base_tip_oid and head BEFORE any gh call. Mismatch = NEW EXIT 6 (collision-free;
+    documented in the script header, both SKILL.md files, design.md and the plan). Regressions
+    prove no gh invocation occurs, via a recording fake gh whose log file is asserted absent.
+    This closes exactly the hole I fell through live: a tip-3dc0738 verdict relabelled as 2403a80.
+  P1 ordering + retirement: the exact-marker scan now precedes the drift return, so a POST that
+    succeeded before an exit-5 is FOUND and dismissed on retry instead of hitting a stale exit 2;
+    no existing review + drift still returns 2. Retirement is a separate explicit operation,
+    Revoke-SupersededReview, with three preconditions (authored by the configured Reviewer; carries
+    the exact tool marker; Test-HandoffFresh's Reason is exactly head advanced / base advanced /
+    base ref renamed). Test-HandoffFresh remains READ-ONLY - verified by inspection: no dismiss,
+    PUT, POST or --method inside it. Dismissal denial stays exit 4.
+  P2 poll guard: the unexpected-head branch is now gated on $PSBoundParameters.ContainsKey
+    ('StaleHead'). Without -StaleHead a non-expected head is simply not-yet-synced and polling
+    continues. This was MY bug from the previous round - making the parameter optional without
+    updating its guard made the helper return after ONE poll for the most common caller.
+  P2 docs: design.md + implementation-plan.md synced to the four-part provenance (base_oid as the
+    DIFF BASE, base_ref_name, base_tip_oid as the live moving tip, head), verdict/attempt binding,
+    retirement, and the PATH-scoped intercepted-gh fault injection - recording that the plan's
+    HTTPS_PROXY/GH_HOST method is IMPOSSIBLE here because Invoke-Gh clears the child env to
+    GH_TOKEN + SystemRoot. Plan now says ARCHIVE ONLY.
+  VERIFIED: offline 553/0 (from 516; +37 in test-publish). Stale evidence correctly refused ->
+    recalibrate -> schema 10/0 -> security 112/0 on CLI 0.148.0-alpha.9. wrapper_fp
+    4f529e0a...5342 recomputed and matching, one wrapper fp and one gate fp across both records,
+    Valid=True. Pushed af33ccd..4febd54, remote SHA verified. install.ps1 exit 0 - both skills
+    installed to ~/.claude/skills and the CLAUDE.md pointer appended.
+
+  REMAINING: Task 13 Step 1 ONLY - the fresh-session activation checklist, which the user runs.
+    Keep the cavu.photo worktree until that passes.
