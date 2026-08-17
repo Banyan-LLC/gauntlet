@@ -5,7 +5,7 @@
 # permitted` (HTTP 400, BEFORE inference). Probing established 'if'/'then' is the ONLY offending
 # keyword (minLength/maxLength/maxItems are all accepted). One file now serves BOTH
 # --output-schema and local structural validation.
-$schemaPath = "$PSScriptRoot\..\codex-review\schemas\verdict.schema.json"
+$schemaPath = "$PSScriptRoot\..\gauntlet-review\schemas\verdict.schema.json"
 $schema = Get-Content -Raw $schemaPath
 
 # Regression guard: the schema must never regain a top-level if/then. That keyword is exactly

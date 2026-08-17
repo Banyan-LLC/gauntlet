@@ -1,5 +1,5 @@
 #Requires -Version 7
-<# codex-review: run ONE hermetic review round (one ATTEMPT of one logical round).
+<# gauntlet-review: run ONE hermetic review round (one ATTEMPT of one logical round).
    Exit codes are defined once in the plan's contracts section; this comment is the short form.
    0 ok
    | 10 budget -- EITHER the preflight byte estimate is over budget BEFORE anything runs, OR
@@ -165,7 +165,7 @@ $disable = Get-DisableSet -FeatureNames $cli.FeatureNames
 $profileHash = Get-InvocationProfileHash -DisableSet $disable
 # -AllowProvenanceOnlyGateSources (P1 fix, see docs/build-log/task-14-report.md, FINDING 1b): this
 # script runs from an INSTALLED skill at runtime, which never has a tests/ sibling (install.ps1
-# ships only codex-review/ and codex-reviewed-dev/) -- so it always identifies itself as a
+# ships only gauntlet-review/ and gauntlet-dev/) -- so it always identifies itself as a
 # possible installed tree. This is safe to pass unconditionally, including for a dev-repo run:
 # Test-PremiseManifest verifies gate sources STRICTLY whenever they are actually present, and only
 # falls back to provenance-only when they are wholly absent (see its own docstring).

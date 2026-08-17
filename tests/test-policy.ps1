@@ -1,5 +1,5 @@
 . "$PSScriptRoot\helpers.ps1"
-. "$PSScriptRoot\..\codex-review\scripts\lib.ps1"
+. "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1"
 $names = @('apps','browser_use','enable_request_compression','fast_mode','personality',
            'guardian_approval','remote_compaction_v2','shell_tool','code_mode_host',
            'shell_snapshot','js_repl','brand_new_capability')
@@ -19,7 +19,7 @@ Assert-Eq ($set -join ',') (($set | Sort-Object) -join ',') "sorted for stable a
 # string silently defeat this function's caller instead of failing closed. See
 # Test-EmptyElementFailsClosed in helpers.ps1 for the full rationale and how this was verified
 # to fail against the old [Parameter(Mandatory)][string[]] contract.
-Test-EmptyElementFailsClosed -LibPath "$PSScriptRoot\..\codex-review\scripts\lib.ps1" `
+Test-EmptyElementFailsClosed -LibPath "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1" `
     -CallExpression "Get-DisableSet -FeatureNames @('apps', '', 'browser_use')" `
     -Name 'Get-DisableSet -FeatureNames'
 

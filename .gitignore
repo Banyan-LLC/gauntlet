@@ -1,6 +1,6 @@
 # Machine-generated: binds to the local Codex CLI hash/version, so it is never portable.
-# Recreate with codex-review/scripts/calibrate-premises.ps1.
-codex-review/premises.json
+# Recreate with gauntlet-review/scripts/calibrate-premises.ps1.
+gauntlet-review/premises.json
 
 # Scratch harnesses and review state
 *.tmp

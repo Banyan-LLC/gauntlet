@@ -12,7 +12,7 @@ Revision 6 addressed round 4. The largest is architectural: **`exec resume` is g
 
 Previous revisions: 5 addressed round 3, 4 addressed round 2, 3 addressed round 1 and recorded the **Verified premises** below. Spec amendments made during plan review are listed at the top of the spec (rounds 3 and 4).
 
-**Goal:** Build the two personal Claude Code skills specified in `docs/design.md` (approved at spec review round 10, amended through live evidence): a `codex-review` primitive that runs bounded, hermetic Codex review loops, and a `codex-reviewed-dev` orchestrator that wraps the superpowers lifecycle with Codex review gates.
+**Goal:** Build the two personal Claude Code skills specified in `docs/design.md` (approved at spec review round 10, amended through live evidence): a `gauntlet-review` primitive that runs bounded, hermetic Codex review loops, and a `gauntlet-dev` orchestrator that wraps the superpowers lifecycle with Codex review gates.
 
 **Architecture:** Skill source lives in-repo at the repository root (versioned, PR-reviewable) with an installer that copies to `~/.claude/skills/`. All logic is in a dot-sourceable PowerShell library (`lib.ps1`) consumed by two thin entry scripts, so every function is unit-testable without live Codex or GitHub. Tests are plain PowerShell assertion scripts plus a live battery run against the real CLI.
 
@@ -25,17 +25,17 @@ Copied from the approved spec — every task inherits these:
 - Reviewer model pinned: `-m gpt-5.6-sol -c model_reasoning_effort="xhigh"`.
 - Feature allowlist (exact, complete): `enable_request_compression`, `remote_compaction_v2`, `fast_mode`, `personality`, `guardian_approval`. Every other enumerated feature gets `--disable <name>`, ignoring reported state. No shell, no file access.
 - Hermetic flags on every invocation: `--ignore-user-config`, `--ignore-rules`, `--skip-git-repo-check`, `-c web_search="disabled"`, `-c shell_environment_policy.inherit="none"`, `-s read-only`, and `-C <harness>` — every round, since every round is a fresh session.
-- **The harness lives OUTSIDE any repository and outside the git common dir**, at `%LOCALAPPDATA%\codex-review\harness\<random-guid>\`, because Codex discovers `AGENTS.md` from the git root down to its working directory and `--ignore-user-config` only skips `config.toml`. The directory name is **unpredictable and generated on first use**, must not already exist, and must be **empty before every invocation** — the prompt travels over stdin, so the harness never legitimately holds a file. Its resolved path is recorded in state and only that recorded path is reused.
+- **The harness lives OUTSIDE any repository and outside the git common dir**, at `%LOCALAPPDATA%\gauntlet-review\harness\<random-guid>\`, because Codex discovers `AGENTS.md` from the git root down to its working directory and `--ignore-user-config` only skips `config.toml`. The directory name is **unpredictable and generated on first use**, must not already exist, and must be **empty before every invocation** — the prompt travels over stdin, so the harness never legitimately holds a file. Its resolved path is recorded in state and only that recorded path is reused.
 - Prompt via redirected UTF-8 stdin (`-`) on every `codex exec`; never argv, never logs.
 - Embed budget: total stdin UTF-8 bytes (carry-over included), **default 50,000**. This is an **operational input bound, not the guarantee** (amended, live-evidence round 2026-08-12): it does not promise an oversized request is never attempted. The guarantee is an **acceptance-time usage gate**, measured on the real request rather than predicted from it — see the Exit-code contracts section and Task 7. Before the canonical verdict is written: process success, no top-level `error` event, exactly one `turn.completed`, and a positive-integer `usage.input_tokens` with `input_tokens + 128,000 <= 787,500` (≥25% context headroom); the reported usage and the exact terminal event are persisted in a create-only `round-N-attempt-M-usage.json`, never by rewriting immutable attempt metadata. This replaces the earlier four-premise design: actual usage from the reviewed request subsumes both the tokenizer premise (`tokens <= bytes`, never established for gpt-5.6-sol) and the estimated base-overhead premise. `Test-PremiseManifest`/`premises.json` still bind the reviewer stack — CLI hash/version, schema, and accepted `AGENTS.md` — so a changed stack forces re-validation, but no longer carry the numeric premises or an inequality (Historical: see Task 5's `Test-PremiseManifest` section). A verdict reserve derived from schema `maxLength` was **rejected** in review round 4: `maxLength` counts decoded characters while serialized JSON may emit six-byte escapes. Overflow -> human flag without publication.
 - Binary pinned by **path + SHA-256 + exact version string**, all three re-verified before every invocation. Later rounds run the **pinned executable itself** (never a freshly-selected candidate — discovery order can change between rounds). Production pins only real `.exe` binaries; wrappers (`.cmd`/`.bat`/`.ps1`) are accepted only under the test-only `-CliPathOverride`, because hashing a wrapper does not hash the program it launches.
 - Verdict: `approve` only with all-`nit` recommendations. Normalization produces **one canonical verdict object + JSON**; the marker is computed from the normalized JSON; the publisher consumes only normalized output. Schema maxima (summary 800, location 150, issue 500, suggestion 500, `maxItems` 20) bound the rendered review body; they are **not** the output reserve — that comes from the model's configured max output tokens, since `maxLength` counts characters rather than serialized JSON bytes.
-- Marker: `<!-- codex-review:pr=N:base=SHA:head=SHA:round=R:digest=D -->` (D = first 12 hex of SHA-256 of the **normalized** verdict JSON).
+- Marker: `<!-- gauntlet-review:pr=N:base=SHA:head=SHA:round=R:digest=D -->` (D = first 12 hex of SHA-256 of the **normalized** verdict JSON).
 - Publication: REST `POST` with `commit_id`; `--paginate --slurp` idempotency by marker (non-dismissed only); post-verify exact state + current `(baseOid, headSha)`; failure → dismiss `{"message", "event": "DISMISS"}`, confirm `DISMISSED`, else human flag.
 - Identity: author `geoffroth`, reviewer `BanyanLLC`; tokens per-process env only; no `gh auth switch`.
 - **Every round is a fresh `codex exec` session** (spec amendment, plan review round 4). `exec resume` is not used: resumed context accumulates prompts, verdicts and xhigh reasoning across up to ten rounds, which no per-round byte budget can bound. Continuity comes from a **bounded structured carry-over** in the prompt — prior recommendations plus their resolution status — which counts against the same embed budget and is human-flagged rather than truncated if it does not fit.
 - Round cap **10** per phase and **2 attempts per round**, both enforced in code before any process is launched; CI-fix cap 3.
-- State: versioned schema (`state_version: 1`), merge-not-replace writes, and **immutable per-attempt records** (`round-N-attempt-M-*`) — a retry of the same logical round is a new attempt, never an overwrite and never a collision. The canonical `round-N-verdict.json` is written only by a successful attempt. Each attempt record carries mode-specific provenance: doc → artifact path + artifact commit SHA; pr → PR number + reviewed `(baseOid, headSha)`. Doc modes: `docs/superpowers/reviews/<date>-<topic>/{spec,plan}/` (committed); pr mode: `<git common dir>/info/codex-review/<owner>-<repo>/pr-<n>/` (never committed). All path components validated; resolved paths must stay under their intended root.
+- State: versioned schema (`state_version: 1`), merge-not-replace writes, and **immutable per-attempt records** (`round-N-attempt-M-*`) — a retry of the same logical round is a new attempt, never an overwrite and never a collision. The canonical `round-N-verdict.json` is written only by a successful attempt. Each attempt record carries mode-specific provenance: doc → artifact path + artifact commit SHA; pr → PR number + reviewed `(baseOid, headSha)`. Doc modes: `docs/superpowers/reviews/<date>-<topic>/{spec,plan}/` (committed); pr mode: `<git common dir>/info/gauntlet-review/<owner>-<repo>/pr-<n>/` (never committed). All path components validated; resolved paths must stay under their intended root.
 - **Trusted context = approved controlling documents only.** ALL PR metadata (title, body, checks text) is untrusted review material.
 - Child environment: `CODEX_HOME` **plus `SystemRoot`** (amended, live-evidence round 2026-08-12: a `CODEX_HOME`-only child cannot resolve DNS — the real `codex exec` failed every request with `os error 11003` against `wss://chatgpt.com`; isolated without any model call, a child with `CODEX_HOME` only fails to resolve `chatgpt.com` and the same child with `SystemRoot` added succeeds; `SystemDrive` was tested and is not required; `SystemRoot` is a fixed OS path carrying no credential). Any further addition requires the same empirical-necessity procedure in Task 5, a spec amendment with justification, and a test proving it necessary and non-sensitive.
 - Superpowers compatibility pin: 6.0.2.
@@ -84,7 +84,7 @@ auditable).
 ```
 .
 ├── install.ps1
-├── codex-review/
+├── gauntlet-review/
 │   ├── SKILL.md
 │   ├── premises.json               # generated by calibrate-premises.ps1; not a source file
 │   ├── scripts/
@@ -94,7 +94,7 @@ auditable).
 │   │   └── publish-review.ps1
 │   └── schemas/
 │       └── verdict.schema.json     # single schema, no if/then — see below
-├── codex-reviewed-dev/
+├── gauntlet-dev/
 │   └── SKILL.md
 └── tests/
     ├── run-tests.ps1
@@ -119,7 +119,7 @@ auditable).
 ### Task 1: Scaffolding, schemas, test harness
 
 **Files:**
-- Create: `codex-review/schemas/verdict.schema.json`
+- Create: `gauntlet-review/schemas/verdict.schema.json`
 - Create: `tests/helpers.ps1`
 - Create: `tests/run-tests.ps1`
 - Test: `tests/test-schema.ps1`
@@ -139,7 +139,7 @@ auditable).
 # BEFORE inference). Probing established 'if'/'then' is the ONLY offending keyword
 # (minLength/maxLength/maxItems are all accepted). One file now serves BOTH --output-schema and
 # local structural validation.
-$schemaPath = "$PSScriptRoot\..\codex-review\schemas\verdict.schema.json"
+$schemaPath = "$PSScriptRoot\..\gauntlet-review\schemas\verdict.schema.json"
 $schema = Get-Content -Raw $schemaPath
 
 # Regression guard: the schema must never regain a top-level if/then. That keyword is exactly
@@ -338,8 +338,8 @@ round against the exact shipped schema.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add codex-review codex-reviewed-dev tests install.ps1
-git commit -m "feat(codex-review): scaffold, single schema, PATH-independent test harness"
+git add gauntlet-review gauntlet-dev tests install.ps1
+git commit -m "feat(gauntlet-review): scaffold, single schema, PATH-independent test harness"
 ```
 
 ---
@@ -347,7 +347,7 @@ git commit -m "feat(codex-review): scaffold, single schema, PATH-independent tes
 ### Task 2: CLI discovery, wrapper handling, compatibility probe
 
 **Files:**
-- Create: `codex-review/scripts/lib.ps1`
+- Create: `gauntlet-review/scripts/lib.ps1`
 - Test: `tests/test-discovery.ps1`
 
 **Interfaces:**
@@ -364,7 +364,7 @@ git commit -m "feat(codex-review): scaffold, single schema, PATH-independent tes
 
 ```powershell
 . "$PSScriptRoot\helpers.ps1"
-. "$PSScriptRoot\..\codex-review\scripts\lib.ps1"
+. "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1"
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "codexdisc-$([guid]::NewGuid())"
 New-Item -ItemType Directory -Force $tmp | Out-Null
 
@@ -442,7 +442,7 @@ Expected: FAIL — `lib.ps1` missing.
 **Write `Invoke-BoundedProcess` first** — its full code is in Task 5 Step 3, and this task's probe calls it. Task 5 then adds only the Codex-specific wrapper. Everything that spawns a process in this skill uses that one runner.
 
 ```powershell
-# lib.ps1 — codex-review core library. Dot-source; no top-level side effects.
+# lib.ps1 — gauntlet-review core library. Dot-source; no top-level side effects.
 Set-StrictMode -Version Latest
 
 $script:FeatureAllowlist = @('enable_request_compression','remote_compaction_v2','fast_mode','personality','guardian_approval')
@@ -574,8 +574,8 @@ Expected: all pass, exit 0.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add codex-review codex-reviewed-dev tests install.ps1
-git commit -m "feat(codex-review): discovery with wrapper resolution and fail-closed probe"
+git add gauntlet-review gauntlet-dev tests install.ps1
+git commit -m "feat(gauntlet-review): discovery with wrapper resolution and fail-closed probe"
 ```
 
 ---
@@ -583,7 +583,7 @@ git commit -m "feat(codex-review): discovery with wrapper resolution and fail-cl
 ### Task 3: Default-deny feature policy
 
 **Files:**
-- Modify: `codex-review/scripts/lib.ps1` (append)
+- Modify: `gauntlet-review/scripts/lib.ps1` (append)
 - Test: `tests/test-policy.ps1`
 
 **Interfaces:**
@@ -595,7 +595,7 @@ git commit -m "feat(codex-review): discovery with wrapper resolution and fail-cl
 
 ```powershell
 . "$PSScriptRoot\helpers.ps1"
-. "$PSScriptRoot\..\codex-review\scripts\lib.ps1"
+. "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1"
 $names = @('apps','browser_use','enable_request_compression','fast_mode','personality',
            'guardian_approval','remote_compaction_v2','shell_tool','code_mode_host',
            'shell_snapshot','js_repl','brand_new_capability')
@@ -632,8 +632,8 @@ function Get-DisableSet {
 - [ ] **Step 5: Commit**
 
 ```bash
-git add codex-review codex-reviewed-dev tests install.ps1
-git commit -m "feat(codex-review): default-deny feature policy"
+git add gauntlet-review gauntlet-dev tests install.ps1
+git commit -m "feat(gauntlet-review): default-deny feature policy"
 ```
 
 ---
@@ -641,7 +641,7 @@ git commit -m "feat(codex-review): default-deny feature policy"
 ### Task 4: Composer, mode-aware exact audit, verdict normalization
 
 **Files:**
-- Modify: `codex-review/scripts/lib.ps1` (append)
+- Modify: `gauntlet-review/scripts/lib.ps1` (append)
 - Test: `tests/test-composer.ps1`
 
 **Interfaces:**
@@ -656,8 +656,8 @@ git commit -m "feat(codex-review): default-deny feature policy"
 
 ```powershell
 . "$PSScriptRoot\helpers.ps1"
-. "$PSScriptRoot\..\codex-review\scripts\lib.ps1"
-$schemaPath = "$PSScriptRoot\..\codex-review\schemas\verdict.schema.json"
+. "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1"
+$schemaPath = "$PSScriptRoot\..\gauntlet-review\schemas\verdict.schema.json"
 $disable = @('apps','browser_use','shell_tool')
 
 $r1 = New-CodexArgs -HarnessDir 'C:\h' -SchemaPath 'C:\s.json' -VerdictPath 'C:\v.json' -DisableSet $disable
@@ -845,8 +845,8 @@ function Test-Verdict {
 - [ ] **Step 5: Commit**
 
 ```bash
-git add codex-review codex-reviewed-dev tests install.ps1
-git commit -m "feat(codex-review): exact mode-aware audit and canonical verdict normalization"
+git add gauntlet-review gauntlet-dev tests install.ps1
+git commit -m "feat(gauntlet-review): exact mode-aware audit and canonical verdict normalization"
 ```
 
 ---
@@ -854,7 +854,7 @@ git commit -m "feat(codex-review): exact mode-aware audit and canonical verdict 
 ### Task 5: One bounded process runner for everything
 
 **Files:**
-- Modify: `codex-review/scripts/lib.ps1` (append)
+- Modify: `gauntlet-review/scripts/lib.ps1` (append)
 - Test: `tests/test-invoke.ps1`
 
 **Interfaces:**
@@ -872,7 +872,7 @@ git commit -m "feat(codex-review): exact mode-aware audit and canonical verdict 
 
 ```powershell
 . "$PSScriptRoot\helpers.ps1"
-. "$PSScriptRoot\..\codex-review\scripts\lib.ps1"
+. "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1"
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "codexinv-$([guid]::NewGuid())"
 New-Item -ItemType Directory -Force $tmp | Out-Null
 $shim = New-FakeCodexShim -Dir "$tmp\shim" -Version "0.147.0" -ExecHelp 'x' -ResumeHelp 'x' -FeaturesText 'x stable true'
@@ -1163,8 +1163,8 @@ Because `Invoke-CodexProcess` unconditionally merges `$script:RequiredChildEnv` 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add codex-review codex-reviewed-dev tests install.ps1 docs/design.md
-git commit -m "feat(codex-review): deadlock-free runner with tree-kill timeout and minimal child env"
+git add gauntlet-review gauntlet-dev tests install.ps1 docs/design.md
+git commit -m "feat(gauntlet-review): deadlock-free runner with tree-kill timeout and minimal child env"
 ```
 
 ---
@@ -1172,12 +1172,12 @@ git commit -m "feat(codex-review): deadlock-free runner with tree-kill timeout a
 ### Task 6: Harness placement, validated state paths, versioned merge-state
 
 **Files:**
-- Modify: `codex-review/scripts/lib.ps1` (append)
+- Modify: `gauntlet-review/scripts/lib.ps1` (append)
 - Test: `tests/test-state.ps1`
 
 **Interfaces:**
 - Produces:
-  - `New-HarnessDir([string]$RepoRoot) -> [string]` — creates `%LOCALAPPDATA%\codex-review\harness\<128-bit random hex>\`, refusing to reuse an existing directory; the path is recorded in state and only that recorded path is ever reused.
+  - `New-HarnessDir([string]$RepoRoot) -> [string]` — creates `%LOCALAPPDATA%\gauntlet-review\harness\<128-bit random hex>\`, refusing to reuse an existing directory; the path is recorded in state and only that recorded path is ever reused.
   - `Assert-HarnessSafe([string]$Dir, [string]$RepoRoot) -> [string]` — run **before every invocation**: throws if the harness is missing, outside its managed root, under `$RepoRoot` or that repo's git common dir (Codex discovers `AGENTS.md` from the git root down to cwd), **or not empty**. Emptiness is the load-bearing check: the prompt travels over stdin and the sandbox is read-only, so any file present is residue that could act as instructions.
   - `Get-StateDir(-Mode doc|pr, ...)` — as before, plus **component validation**: `Phase` from `ValidateSet('spec','plan')`; `Date` `^\d{4}-\d{2}-\d{2}$`; `Topic` `^[a-z0-9][a-z0-9-]{0,63}$`; `OwnerRepo` `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`; `PrNumber` ≥ 1; final resolved absolute path must start with the intended root or throw.
   - `Write-RoundState([string]$StateDir, [hashtable]$Patch)` — **merge semantics**: reads existing `state.json`, overlays `$Patch` keys, always stamps `state_version = 1`. Never deletes caller-recorded keys.
@@ -1190,7 +1190,7 @@ git commit -m "feat(codex-review): deadlock-free runner with tree-kill timeout a
 
 ```powershell
 . "$PSScriptRoot\helpers.ps1"
-. "$PSScriptRoot\..\codex-review\scripts\lib.ps1"
+. "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1"
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "codexstate-$([guid]::NewGuid())"
 New-Item -ItemType Directory -Force $tmp | Out-Null
 git -C $tmp init -q repo
@@ -1219,7 +1219,7 @@ $expectedDoc = [System.IO.Path]::GetFullPath((Join-Path "$tmp\repo" 'docs\superp
 Assert-Eq $docDir $expectedDoc "doc path"
 $prDir = Get-StateDir -Mode pr -RepoRoot "$tmp\wt" -OwnerRepo 'Banyan-LLC/cavu.photo' -PrNumber 12
 $common = (git -C "$tmp\repo" rev-parse --path-format=absolute --git-common-dir).Trim()
-$expectedPr = [System.IO.Path]::GetFullPath((Join-Path $common 'info\codex-review\Banyan-LLC-cavu.photo\pr-12'))
+$expectedPr = [System.IO.Path]::GetFullPath((Join-Path $common 'info\gauntlet-review\Banyan-LLC-cavu.photo\pr-12'))
 Assert-Eq $prDir $expectedPr "pr path under COMMON dir from worktree"
 Assert-True ($prDir -notmatch 'worktrees') "pr state NOT under the per-worktree git dir (survives worktree cleanup)"
 Assert-Throws { Get-StateDir -Mode doc -RepoRoot "$tmp\repo" -Topic '..\..\escape' -Phase spec -Date '2026-08-09' } "topic traversal rejected"
@@ -1313,7 +1313,7 @@ function Assert-HarnessSafe {
     param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][string]$RepoRoot)
     if (-not (Test-Path $Dir -PathType Container)) { throw "harness missing: $Dir" }
     $abs = [System.IO.Path]::GetFullPath($Dir)
-    $root = [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'codex-review\harness'))
+    $root = [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'gauntlet-review\harness'))
     if (-not (Test-PathUnderRoot -Path $abs -Root $root)) { throw "harness outside its managed root: $abs" }
     $repoAbs = [System.IO.Path]::GetFullPath($RepoRoot)
     $common = (git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir 2>$null)
@@ -1332,7 +1332,7 @@ function New-HarnessDir {
     # Unpredictable name, generated on first use, must not already exist. A caller-chosen or
     # reusable id could point at a pre-existing directory holding a planted AGENTS.md.
     param([Parameter(Mandatory)][string]$RepoRoot)
-    $root = Join-Path $env:LOCALAPPDATA 'codex-review\harness'
+    $root = Join-Path $env:LOCALAPPDATA 'gauntlet-review\harness'
     New-Item -ItemType Directory -Force $root | Out-Null
     $bytes = [byte[]]::new(16)
     [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
@@ -1361,7 +1361,7 @@ function Get-StateDir {
         if ($PrNumber -lt 1) { throw "invalid PR number $PrNumber" }
         $common = (git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir).Trim()
         if ($LASTEXITCODE -ne 0) { throw "not a git repository: $RepoRoot" }
-        $root = Join-Path $common 'info\codex-review'
+        $root = Join-Path $common 'info\gauntlet-review'
         $dir = [System.IO.Path]::GetFullPath((Join-Path $root "$($OwnerRepo -replace '/', '-')\pr-$PrNumber"))
     }
     if (-not (Test-PathUnderRoot -Path $dir -Root $root)) { throw "state path escapes its root" }
@@ -1515,8 +1515,8 @@ function ConvertTo-CarryOverText {
 - [ ] **Step 5: Commit**
 
 ```bash
-git add codex-review codex-reviewed-dev tests install.ps1
-git commit -m "feat(codex-review): outside-repo harness, validated state paths, versioned merge-state"
+git add gauntlet-review gauntlet-dev tests install.ps1
+git commit -m "feat(gauntlet-review): outside-repo harness, validated state paths, versioned merge-state"
 ```
 
 ---
@@ -1524,7 +1524,7 @@ git commit -m "feat(codex-review): outside-repo harness, validated state paths, 
 ### Task 7: `invoke-codex.ps1` — bounded state machine in code
 
 **Files:**
-- Create: `codex-review/scripts/invoke-codex.ps1`
+- Create: `gauntlet-review/scripts/invoke-codex.ps1`
 - Test: extend `tests/test-invoke.ps1` (append before `Write-TestResult`)
 
 **Interfaces:**
@@ -1545,7 +1545,7 @@ git commit -m "feat(codex-review): outside-repo harness, validated state paths, 
 
 ```powershell
 # ---- invoke-codex.ps1 entry behavior ----
-$entry = "$PSScriptRoot\..\codex-review\scripts\invoke-codex.ps1"
+$entry = "$PSScriptRoot\..\gauntlet-review\scripts\invoke-codex.ps1"
 $repo = "$tmp\repo"; git init -q $repo; git -C $repo -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 $goodExecHelp = ($script:RequiredExecFlags -join '  ')
 $goodResumeHelp = 'unused-by-this-design'
@@ -1560,7 +1560,7 @@ $promptFile = "$tmp\prompt.txt"; Set-Content $promptFile -Value ("review this`n"
 # These tests WRITE the real skill's premises.json, so the operator's calibrated manifest is
 # saved here and restored in the finally block at the end of this file. Never leave a test
 # manifest (bound to a shim that will not exist tomorrow) behind as the machine's real one.
-$realManifestPath = "$PSScriptRoot\..\codex-review\premises.json"
+$realManifestPath = "$PSScriptRoot\..\gauntlet-review\premises.json"
 $realManifest = if (Test-Path $realManifestPath) { Get-Content -Raw $realManifestPath } else { $null }
 try {
 
@@ -1569,7 +1569,7 @@ function Set-TestManifest([string]$ShimPath) {
     # premises this manifest used to also carry are gone, superseded by the acceptance-time
     # usage gate above.
     $probe = Test-CodexCandidate -Path $ShimPath -AllowWrapper
-    $skillRoot = "$PSScriptRoot\..\codex-review"
+    $skillRoot = "$PSScriptRoot\..\gauntlet-review"
     $agentsPath = "$env:USERPROFILE\.codex\AGENTS.md"
     @{ version=1; model='gpt-5.6-sol'
        cli_path=$probe.Path; cli_sha256=$probe.Sha256; cli_version=$probe.Version
@@ -1735,7 +1735,7 @@ $raceFile = Join-Path $raceDir 'canonical.json'
 Write-NewFileExclusive -Path $raceFile -Text '{"first":true}'
 Assert-Throws { Write-NewFileExclusive -Path $raceFile -Text '{"second":true}' } "a second exclusive create is refused"
 Assert-Eq (Get-Content -Raw $raceFile) '{"first":true}' "the first writer's bytes survive"
-$libPath = "$PSScriptRoot\..\codex-review\scripts\lib.ps1"
+$libPath = "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1"
 $concurrent = Join-Path $raceDir 'concurrent.json'
 $jobs = 1..4 | ForEach-Object { Start-ThreadJob -ScriptBlock {
     param($lib, $path, $n)
@@ -1768,7 +1768,7 @@ This is the current, shipped content:
 
 ```powershell
 #Requires -Version 7
-<# codex-review: run ONE hermetic review round (one ATTEMPT of one logical round).
+<# gauntlet-review: run ONE hermetic review round (one ATTEMPT of one logical round).
    Exit codes are defined once in the plan's contracts section; this comment is the short form.
    0 ok
    | 10 budget -- EITHER the preflight byte estimate is over budget BEFORE anything runs, OR
@@ -2077,8 +2077,8 @@ Run: `pwsh -NoProfile -File tests/run-tests.ps1` → `ALL TEST FILES PASSED`
 - [ ] **Step 5: Commit**
 
 ```bash
-git add codex-review codex-reviewed-dev tests install.ps1
-git commit -m "feat(codex-review): entry with coded round cap, generations, normalized persistence"
+git add gauntlet-review gauntlet-dev tests install.ps1
+git commit -m "feat(gauntlet-review): entry with coded round cap, generations, normalized persistence"
 ```
 
 ---
@@ -2086,9 +2086,9 @@ git commit -m "feat(codex-review): entry with coded round cap, generations, norm
 ### Task 8: Publication, dismissal, handoff freshness
 
 **Files:**
-- Modify: `codex-review/scripts/lib.ps1` (append)
-- Create: `codex-review/scripts/publish-review.ps1`
-- Create: `codex-review/scripts/calibrate-premises.ps1`
+- Modify: `gauntlet-review/scripts/lib.ps1` (append)
+- Create: `gauntlet-review/scripts/publish-review.ps1`
+- Create: `gauntlet-review/scripts/calibrate-premises.ps1`
 - Test: `tests/test-publish.ps1`
 
 **Interfaces:**
@@ -2106,7 +2106,7 @@ git commit -m "feat(codex-review): entry with coded round cap, generations, norm
 
 ```powershell
 . "$PSScriptRoot\helpers.ps1"
-. "$PSScriptRoot\..\codex-review\scripts\lib.ps1"
+. "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1"
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "codexpub-$([guid]::NewGuid())"
 New-Item -ItemType Directory -Force $tmp | Out-Null
 
@@ -2115,7 +2115,7 @@ $hostileVerdict = @{verdict='request_changes'; summary="quotes `" back`` tick `$
     recommendations=@(@{severity='blocking'; location='a"b'; issue="i`n`"x`""; suggestion='s`$(y)'})} | ConvertTo-Json -Depth 5 -Compress
 $hv = $hostileVerdict | ConvertFrom-Json
 $marker = Get-ReviewMarker -Pr 7 -Base 'b0e1' -Head 'h3ad' -Round 2 -NormalizedJson $hostileVerdict
-Assert-True ($marker -match '^<!-- codex-review:pr=7:base=b0e1:head=h3ad:round=2:digest=[0-9a-f]{12} -->$') "marker format"
+Assert-True ($marker -match '^<!-- gauntlet-review:pr=7:base=b0e1:head=h3ad:round=2:digest=[0-9a-f]{12} -->$') "marker format"
 $body = ConvertTo-ReviewBody -NormalizedVerdict $hv -Marker $marker
 Assert-True ($body.Contains($marker)) "marker embedded"
 $hugeObj = @{verdict='approve';summary=('s'*800);recommendations=@(1..20 | ForEach-Object {
@@ -2287,7 +2287,7 @@ $ghDir = "$tmp\fakegh"; New-Item -ItemType Directory -Force $ghDir | Out-Null
 Set-Content "$ghDir\gh.ps1" -Value 'Start-Sleep 300' -Encoding utf8
 Set-Content "$ghDir\gh.cmd" -Encoding ascii -Value "@`"$([System.Environment]::ProcessPath)`" -NoProfile -File `"%~dp0gh.ps1`" %*"
 $vFile = "$tmp\norm-verdict.json"; Set-Content $vFile -Value $vJson -Encoding utf8
-$pubEntry = "$PSScriptRoot\..\codex-review\scripts\publish-review.ps1"
+$pubEntry = "$PSScriptRoot\..\gauntlet-review\scripts\publish-review.ps1"
 $swPub = [System.Diagnostics.Stopwatch]::StartNew()
 $oldPath = $env:PATH; $env:PATH = "$ghDir;$env:PATH"
 pwsh -NoProfile -File $pubEntry -OwnerRepo 'o/r' -Pr 7 -Round 1 -VerdictFile $vFile -StateDir $tmp -BaseOid 'b0e1' -HeadSha 'h3ad'
@@ -2308,7 +2308,7 @@ function Get-ReviewMarker {
           [Parameter(Mandatory)][string]$NormalizedJson)
     $sha = [System.Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($NormalizedJson))
     $digest = (-join ($sha | ForEach-Object { $_.ToString('x2') })).Substring(0, 12)
-    "<!-- codex-review:pr=${Pr}:base=${Base}:head=${Head}:round=${Round}:digest=${digest} -->"
+    "<!-- gauntlet-review:pr=${Pr}:base=${Base}:head=${Head}:round=${Round}:digest=${digest} -->"
 }
 
 function ConvertTo-ReviewBody {
@@ -2421,7 +2421,7 @@ function Publish-CodexReview {
     }
 
     $dismissPayload = Join-Path $StateDir 'dismiss-body.json'
-    @{ message = "Dismissed by codex-review: verification failed for $marker"; event = 'DISMISS' } |
+    @{ message = "Dismissed by gauntlet-review: verification failed for $marker"; event = 'DISMISS' } |
         ConvertTo-Json | Set-Content $dismissPayload -Encoding utf8
     $put = Invoke-Gh -Token $Token -GhArgs @('api','-X','PUT',"repos/$OwnerRepo/pulls/$Pr/reviews/$reviewId/dismissals") -InputFile $dismissPayload
     if ($put.ExitCode -ne 0) { Write-Warning "HUMAN FLAG: stale review $reviewId active, dismissal denied"; return 4 }
@@ -2476,7 +2476,7 @@ function Test-HandoffFresh {
 }
 ```
 
-`codex-review/scripts/calibrate-premises.ps1` — the ONLY path that runs without a manifest. **Amended, live-evidence round 2026-08-12: it no longer takes any premise parameters and makes NO live model call at all.** The plan originally specified this script to require `-ContextWindowTokens`/`-MaxOutputTokens`/`-TokenizerFamily`/`-TokenizerSource`/`-TokenizerStatement`, sample the real CLI several times with a fixed minimal prompt, and measure base overhead — which is exactly the design this task's blocker (recorded in the revision-9 self-review) could never clear: no authoritative source was ever found establishing gpt-5.6-sol's tokenizer encoding, so this script could never be run to completion, and the production entry (Task 7) would refuse forever at exit 12. The acceptance-time usage gate (Task 7) subsumes the numeric premises entirely, so this script's only remaining job is re-deriving the stack-identity bindings (`Test-PremiseManifest`'s remaining fields) via the same compatibility probe every review round already performs — no review, no sampling, nothing to measure. This is the current, shipped content:
+`gauntlet-review/scripts/calibrate-premises.ps1` — the ONLY path that runs without a manifest. **Amended, live-evidence round 2026-08-12: it no longer takes any premise parameters and makes NO live model call at all.** The plan originally specified this script to require `-ContextWindowTokens`/`-MaxOutputTokens`/`-TokenizerFamily`/`-TokenizerSource`/`-TokenizerStatement`, sample the real CLI several times with a fixed minimal prompt, and measure base overhead — which is exactly the design this task's blocker (recorded in the revision-9 self-review) could never clear: no authoritative source was ever found establishing gpt-5.6-sol's tokenizer encoding, so this script could never be run to completion, and the production entry (Task 7) would refuse forever at exit 12. The acceptance-time usage gate (Task 7) subsumes the numeric premises entirely, so this script's only remaining job is re-deriving the stack-identity bindings (`Test-PremiseManifest`'s remaining fields) via the same compatibility probe every review round already performs — no review, no sampling, nothing to measure. This is the current, shipped content:
 
 ```powershell
 #Requires -Version 7
@@ -2581,23 +2581,23 @@ try {
 Run: `pwsh -NoProfile -File tests/run-tests.ps1` → `ALL TEST FILES PASSED`
 
 ```bash
-git add codex-review codex-reviewed-dev tests install.ps1
-git commit -m "feat(codex-review): publication with full exit map, dismissal, handoff freshness"
+git add gauntlet-review gauntlet-dev tests install.ps1
+git commit -m "feat(gauntlet-review): publication with full exit map, dismissal, handoff freshness"
 ```
 
 ---
 
-### Task 9: `codex-review/SKILL.md`
+### Task 9: `gauntlet-review/SKILL.md`
 
 **Files:**
-- Create: `codex-review/SKILL.md`
+- Create: `gauntlet-review/SKILL.md`
 
 - [ ] **Step 1: Write the skill document** (exact content):
 
 ```markdown
 ---
-name: codex-review
-description: Run a bounded, hermetic Codex (gpt-5.6-sol xhigh) review loop over a spec, plan, or pull request. Use when the user asks for a Codex review of a document or PR, or when the codex-reviewed-dev pipeline reaches a review gate.
+name: gauntlet-review
+description: Run a bounded, hermetic Codex (gpt-5.6-sol xhigh) review loop over a spec, plan, or pull request. Use when the user asks for a Codex review of a document or PR, or when the gauntlet-dev pipeline reaches a review gate.
 ---
 
 # Codex Review Loop (primitive)
@@ -2662,8 +2662,8 @@ One artifact, one bounded loop. Modes: `doc` (spec/plan) and `pr`. The reviewer 
 ## State
 
 - doc: `docs/superpowers/reviews/<date>-<topic>/<spec|plan>/` — COMMIT with doc revisions.
-- pr: `$(git rev-parse --git-common-dir)/info/codex-review/<owner>-<repo>/pr-<n>/` — NEVER commit.
-- Harness: `%LOCALAPPDATA%\codex-review\harness\<random>\` — created with an unpredictable name on the first round, recorded in state, reused only from that record, and **verified empty before every invocation**. It sits outside every repo (AGENTS.md discovery boundary) and never holds a file, because the prompt travels over stdin.
+- pr: `$(git rev-parse --git-common-dir)/info/gauntlet-review/<owner>-<repo>/pr-<n>/` — NEVER commit.
+- Harness: `%LOCALAPPDATA%\gauntlet-review\harness\<random>\` — created with an unpredictable name on the first round, recorded in state, reused only from that record, and **verified empty before every invocation**. It sits outside every repo (AGENTS.md discovery boundary) and never holds a file, because the prompt travels over stdin.
 - Per round: immutable `round-N-attempt-M-{meta,verdict.raw,events}`; the canonical `round-N-verdict.json` is written only by a successful attempt. Read only the canonical file.
 
 ## Prompt template
@@ -2688,13 +2688,13 @@ Before each pr round (author side, geoffroth token):
 Handoff: `Test-HandoffFresh` from `lib.ps1` must return `Fresh` before notifying the human.
 ```
 
-- [ ] **Step 2: Verify frontmatter** — `pwsh -NoProfile -Command "$c = Get-Content -Raw codex-review/SKILL.md; if ($c -match '(?s)^---.*?name: codex-review.*?---') { 'OK' } else { exit 1 }"` → `OK`
+- [ ] **Step 2: Verify frontmatter** — `pwsh -NoProfile -Command "$c = Get-Content -Raw gauntlet-review/SKILL.md; if ($c -match '(?s)^---.*?name: gauntlet-review.*?---') { 'OK' } else { exit 1 }"` → `OK`
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add codex-review codex-reviewed-dev tests install.ps1/codex-review/SKILL.md
-git commit -m "feat(codex-review): SKILL.md protocol with untrusted PR metadata and recovery paths"
+git add gauntlet-review gauntlet-dev tests install.ps1/gauntlet-review/SKILL.md
+git commit -m "feat(gauntlet-review): SKILL.md protocol with untrusted PR metadata and recovery paths"
 ```
 
 ---
@@ -2711,10 +2711,10 @@ git commit -m "feat(codex-review): SKILL.md protocol with untrusted PR metadata 
 ```powershell
 # LIVE: real CLI, no GitHub effects. Mechanical event-stream assertions throughout.
 . "$PSScriptRoot\..\helpers.ps1"
-. "$PSScriptRoot\..\..\codex-review\scripts\lib.ps1"
+. "$PSScriptRoot\..\..\gauntlet-review\scripts\lib.ps1"
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "codexlive-$([guid]::NewGuid())"
 New-Item -ItemType Directory -Force $tmp | Out-Null
-$entry = "$PSScriptRoot\..\..\codex-review\scripts\invoke-codex.ps1"
+$entry = "$PSScriptRoot\..\..\gauntlet-review\scripts\invoke-codex.ps1"
 # Real turn-lifecycle event taxonomy (amended, live-evidence round 2026-08-12 — confirmed against
 # live runs against the real CLI; supersedes any earlier invented names such as exec_command or
 # tool_call used as placeholders here): thread.started, turn.started, item.completed (item.type =
@@ -2742,7 +2742,7 @@ $toolEventPattern = '"type"\s*:\s*"(exec_command|shell|local_shell|tool_call|fun
 #    reviewer-stack identity binding (CLI hash/version, schema hash, AGENTS.md hash,
 #    invocation-profile hash) and makes NO live model call, so this step costs nothing and can no
 #    longer block on missing tokenizer documentation.
-pwsh -NoProfile -File "$PSScriptRoot\..\..\codex-review\scripts\calibrate-premises.ps1"
+pwsh -NoProfile -File "$PSScriptRoot\..\..\gauntlet-review\scripts\calibrate-premises.ps1"
 Assert-Eq $LASTEXITCODE 0 "reviewer-stack manifest recorded before anything else runs"
 
 # 1. Discovery against real binaries.
@@ -2940,8 +2940,8 @@ Calibration points to fix-and-rerun if hit: features-list row parse; `-c` TOML q
 - [ ] **Step 3: Commit**
 
 ```bash
-git add codex-review codex-reviewed-dev tests install.ps1 docs/design.md
-git commit -m "test(codex-review): live smoke green - AGENTS.md boundary, canaries, near-limit usage gate"
+git add gauntlet-review gauntlet-dev tests install.ps1 docs/design.md
+git commit -m "test(gauntlet-review): live smoke green - AGENTS.md boundary, canaries, near-limit usage gate"
 ```
 
 ---
@@ -2960,13 +2960,13 @@ git commit -m "test(codex-review): live smoke green - AGENTS.md boundary, canari
 # first prove the detector CAN see the event (positive control), then prove the hermetic
 # session does NOT produce it. A control that cannot fire = TEST FAILURE (never skip silently).
 . "$PSScriptRoot\..\helpers.ps1"
-. "$PSScriptRoot\..\..\codex-review\scripts\lib.ps1"
+. "$PSScriptRoot\..\..\gauntlet-review\scripts\lib.ps1"
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "codexsec-$([guid]::NewGuid())"
 New-Item -ItemType Directory -Force $tmp | Out-Null
-$entry = "$PSScriptRoot\..\..\codex-review\scripts\invoke-codex.ps1"
+$entry = "$PSScriptRoot\..\..\gauntlet-review\scripts\invoke-codex.ps1"
 $repo = "$tmp\r"; git init -q $repo; git -C $repo -c user.email=t@t -c user.name=t commit -q --allow-empty -m i
 $cli = Select-CodexCli -Candidates (Get-CodexCandidates)
-$schema = "$PSScriptRoot\..\..\codex-review\schemas\verdict.schema.json"
+$schema = "$PSScriptRoot\..\..\gauntlet-review\schemas\verdict.schema.json"
 # Broad denylist patterns, NOT calibrated against a confirmed real event name (amended,
 # live-evidence round 2026-08-12): round-6 live testing found 0.147 exposes NO registered-tool
 # roster in the --json stream or the app-server protocol at all, so there is no shell/tool-call-
@@ -3144,8 +3144,8 @@ Calibrate `$toolEventPattern`/`$webEventPattern` from the positive-control outpu
 - [ ] **Step 3: Commit**
 
 ```bash
-git add codex-review codex-reviewed-dev tests install.ps1
-git commit -m "test(codex-review): control-backed live security battery"
+git add gauntlet-review gauntlet-dev tests install.ps1
+git commit -m "test(gauntlet-review): control-backed live security battery"
 ```
 
 ---
@@ -3153,31 +3153,31 @@ git commit -m "test(codex-review): control-backed live security battery"
 ### Task 12: Orchestrator skill + installer
 
 **Files:**
-- Create: `codex-reviewed-dev/SKILL.md`
+- Create: `gauntlet-dev/SKILL.md`
 - Create: `install.ps1`
 
 - [ ] **Step 1: Write the orchestrator SKILL.md** (exact content):
 
 ```markdown
 ---
-name: codex-reviewed-dev
+name: gauntlet-dev
 description: Development pipeline with Codex peer-review gates. Use at TASK INITIATION for any substantial feature - the same tasks that warrant the superpowers brainstorming/spec flow - BEFORE invoking brainstorming. Not for small fixes. User opts out by saying "skip codex review".
 ---
 
-# Codex-Reviewed Development Pipeline
+# Gauntlet Development Pipeline
 
 Wraps the superpowers lifecycle (pinned: superpowers 6.0.2 — re-verify both insertion points on superpowers updates). This is user policy and takes precedence over brainstorming's "writing-plans is the only next skill" rule. Every superpowers user gate still happens, on Codex-approved documents.
 
 **Defaults** (project AGENTS.md/CLAUDE.md may override; in-session user instructions win):
-author `geoffroth` · reviewer `BanyanLLC` · round cap 10/phase · CI-fix cap 3 · model `gpt-5.6-sol` @ `xhigh` · embed budget 50,000 bytes (operational input bound; the acceptance-time usage gate on the real CLI's reported usage is the actual guarantee — see codex-review SKILL.md).
+author `geoffroth` · reviewer `BanyanLLC` · round cap 10/phase · CI-fix cap 3 · model `gpt-5.6-sol` @ `xhigh` · embed budget 50,000 bytes (operational input bound; the acceptance-time usage gate on the real CLI's reported usage is the actual guarantee — see gauntlet-review SKILL.md).
 
 ## Pipeline
 
 1. **Spec**: superpowers brainstorming → spec committed →
-   **INSERTION POINT A**: codex-review skill, doc mode, phase `spec` → approval or human flag →
+   **INSERTION POINT A**: gauntlet-review skill, doc mode, phase `spec` → approval or human flag →
    user reviews the Codex-approved spec (brainstorming's gate).
 2. **Plan**: superpowers writing-plans → plan committed →
-   **INSERTION POINT B**: codex-review, doc mode, phase `plan` (approved spec as TRUSTED CONTEXT — the only trusted context) →
+   **INSERTION POINT B**: gauntlet-review, doc mode, phase `plan` (approved spec as TRUSTED CONTEXT — the only trusted context) →
    user plan-review gate. NEVER start implementation before it.
 3. **Build**: subagent-driven development per existing conventions. No Codex involvement.
 4. **PR**:
@@ -3185,14 +3185,14 @@ author `geoffroth` · reviewer `BanyanLLC` · round cap 10/phase · CI-fix cap 3
       (`GH_TOKEN=$(gh auth token -u geoffroth) gh pr create …` from Git Bash).
    b. CI gate (author-owned): `GH_TOKEN=$(gh auth token -u geoffroth) gh pr checks <n> --watch`;
       fix+re-push; 3 consecutive failures → human flag. Only green builds reach review.
-   c. codex-review pr mode: record `(baseOid, headSha)`; prompt = metadata + exact-base diff (ALL untrusted);
+   c. gauntlet-review pr mode: record `(baseOid, headSha)`; prompt = metadata + exact-base diff (ALL untrusted);
       invoke-codex → publish-review as BanyanLLC. Exits 2/3 → refresh oids, re-review (a round). Exit 4 → human flag NOW. Exit 5 → retry once.
    d. request_changes → fix, push, green CI, then a FRESH round whose ledger records each prior finding as addressed/disputed/outstanding; re-review the new `(baseOid, headSha)`.
 5. **Handoff**: `Test-HandoffFresh` (lib.ps1) must return Fresh — APPROVED state, commit match, both current oids equal the reviewed pair. Stale → re-sync, re-enter review. Then notify the user (message + push notification). **The user merges. Never merge.**
 
 ## Identity
 
-No `gh auth switch`, ever. geoffroth token for author calls, BanyanLLC token inside publish-review — per-command/per-process only. Preflight before any push: both tokens retrievable, codex-review probe passes; miss → stop and report.
+No `gh auth switch`, ever. geoffroth token for author calls, BanyanLLC token inside publish-review — per-command/per-process only. Preflight before any push: both tokens retrievable, gauntlet-review probe passes; miss → stop and report.
 
 ## Human flags
 
@@ -3202,7 +3202,7 @@ reached, CI-fix cap, transient-failure retry exhausted, dismissal denied.
 Exit 12 is NOT unconditional. Its most common cause — a premise manifest that is absent,
 stale, or bound to a different binary, which happens routinely after a Codex update — is
 self-serve: re-record it with `calibrate-premises.ps1` and re-invoke, exactly as the
-codex-review protocol says. Only a non-manifest exit 12 (harness, token) is a human flag.
+gauntlet-review protocol says. Only a non-manifest exit 12 (harness, token) is a human flag.
 ```
 
 - [ ] **Step 2: Write `install.ps1`**
@@ -3210,7 +3210,7 @@ codex-review protocol says. Only a non-manifest exit 12 (harness, token) is a hu
 ```powershell
 #Requires -Version 7
 $src = $PSScriptRoot
-. "$src\codex-review\scripts\lib.ps1"
+. "$src\gauntlet-review\scripts\lib.ps1"
 # Installation is a gate too: it uses the SAME selection policy and stack-identity manifest a
 # review round checks, so "valid at install" means the recorded CLI/schema/AGENTS.md/invocation-
 # profile binding actually matches what rounds will run -- catching a broken or drifted reviewer
@@ -3219,7 +3219,7 @@ try { $instCli = Select-CodexCli -Candidates (Get-CodexCandidates) } catch {
     Write-Error "refusing to install: no usable Codex CLI ($($_.Exception.Message))"; exit 1
 }
 $instProfile = Get-InvocationProfileHash -DisableSet (Get-DisableSet -FeatureNames $instCli.FeatureNames)
-$pm = Test-PremiseManifest -SkillRoot "$src\codex-review" -ActualCli $instCli `
+$pm = Test-PremiseManifest -SkillRoot "$src\gauntlet-review" -ActualCli $instCli `
     -InvocationProfileHash $instProfile
 if (-not $pm.Valid) {
     Write-Error "refusing to install: $($pm.Reason). Run scripts/calibrate-premises.ps1 first."
@@ -3227,14 +3227,14 @@ if (-not $pm.Valid) {
 }
 $dst = "$env:USERPROFILE\.claude\skills"
 New-Item -ItemType Directory -Force $dst | Out-Null
-foreach ($skill in 'codex-review','codex-reviewed-dev') {
+foreach ($skill in 'gauntlet-review','gauntlet-dev') {
     if (Test-Path "$dst\$skill") { Remove-Item -Recurse -Force "$dst\$skill" }
     Copy-Item -Recurse "$src\$skill" "$dst\$skill"
     Write-Host "installed $skill -> $dst\$skill"
 }
 $claudeMd = "$env:USERPROFILE\.claude\CLAUDE.md"
-$pointer = 'Substantial feature tasks follow the codex-reviewed-dev pipeline (Codex review gates on spec, plan, and PR) unless the user opts out with "skip codex review".'
-if (-not (Test-Path $claudeMd) -or -not ((Get-Content -Raw $claudeMd) -match [regex]::Escape('codex-reviewed-dev pipeline'))) {
+$pointer = 'Substantial feature tasks follow the gauntlet-dev pipeline (Codex review gates on spec, plan, and PR) unless the user opts out with "skip codex review".'
+if (-not (Test-Path $claudeMd) -or -not ((Get-Content -Raw $claudeMd) -match [regex]::Escape('gauntlet-dev pipeline'))) {
     Add-Content -Path $claudeMd -Value "`n$pointer"
     Write-Host "appended pointer to $claudeMd"
 } else { Write-Host "pointer already present" }
@@ -3247,8 +3247,8 @@ Run `pwsh -NoProfile -File install.ps1` **twice**; second run must print "pointe
 - [ ] **Step 4: Commit**
 
 ```bash
-git add codex-review codex-reviewed-dev tests install.ps1
-git commit -m "feat(codex-reviewed-dev): orchestrator skill and idempotent installer"
+git add gauntlet-review gauntlet-dev tests install.ps1
+git commit -m "feat(gauntlet-dev): orchestrator skill and idempotent installer"
 ```
 
 ---
@@ -3257,14 +3257,14 @@ git commit -m "feat(codex-reviewed-dev): orchestrator skill and idempotent insta
 
 - [ ] **Step 1: Activation checklist (manual, fresh session after install; record results)**
 
-1. "Add a comprehensive audit-log subsystem to the admin app" → `codex-reviewed-dev` invoked BEFORE brainstorming.
+1. "Add a comprehensive audit-log subsystem to the admin app" → `gauntlet-dev` invoked BEFORE brainstorming.
 2. "Fix the typo in the footer" → pipeline NOT invoked.
 3. "Add audit logs — skip codex review" → superpowers without Codex gates.
-4. "Have codex review docs/foo.md" → `codex-review` standalone.
+4. "Have codex review docs/foo.md" → `gauntlet-review` standalone.
 
 - [ ] **Step 2: PR-phase e2e — CONFIRM WITH THE USER FIRST (externally visible)**
 
-1. `GH_TOKEN=$(gh auth token -u BanyanLLC) gh repo create Banyan-LLC/codex-review-e2e --private --add-readme`
+1. `GH_TOKEN=$(gh auth token -u BanyanLLC) gh repo create Banyan-LLC/gauntlet-review-e2e --private --add-readme`
 2. Clone; `feat/e2e-test` branch; commit a small change with a deliberate bug; push; PR as geoffroth.
 3. Full pr-mode loop per SKILL.md → round 1 `CHANGES_REQUESTED` by BanyanLLC with marker.
 4. Fix, push, checks green, then a fresh round 2 with a complete carry-over ledger → `APPROVED` pinned to the new head.
@@ -3283,7 +3283,7 @@ git commit -m "feat(codex-reviewed-dev): orchestrator skill and idempotent insta
 Create `README.md` with `## Verification results`: date, CLI version+SHA, unit suite result, live-smoke result (incl. observed usage-gate headroom on the near-limit probe and the confirmed event taxonomy), live-security result (incl. any control-gap entries), env-minimality outcome (Task 5 step 5), activation checklist, e2e outcomes with PR link.
 
 ```bash
-git add codex-review codex-reviewed-dev tests install.ps1
+git add gauntlet-review gauntlet-dev tests install.ps1
 git commit -m "docs(claude-skills): verification results"
 ```
 
@@ -3312,7 +3312,7 @@ round-3 plan-review findings → attempt cap enforced in code with an exhaustion
 - [ ] **Step 3: Commit**
 
 ```bash
-git add -A codex-review codex-reviewed-dev tests install.ps1
+git add -A gauntlet-review gauntlet-dev tests install.ps1
 git commit -m "chore(claude-skills): final coverage sweep"
 ```
 

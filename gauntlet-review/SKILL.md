@@ -1,9 +1,9 @@
 ---
-name: codex-review
-description: Run a bounded, hermetic Codex (gpt-5.6-sol xhigh) review loop over a spec, plan, or pull request. Use when the user asks for a Codex review of a document or PR, or when the codex-reviewed-dev pipeline reaches a review gate.
+name: gauntlet-review
+description: Run a bounded, hermetic Codex (gpt-5.6-sol xhigh) review loop (the Gauntlet) over a spec, plan, or pull request. Use when the user asks to run the Gauntlet, or for a Codex review of a document or PR, or when the gauntlet-dev pipeline reaches a review gate.
 ---
 
-# Codex Review Loop (primitive)
+# Gauntlet Review Loop (primitive)
 
 One artifact, one bounded loop. Modes: `doc` (spec/plan) and `pr`. The reviewer is hermetic: no user config, no MCP, no shell, no file access, no web; all material embedded in the prompt over stdin; harness lives OUTSIDE any repository; sessions run `--ephemeral` (no session/rollout persistence to the real `CODEX_HOME` — see task-14-report.md). Every enumerated feature is disabled unless allowlisted (default-deny), which also covers computer-use, skill-search, and multi-agent spawning — but on the CLI version live-tested for Task 11 (0.147.0-alpha.6.6), those three specifically could not be independently CONTROL-VERIFIED as distinct, isolatable capabilities the way shell/web/apps/MCP/plugins were (no observable effect distinguishes the feature enabled from disabled in headless `exec` mode). They are configured off, not control-proven off. See `docs/design.md`'s "Live security battery round" amendment and `docs/build-log/task-11-report.md` for the evidence.
 
@@ -81,8 +81,8 @@ One artifact, one bounded loop. Modes: `doc` (spec/plan) and `pr`. The reviewer 
 ## State
 
 - doc: `docs/superpowers/reviews/<date>-<topic>/<spec|plan>/` — COMMIT with doc revisions.
-- pr: `$(git rev-parse --git-common-dir)/info/codex-review/<owner>-<repo>/pr-<n>/` — NEVER commit.
-- Harness: `%LOCALAPPDATA%\codex-review\harness\<random>\` — created with an unpredictable name on the first round, recorded in state, reused only from that record, and **verified empty before every invocation**. It sits outside every repo (AGENTS.md discovery boundary) and never holds a file, because the prompt travels over stdin.
+- pr: `$(git rev-parse --git-common-dir)/info/gauntlet-review/<owner>-<repo>/pr-<n>/` — NEVER commit.
+- Harness: `%LOCALAPPDATA%\gauntlet-review\harness\<random>\` — created with an unpredictable name on the first round, recorded in state, reused only from that record, and **verified empty before every invocation**. It sits outside every repo (AGENTS.md discovery boundary) and never holds a file, because the prompt travels over stdin.
 - Per round: immutable `round-N-attempt-M-{meta,verdict.raw,events}`; the canonical `round-N-verdict.json` is written only by a successful attempt. Read only the canonical file.
 
 ## Prompt template

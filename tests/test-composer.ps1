@@ -1,8 +1,8 @@
 . "$PSScriptRoot\helpers.ps1"
-. "$PSScriptRoot\..\codex-review\scripts\lib.ps1"
+. "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1"
 # Single schema now (see task-7-report.md): schemas/verdict.schema.json serves both
 # --output-schema and Test-Verdict's structural check.
-$schemaPath = "$PSScriptRoot\..\codex-review\schemas\verdict.schema.json"
+$schemaPath = "$PSScriptRoot\..\gauntlet-review\schemas\verdict.schema.json"
 $disable = @('apps','browser_use','shell_tool')
 
 $r1 = New-CodexArgs -HarnessDir 'C:\h' -SchemaPath 'C:\s.json' -VerdictPath 'C:\v.json' -DisableSet $disable
@@ -130,7 +130,7 @@ Assert-True (-not $garbage.Valid) "garbage invalid"
 # Mandatory would let an array containing an empty string silently defeat the caller instead of
 # failing closed. See Test-EmptyElementFailsClosed in helpers.ps1 for the full rationale and how
 # this was verified to fail against the old [Parameter(Mandatory)][string[]] contract.
-$libPathForContract = "$PSScriptRoot\..\codex-review\scripts\lib.ps1"
+$libPathForContract = "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1"
 Test-EmptyElementFailsClosed -LibPath $libPathForContract `
     -CallExpression "New-CodexArgs -HarnessDir 'C:\h' -SchemaPath 'C:\s.json' -VerdictPath 'C:\v.json' -DisableSet @('apps', '', 'browser_use')" `
     -Name 'New-CodexArgs -DisableSet'

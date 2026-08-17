@@ -1,12 +1,12 @@
-# spec-plan-review
+# Gauntlet
 
-`spec-plan-review` provides two reusable [Claude Code](https://claude.ai/code) skills that ask
+Gauntlet provides two reusable [Claude Code](https://claude.ai/code) skills that ask
 OpenAI Codex to act as an independent reviewer:
 
 | Skill | Use it for |
 |---|---|
-| `codex-review` | A bounded review loop over one specification, implementation plan, or pull request. |
-| `codex-reviewed-dev` | A complete development workflow with Codex review gates after the spec, plan, and pull request. |
+| `gauntlet-review` | A bounded review loop over one specification, implementation plan, or pull request. |
+| `gauntlet-dev` | A complete development workflow with Codex review gates after the spec, plan, and pull request. |
 
 The skills are developed and verified in this repository, but they are not limited to this
 repository. `install.ps1` installs them in your user-level Claude Code skills directory, after
@@ -17,11 +17,11 @@ remains responsible for accepting recommendations and merging.
 
 ## Choose a workflow
 
-Use `codex-reviewed-dev` for a substantial feature that should go through discovery, a written
+Use `gauntlet-dev` for a substantial feature that should go through discovery, a written
 specification, an implementation plan, implementation, and pull-request review. It integrates
 with the Superpowers workflow.
 
-Use `codex-review` directly when you already have an artifact to review, for example:
+Use `gauntlet-review` directly when you already have an artifact to review, for example:
 
 - a specification or plan in Markdown;
 - an existing pull request;
@@ -50,9 +50,9 @@ codex login status
 git --version
 ```
 
-The full `codex-reviewed-dev` pipeline also expects the Superpowers Claude Code plugin. This
+The full `gauntlet-dev` pipeline also expects the Superpowers Claude Code plugin. This
 release was verified with Superpowers `6.0.2`; re-check the two insertion points described in
-[`codex-reviewed-dev/SKILL.md`](codex-reviewed-dev/SKILL.md) after upgrading Superpowers.
+[`gauntlet-dev/SKILL.md`](gauntlet-dev/SKILL.md) after upgrading Superpowers.
 
 ### Pull-request publication
 
@@ -99,8 +99,8 @@ must generate and verify it locally before the installer will copy anything.
 ### 1. Clone the development repository
 
 ```powershell
-git clone git@github.com:Banyan-LLC/spec-plan-review.git
-Set-Location spec-plan-review
+git clone git@github.com:Banyan-LLC/gauntlet.git
+Set-Location gauntlet
 ```
 
 You can keep this checkout anywhere. Reviews run against whichever target repository Claude Code
@@ -119,7 +119,7 @@ The offline suite does not call GitHub or make model requests.
 Run these commands in this exact order:
 
 ```powershell
-pwsh -File .\codex-review\scripts\calibrate-premises.ps1
+pwsh -File .\gauntlet-review\scripts\calibrate-premises.ps1
 pwsh -File .\tests\live\live-schema-gate.ps1
 pwsh -File .\tests\live\live-security.ps1
 ```
@@ -141,7 +141,7 @@ pwsh -File .\install.ps1
 The installer:
 
 1. refuses to continue unless the local manifest and both live-evidence records are current;
-2. copies `codex-review` and `codex-reviewed-dev` to
+2. copies `gauntlet-review` and `gauntlet-dev` to
    `%USERPROFILE%\.claude\skills\`;
 3. adds a short activation rule to `%USERPROFILE%\.claude\CLAUDE.md` if it is not already
    present.
@@ -154,10 +154,10 @@ From a target project, try these prompts in separate fresh Claude Code sessions:
 
 | Prompt | Expected routing |
 |---|---|
-| `Add a comprehensive audit-log subsystem to the admin app` | `codex-reviewed-dev`, then Superpowers brainstorming |
+| `Add a comprehensive audit-log subsystem to the admin app` | `gauntlet-dev`, then Superpowers brainstorming |
 | `Fix the typo in the footer` | No reviewed-development pipeline |
 | `Add audit logs — skip codex review` | Superpowers flow without Codex gates |
-| `Have Codex review docs/foo.md` | Standalone `codex-review` |
+| `Have Codex review docs/foo.md` | Standalone `gauntlet-review` |
 
 ## Use from another repository
 
@@ -172,7 +172,7 @@ Ask for a substantial feature normally:
 Add a comprehensive audit-log subsystem to the admin app.
 ```
 
-Claude should select `codex-reviewed-dev` before brainstorming. The workflow is:
+Claude should select `gauntlet-dev` before brainstorming. The workflow is:
 
 1. brainstorm and write a specification;
 2. commit the specification and obtain Codex approval;
@@ -198,7 +198,7 @@ Commit the document, then ask Claude Code:
 Have Codex review docs/design.md.
 ```
 
-Claude invokes `codex-review` in `doc` mode. If Codex requests changes, Claude revises the
+Claude invokes `gauntlet-review` in `doc` mode. If Codex requests changes, Claude revises the
 document with judgment, commits it, and starts a fresh round with a validated carry-over ledger.
 The loop stops on approval or a human flag.
 
@@ -224,7 +224,7 @@ verdict under the configured reviewer identity.
 PR-review state lives outside the committed project tree:
 
 ```text
-<git-common-dir>/info/codex-review/<owner>-<repo>/pr-<number>/
+<git-common-dir>/info/gauntlet-review/<owner>-<repo>/pr-<number>/
 ```
 
 Publication is idempotent. Before handoff, the workflow re-checks the PR state, head, live base
@@ -257,7 +257,7 @@ The most useful exit codes when diagnosing a stopped run are:
 
 PR publication additionally uses `2`/`3` for review-context drift, `4` for an immediate human
 flag, `5` for one retryable transient GitHub failure, and `6` for locally detected verdict/
-provenance mismatch. See [`codex-review/SKILL.md`](codex-review/SKILL.md) for the full protocol.
+provenance mismatch. See [`gauntlet-review/SKILL.md`](gauntlet-review/SKILL.md) for the full protocol.
 
 ## Update or reinstall
 
@@ -266,7 +266,7 @@ installer reports stale stack identity or live evidence—commonly after a Codex
 invocation-policy, or account-level `~/.codex/AGENTS.md` change—repeat the complete sequence:
 
 ```powershell
-pwsh -File .\codex-review\scripts\calibrate-premises.ps1
+pwsh -File .\gauntlet-review\scripts\calibrate-premises.ps1
 pwsh -File .\tests\live\live-schema-gate.ps1
 pwsh -File .\tests\live\live-security.ps1
 pwsh -File .\install.ps1
@@ -279,8 +279,8 @@ configuration.
 
 | Path | Purpose |
 |---|---|
-| `codex-review/` | Primitive skill, schemas, and PowerShell entry points |
-| `codex-reviewed-dev/` | Full-development orchestrator skill |
+| `gauntlet-review/` | Primitive skill, schemas, and PowerShell entry points |
+| `gauntlet-dev/` | Full-development orchestrator skill |
 | `tests/` | Offline unit suite and deliberate live gates |
 | `install.ps1` | Fail-closed user-level installer |
 | `docs/design.md` | Controlling security and workflow design |
@@ -327,7 +327,7 @@ reviewer to identify an independent planted defect. Narration of the injection a
 non-deterministic and deliberately non-gating.
 
 The end-to-end fixture is the private, archived
-[`Banyan-LLC/codex-review-e2e-20260816`](https://github.com/Banyan-LLC/codex-review-e2e-20260816)
+[`Banyan-LLC/gauntlet-review-e2e-20260816`](https://github.com/Banyan-LLC/gauntlet-review-e2e-20260816)
 repository. PR #1 exercised genuine findings and correctly escalated at the round cap without a
 manufactured approval. PR #2 was a deliberately trivial fixture used to reach approval-only
 head-drift, base-drift, idempotency, and transient-recovery drills. Nothing was merged.

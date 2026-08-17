@@ -1,5 +1,5 @@
 . "$PSScriptRoot\helpers.ps1"
-. "$PSScriptRoot\..\codex-review\scripts\lib.ps1"
+. "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1"
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "codexdisc-$([guid]::NewGuid())"
 New-Item -ItemType Directory -Force $tmp | Out-Null
 

@@ -1,5 +1,5 @@
 . "$PSScriptRoot\helpers.ps1"
-. "$PSScriptRoot\..\codex-review\scripts\lib.ps1"
+. "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1"
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "codexinv-$([guid]::NewGuid())"
 New-Item -ItemType Directory -Force $tmp | Out-Null
 $shim = New-FakeCodexShim -Dir "$tmp\shim" -Version "0.147.0" -ExecHelp 'x' -ResumeHelp 'x' -FeaturesText 'x stable true'
@@ -24,7 +24,7 @@ Assert-True ([string]::IsNullOrEmpty($receipt.env_CANARY)) "canary invisible to 
 # array containing an empty string silently defeat the caller instead of failing closed. See
 # Test-EmptyElementFailsClosed in helpers.ps1 for the full rationale and how this was verified to
 # fail against the old [Parameter(Mandatory)][string[]] contract.
-Test-EmptyElementFailsClosed -LibPath "$PSScriptRoot\..\codex-review\scripts\lib.ps1" `
+Test-EmptyElementFailsClosed -LibPath "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1" `
     -CallExpression "Invoke-CodexProcess -CliPath 'C:\fake-codex.exe' -CodexArgs @('exec', '') -PromptText 'x' -HarnessDir 'C:\h'" `
     -Name 'Invoke-CodexProcess -CodexArgs'
 
@@ -107,7 +107,7 @@ Assert-Eq (Get-Content -Raw $excPath) 'first writer wins' "a failed second write
 # Race 8 real OS-thread writers through a shared gate at the same path (Start-ThreadJob, an
 # inbox PowerShell 7 module) and demand exactly one survive with uncorrupted content.
 $raceFile = "$tmp\exclusive-race.txt"
-$libPath = "$PSScriptRoot\..\codex-review\scripts\lib.ps1"
+$libPath = "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1"
 $gate = [System.Threading.ManualResetEventSlim]::new($false)
 $raceJobs = 0..7 | ForEach-Object {
     $i = $_
@@ -195,7 +195,7 @@ try {
 # bind-error shape as the other parameters given this treatment. See Test-EmptyElementFailsClosed
 # in helpers.ps1 for the full rationale and how this was verified to fail against the old
 # [Parameter(Mandatory)][string[]] contract.
-Test-EmptyElementFailsClosed -LibPath "$PSScriptRoot\..\codex-review\scripts\lib.ps1" `
+Test-EmptyElementFailsClosed -LibPath "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1" `
     -CallExpression "Get-InvocationProfileHash -DisableSet @('apps', '')" `
     -Name 'Get-InvocationProfileHash -DisableSet'
 
@@ -213,12 +213,12 @@ Test-EmptyElementFailsClosed -LibPath "$PSScriptRoot\..\codex-review\scripts\lib
 # binding (CLI hash/version/path, schema hash, AGENTS.md hash, invocation-profile hash, model)
 # remains here; -BudgetBytes is no longer a Test-PremiseManifest parameter.
 # =====================================================================================
-$skillRoot = "$tmp\codex-review"   # a sibling tests\live\ one level up mirrors this repo's own dev-repo
+$skillRoot = "$tmp\gauntlet-review"   # a sibling tests\live\ one level up mirrors this repo's own dev-repo
                                     # layout, which Get-GateFingerprint/Test-PremiseManifest resolve relative
                                     # to -SkillRoot's PARENT; Get-WrapperFingerprint no longer cares what
                                     # -SkillRoot's parent looks like at all (see the P1 fix below)
 New-Item -ItemType Directory -Force "$skillRoot\schemas" | Out-Null
-Copy-Item "$PSScriptRoot\..\codex-review\schemas\verdict.schema.json" "$skillRoot\schemas\verdict.schema.json"
+Copy-Item "$PSScriptRoot\..\gauntlet-review\schemas\verdict.schema.json" "$skillRoot\schemas\verdict.schema.json"
 $premisesSchemaSha = (Get-FileHash -Algorithm SHA256 "$skillRoot\schemas\verdict.schema.json").Hash.ToLowerInvariant()
 $agentsMdPath = "$env:USERPROFILE\.codex\AGENTS.md"
 $premisesAgentsSha = if (Test-Path $agentsMdPath) { (Get-FileHash -Algorithm SHA256 $agentsMdPath).Hash.ToLowerInvariant() } else { 'absent' }
@@ -230,7 +230,7 @@ $premisesPath = "$skillRoot\premises.json"
 # Get-WrapperFingerprint / Get-GateFingerprint (P1 fix, see docs/build-log/task-14-report.md,
 # the FINDING 2 follow-up): the old single Get-SecuritySourceFingerprint required tests/live/*.ps1
 # relative to -SkillRoot's PARENT UNCONDITIONALLY -- correct for this repo's own dev layout, but
-# install.ps1 ships ONLY codex-review/ and codex-reviewed-dev/ into ~/.claude/skills/, so an
+# install.ps1 ships ONLY gauntlet-review/ and gauntlet-dev/ into ~/.claude/skills/, so an
 # installed tree has no tests/ directory anywhere nearby and the old function THREW on every real
 # review round run from an install (confirmed by direct repro against an installed-tree layout).
 # Split into Get-WrapperFingerprint (the shipped wrapper sources that EXECUTE at runtime, resolved
@@ -244,7 +244,7 @@ $premisesPath = "$skillRoot\premises.json"
 # =====================================================================================
 New-Item -ItemType Directory -Force "$skillRoot\scripts" | Out-Null
 foreach ($f in 'lib.ps1','invoke-codex.ps1','publish-review.ps1','calibrate-premises.ps1') {
-    Copy-Item "$PSScriptRoot\..\codex-review\scripts\$f" "$skillRoot\scripts\$f"
+    Copy-Item "$PSScriptRoot\..\gauntlet-review\scripts\$f" "$skillRoot\scripts\$f"
 }
 New-Item -ItemType Directory -Force "$tmp\tests\live" | Out-Null
 foreach ($f in 'live-schema-gate.ps1','live-security.ps1') {
@@ -274,7 +274,7 @@ $wrapperFpAfterLibEdit = Get-WrapperFingerprint -SkillRoot $skillRoot
 $gateFpAfterLibEdit = Get-GateFingerprint -RepoRoot $tmp
 Assert-True ($wrapperFpAfterLibEdit -ne $wrapperFingerprint) "editing lib.ps1 changes the wrapper fingerprint"
 Assert-Eq $gateFpAfterLibEdit $gateFingerprint "editing lib.ps1 does NOT change the gate fingerprint (independently derived)"
-Copy-Item "$PSScriptRoot\..\codex-review\scripts\lib.ps1" "$skillRoot\scripts\lib.ps1" -Force
+Copy-Item "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1" "$skillRoot\scripts\lib.ps1" -Force
 Assert-Eq (Get-WrapperFingerprint -SkillRoot $skillRoot) $wrapperFingerprint "restoring lib.ps1's original bytes restores the original wrapper fingerprint"
 
 Add-Content -Path "$tmp\tests\live\live-security.ps1" -Value "`n# fingerprint-test perturbation"
@@ -302,13 +302,13 @@ Assert-Eq (Get-GateFingerprint -RepoRoot $tmp) $gateFingerprint "restoring tests
 # Missing required file -> fail closed (throws), never a smaller/silent fingerprint -- each
 # function has its OWN independent fixed file list now, so each is proven separately.
 $missingWrapperRoot = Join-Path $tmp 'wrapper-fingerprint-missing'
-New-Item -ItemType Directory -Force "$missingWrapperRoot\codex-review\scripts","$missingWrapperRoot\codex-review\schemas" | Out-Null
+New-Item -ItemType Directory -Force "$missingWrapperRoot\gauntlet-review\scripts","$missingWrapperRoot\gauntlet-review\schemas" | Out-Null
 foreach ($f in 'lib.ps1','invoke-codex.ps1','publish-review.ps1') {
-    Copy-Item "$PSScriptRoot\..\codex-review\scripts\$f" "$missingWrapperRoot\codex-review\scripts\$f"
+    Copy-Item "$PSScriptRoot\..\gauntlet-review\scripts\$f" "$missingWrapperRoot\gauntlet-review\scripts\$f"
 }
 # calibrate-premises.ps1 deliberately NOT copied -- the missing required file.
-Copy-Item "$PSScriptRoot\..\codex-review\schemas\verdict.schema.json" "$missingWrapperRoot\codex-review\schemas\verdict.schema.json"
-Assert-Throws { Get-WrapperFingerprint -SkillRoot "$missingWrapperRoot\codex-review" } "a missing required wrapper source file fails CLOSED (throws), not silently"
+Copy-Item "$PSScriptRoot\..\gauntlet-review\schemas\verdict.schema.json" "$missingWrapperRoot\gauntlet-review\schemas\verdict.schema.json"
+Assert-Throws { Get-WrapperFingerprint -SkillRoot "$missingWrapperRoot\gauntlet-review" } "a missing required wrapper source file fails CLOSED (throws), not silently"
 
 $missingGateRoot = Join-Path $tmp 'gate-fingerprint-missing'
 New-Item -ItemType Directory -Force "$missingGateRoot\tests\live" | Out-Null
@@ -490,7 +490,7 @@ Assert-True (-not $pmWrongHash.Valid -and $pmWrongHash.Reason -match 'Codex CLI 
 # AGENTS.md, invocation profile, AND wrapper_fingerprint/gate_fingerprint -- Get-WrapperFingerprint
 # and Get-GateFingerprint, exercised directly above). All cases use $skillRoot (the temp
 # dir already in scope for this whole Test-PremiseManifest section, now also populated with
-# scripts/ + a sibling tests/live/, see above) -- never the real codex-review/premises.json.
+# scripts/ + a sibling tests/live/, see above) -- never the real gauntlet-review/premises.json.
 # =====================================================================================
 
 # No live evidence at all: a manifest that is otherwise perfectly valid (stack accepted) but has
@@ -681,20 +681,20 @@ Assert-True (-not (Test-PremiseManifest -SkillRoot $skillRoot -ActualCli $pin -I
 
 # =====================================================================================
 # P1 FIX: installed-tree fingerprint split (Part A, docs/build-log/task-14-report.md). The four
-# regressions the fix brief named explicitly. install.ps1 ships ONLY codex-review/ and
-# codex-reviewed-dev/ into ~/.claude/skills/ -- no tests/ directory anywhere nearby -- so this
-# fixture reproduces that exact shape: scripts+schema under codex-review/, no tests/ sibling at
+# regressions the fix brief named explicitly. install.ps1 ships ONLY gauntlet-review/ and
+# gauntlet-dev/ into ~/.claude/skills/ -- no tests/ directory anywhere nearby -- so this
+# fixture reproduces that exact shape: scripts+schema under gauntlet-review/, no tests/ sibling at
 # all, unlike every $skillRoot fixture above (which always carries a real tests\live sibling,
 # i.e. a dev-repo shape).
 # =====================================================================================
 $installedRoot = Join-Path $tmp 'installed-tree'
-New-Item -ItemType Directory -Force "$installedRoot\codex-review\scripts","$installedRoot\codex-review\schemas","$installedRoot\codex-reviewed-dev" | Out-Null
+New-Item -ItemType Directory -Force "$installedRoot\gauntlet-review\scripts","$installedRoot\gauntlet-review\schemas","$installedRoot\gauntlet-dev" | Out-Null
 foreach ($f in 'lib.ps1','invoke-codex.ps1','publish-review.ps1','calibrate-premises.ps1') {
-    Copy-Item "$PSScriptRoot\..\codex-review\scripts\$f" "$installedRoot\codex-review\scripts\$f"
+    Copy-Item "$PSScriptRoot\..\gauntlet-review\scripts\$f" "$installedRoot\gauntlet-review\scripts\$f"
 }
-Copy-Item "$PSScriptRoot\..\codex-review\schemas\verdict.schema.json" "$installedRoot\codex-review\schemas\verdict.schema.json"
+Copy-Item "$PSScriptRoot\..\gauntlet-review\schemas\verdict.schema.json" "$installedRoot\gauntlet-review\schemas\verdict.schema.json"
 Assert-True (-not (Test-Path "$installedRoot\tests")) "fixture sanity: the installed-tree layout has NO tests/ sibling at all"
-$installedSkillRoot = "$installedRoot\codex-review"
+$installedSkillRoot = "$installedRoot\gauntlet-review"
 
 # (a) THE regression: an installed-tree layout computes a wrapper fingerprint successfully (never
 # throws) and Test-PremiseManifest VALIDATES when the manifest matches -- the exact case that used
@@ -715,7 +715,7 @@ function New-InstalledManifest([hashtable]$LiveEvidence) {
 function Write-InstalledPremises($ObjOrHashtable) { ($ObjOrHashtable | ConvertTo-Json -Depth 6) | Set-Content -Path "$installedSkillRoot\premises.json" -Encoding utf8 }
 
 # gate_fingerprint here is PROVENANCE carried over from whenever this premises.json was stamped in
-# the dev repo (install.ps1 copies the whole codex-review/ directory, premises.json included) --
+# the dev repo (install.ps1 copies the whole gauntlet-review/ directory, premises.json included) --
 # never recomputed against this installed tree, since there is nothing under it to recompute
 # against. Its exact value does not matter for regression (a); only that it is present (the
 # schema still requires the field) and that it is NOT what invalidates the result.
@@ -747,7 +747,7 @@ Assert-True (-not $pmInstalledNoSwitch.Valid -and $pmInstalledNoSwitch.Reason -m
 # before ever reaching security_battery's own check -- passing for the wrong reason. Confirmed by
 # running that version: it failed with Reason "no live evidence for 'schema_gate'", not a
 # wrapper-sources mismatch).
-Add-Content -Path "$installedRoot\codex-review\scripts\lib.ps1" -Value "`n# wrapper-edit perturbation"
+Add-Content -Path "$installedRoot\gauntlet-review\scripts\lib.ps1" -Value "`n# wrapper-edit perturbation"
 $installedWrapperFpAfterEdit = Get-WrapperFingerprint -SkillRoot $installedSkillRoot
 Assert-True ($installedWrapperFpAfterEdit -ne $installedWrapperFp) "fixture sanity: editing the installed tree's lib.ps1 actually changed its wrapper fingerprint"
 
@@ -767,7 +767,7 @@ Assert-True (-not $pmStaleWrapperSecurity.Valid -and $pmStaleWrapperSecurity.Rea
 
 # Restore the installed tree's lib.ps1 so the (still-pre-edit) $installedWrapperFp is accurate
 # again for what follows.
-Copy-Item "$PSScriptRoot\..\codex-review\scripts\lib.ps1" "$installedRoot\codex-review\scripts\lib.ps1" -Force
+Copy-Item "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1" "$installedRoot\gauntlet-review\scripts\lib.ps1" -Force
 Assert-Eq (Get-WrapperFingerprint -SkillRoot $installedSkillRoot) $installedWrapperFp "restoring the installed tree's lib.ps1 restores its original wrapper fingerprint"
 
 # (c) editing a gate script changes gate_fingerprint and IS REJECTED when run from the dev repo
@@ -816,16 +816,16 @@ Assert-True $pmInstalledStaleGate.Valid "an arbitrary/stale gate_fingerprint val
 # gate source went missing or was renamed.
 # =====================================================================================
 $partialRoot = Join-Path $tmp 'gate-sources-partial'
-New-Item -ItemType Directory -Force "$partialRoot\codex-review\scripts","$partialRoot\codex-review\schemas","$partialRoot\tests\live" | Out-Null
+New-Item -ItemType Directory -Force "$partialRoot\gauntlet-review\scripts","$partialRoot\gauntlet-review\schemas","$partialRoot\tests\live" | Out-Null
 foreach ($f in 'lib.ps1','invoke-codex.ps1','publish-review.ps1','calibrate-premises.ps1') {
-    Copy-Item "$PSScriptRoot\..\codex-review\scripts\$f" "$partialRoot\codex-review\scripts\$f"
+    Copy-Item "$PSScriptRoot\..\gauntlet-review\scripts\$f" "$partialRoot\gauntlet-review\scripts\$f"
 }
-Copy-Item "$PSScriptRoot\..\codex-review\schemas\verdict.schema.json" "$partialRoot\codex-review\schemas\verdict.schema.json"
+Copy-Item "$PSScriptRoot\..\gauntlet-review\schemas\verdict.schema.json" "$partialRoot\gauntlet-review\schemas\verdict.schema.json"
 Copy-Item "$PSScriptRoot\helpers.ps1" "$partialRoot\tests\helpers.ps1"
 Copy-Item "$PSScriptRoot\live\live-schema-gate.ps1" "$partialRoot\tests\live\live-schema-gate.ps1"
 # tests\live\live-security.ps1 deliberately NOT copied -- exactly ONE gate source missing, the
 # other two present: a broken/partial dev tree, never a genuinely (wholly-absent) installed one.
-$partialSkillRoot = "$partialRoot\codex-review"
+$partialSkillRoot = "$partialRoot\gauntlet-review"
 $partialWrapperFp = Get-WrapperFingerprint -SkillRoot $partialSkillRoot
 (@{ version=1; model='gpt-5.6-sol'
     cli_path=$pin.Path; cli_sha256=$pin.Sha256; cli_version=$pin.Version
@@ -847,7 +847,7 @@ Write-Premises (New-ValidPremisesHashtable)   # leave $premisesPath fully valid 
 Remove-Item Env:\CODEX_TEST_CANARY
 
 # ---- invoke-codex.ps1 entry behavior ----
-# Run against a TEMPORARY COPY of the skill root, never the real codex-review/premises.json.
+# Run against a TEMPORARY COPY of the skill root, never the real gauntlet-review/premises.json.
 # This section used to write and restore that single real (gitignored) file around every
 # invoke-codex.ps1 call: two test processes running at once raced on it and corrupted each
 # other's state, and a crash between the write and the restore could leave a shim-bound test
@@ -856,15 +856,15 @@ Remove-Item Env:\CODEX_TEST_CANARY
 # pointing the entry script at the COPY closes both: invoke-codex.ps1 resolves its own
 # -SkillRoot as `Split-Path $PSScriptRoot -Parent` -- wherever it actually lives -- so
 # premises.json is read and written exclusively inside the copy, never the real path.
-$realManifestPath = "$PSScriptRoot\..\codex-review\premises.json"
+$realManifestPath = "$PSScriptRoot\..\gauntlet-review\premises.json"
 $realManifestBefore = if (Test-Path $realManifestPath) { Get-Content -Raw $realManifestPath } else { $null }
 
 $copyRoot = Join-Path $tmp 'entry-skillroot'
 New-Item -ItemType Directory -Force $copyRoot | Out-Null
-Copy-Item -Recurse "$PSScriptRoot\..\codex-review" $copyRoot
-$copySkillRoot = Join-Path $copyRoot 'codex-review'
+Copy-Item -Recurse "$PSScriptRoot\..\gauntlet-review" $copyRoot
+$copySkillRoot = Join-Path $copyRoot 'gauntlet-review'
 # Get-GateFingerprint (FINDING 2) resolves its fixed file list relative to -SkillRoot's PARENT --
-# i.e. as siblings of codex-review/, matching this repo's real dev-repo layout (Get-WrapperFingerprint
+# i.e. as siblings of gauntlet-review/, matching this repo's real dev-repo layout (Get-WrapperFingerprint
 # no longer needs this at all -- it resolves entirely under -SkillRoot itself, see the P1 fix). The
 # Copy-Item -Recurse above already brought scripts/ + schemas/ along; add the live-gate scripts
 # as a tests\live sibling of $copyRoot so Set-TestManifest below (and invoke-codex.ps1's own internal
@@ -1478,7 +1478,7 @@ $raceFile = Join-Path $raceDir 'canonical.json'
 Write-NewFileExclusive -Path $raceFile -Text '{"first":true}'
 Assert-Throws { Write-NewFileExclusive -Path $raceFile -Text '{"second":true}' } "a second exclusive create is refused"
 Assert-Eq (Get-Content -Raw $raceFile) '{"first":true}' "the first writer's bytes survive"
-$libPath = "$PSScriptRoot\..\codex-review\scripts\lib.ps1"
+$libPath = "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1"
 $concurrent = Join-Path $raceDir 'concurrent.json'
 $jobs = 1..4 | ForEach-Object { Start-ThreadJob -ScriptBlock {
     param($lib, $path, $n)
@@ -1490,7 +1490,7 @@ Assert-Eq (@($results | Where-Object { $_ -eq 'won' }).Count) 1 "exactly one con
 $jobs | Remove-Job
 
 # =====================================================================================
-# The real (gitignored) codex-review/premises.json must never be created, modified, or
+# The real (gitignored) gauntlet-review/premises.json must never be created, modified, or
 # deleted by this offline suite (see task-14-report.md). Every invoke-codex.ps1 call above ran
 # against the TEMPORARY COPY's skill root instead (see $copySkillRoot above), so this holds
 # trivially by construction; asserted explicitly so a future regression back to the real path
@@ -1498,6 +1498,6 @@ $jobs | Remove-Job
 # state, the exact failure mode this fix removes.
 # =====================================================================================
 $realManifestAfter = if (Test-Path $realManifestPath) { Get-Content -Raw $realManifestPath } else { $null }
-Assert-Eq $realManifestAfter $realManifestBefore "the real codex-review/premises.json is byte-identical before and after this entire test run"
+Assert-Eq $realManifestAfter $realManifestBefore "the real gauntlet-review/premises.json is byte-identical before and after this entire test run"
 
 Write-TestResult

@@ -15,9 +15,9 @@
 #
 # Costs one small live round. Rejections cost ~2s (they fail before inference).
 . "$PSScriptRoot\..\helpers.ps1"
-. "$PSScriptRoot\..\..\codex-review\scripts\lib.ps1"
+. "$PSScriptRoot\..\..\gauntlet-review\scripts\lib.ps1"
 
-$skillRoot = "$PSScriptRoot\..\..\codex-review"
+$skillRoot = "$PSScriptRoot\..\..\gauntlet-review"
 $schema = Join-Path $skillRoot 'schemas\verdict.schema.json'
 $tmp = Join-Path ([IO.Path]::GetTempPath()) "schema-gate-$([guid]::NewGuid().ToString('n'))"
 New-Item -ItemType Directory -Force $tmp | Out-Null

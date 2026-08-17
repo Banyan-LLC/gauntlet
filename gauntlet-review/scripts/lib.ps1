@@ -1,4 +1,4 @@
-# lib.ps1 — codex-review core library. Dot-source; no top-level side effects.
+# lib.ps1 — gauntlet-review core library. Dot-source; no top-level side effects.
 Set-StrictMode -Version Latest
 
 $script:FeatureAllowlist = @('enable_request_compression','remote_compaction_v2','fast_mode','personality','guardian_approval')
@@ -563,19 +563,19 @@ function Test-StackAcceptance {
 function Get-WrapperFingerprint {
     <# Deterministic SHA-256 over a FIXED, SORTED list of the SHIPPED wrapper sources that
        EXECUTE at runtime: lib.ps1, invoke-codex.ps1, publish-review.ps1, calibrate-premises.ps1,
-       and the verdict schema -- resolved relative to -SkillRoot ITSELF (the `codex-review`
+       and the verdict schema -- resolved relative to -SkillRoot ITSELF (the `gauntlet-review`
        directory), never to a sibling `tests/`. These are exactly the files install.ps1 copies
-       into ~/.claude/skills/codex-review, so this fingerprint resolves identically whether it
+       into ~/.claude/skills/gauntlet-review, so this fingerprint resolves identically whether it
        runs from the dev repo or an installed tree.
 
        Split out of the old single Get-SecuritySourceFingerprint (P1 fix, see
        docs/build-log/task-14-report.md, FINDING 2 follow-up): that function additionally
        required tests/live/live-schema-gate.ps1 and tests/live/live-security.ps1 relative to
        -SkillRoot's PARENT -- correct for this repo's own layout, but install.ps1 ships ONLY
-       codex-review/ and codex-reviewed-dev/ into ~/.claude/skills/, so an installed tree has no
+       gauntlet-review/ and gauntlet-dev/ into ~/.claude/skills/, so an installed tree has no
        tests/ directory anywhere nearby. invoke-codex.ps1 resolves its own -SkillRoot as
        `Split-Path $PSScriptRoot -Parent`, which from an installed
-       ~/.claude/skills/codex-review/scripts/invoke-codex.ps1 is ~/.claude/skills/codex-review --
+       ~/.claude/skills/gauntlet-review/scripts/invoke-codex.ps1 is ~/.claude/skills/gauntlet-review --
        whose parent, ~/.claude/skills, has no tests/ child. Every real review round threw before
        ever reaching Codex (confirmed by direct repro: Get-SecuritySourceFingerprint against an
        installed-tree layout threw "missing required file 'tests\live\live-schema-gate.ps1'").
@@ -614,7 +614,7 @@ function Get-GateFingerprint {
     <# Deterministic SHA-256 over a FIXED, SORTED list of the sources alone authorized to produce
        stamped live evidence: tests/live/live-schema-gate.ps1, tests/live/live-security.ps1, AND
        tests/helpers.ps1 -- resolved relative to -RepoRoot (the checkout root, sibling of
-       `codex-review/`). These files exist ONLY in the dev repo (install.ps1 never ships tests/),
+       `gauntlet-review/`). These files exist ONLY in the dev repo (install.ps1 never ships tests/),
        so this is computed only where they are genuinely present: at STAMPING time from
        Write-LiveEvidence below (always the dev repo -- its only two callers are
        tests/live/live-schema-gate.ps1 and tests/live/live-security.ps1, each living next to a
@@ -623,7 +623,7 @@ function Get-GateFingerprint {
        documented on Test-PremiseManifest. Where they are absent (an installed tree), the recorded
        value already on a live-evidence sub-record is kept purely as STAMPING-TIME PROVENANCE:
        what the gate sources hashed to when they last stamped a passing live run in the dev repo
-       -- install.ps1 copies the whole codex-review/ directory, premises.json included, so that
+       -- install.ps1 copies the whole gauntlet-review/ directory, premises.json included, so that
        provenance travels with the install -- never a value this function is asked to reproduce
        where it structurally cannot.
 
@@ -691,7 +691,7 @@ function Test-PremiseManifest {
        ASYMMETRIC fingerprint verification (P1 fix, see docs/build-log/task-14-report.md, the
        FINDING 2 follow-up). The old single `source_fingerprint` required tests/live/*.ps1
        relative to -SkillRoot's PARENT unconditionally -- correct in this repo, but install.ps1
-       ships only codex-review/ and codex-reviewed-dev/ into ~/.claude/skills/, so an installed
+       ships only gauntlet-review/ and gauntlet-dev/ into ~/.claude/skills/, so an installed
        tree has no tests/ directory anywhere nearby and this function THREW on every real review
        round run from an install. Each sub-record now carries two independent fingerprints:
          - `wrapper_fingerprint` (Get-WrapperFingerprint) -- the shipped wrapper sources that
@@ -1010,8 +1010,8 @@ function Get-RunUsage {
 
 function Test-PathUnderRoot {
     # Self-review fix: a bare `$Path.StartsWith($Root)` is NOT a directory-boundary check — it is
-    # a character-prefix check. '...\codex-review\harness-evil\x' STARTS WITH the STRING
-    # '...\codex-review\harness' (confirmed empirically), even though 'harness-evil' is a totally
+    # a character-prefix check. '...\gauntlet-review\harness-evil\x' STARTS WITH the STRING
+    # '...\gauntlet-review\harness' (confirmed empirically), even though 'harness-evil' is a totally
     # different, unmanaged SIBLING directory, never created through New-HarnessDir's exclusivity
     # check, that could hold planted residue. Appending a trailing separator to $Root before
     # comparing makes the check segment-aware, matching how the filesystem actually nests
@@ -1028,7 +1028,7 @@ function Assert-HarnessSafe {
     param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][string]$RepoRoot)
     if (-not (Test-Path $Dir -PathType Container)) { throw "harness missing: $Dir" }
     $abs = [System.IO.Path]::GetFullPath($Dir)
-    $root = [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'codex-review\harness'))
+    $root = [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'gauntlet-review\harness'))
     if (-not (Test-PathUnderRoot -Path $abs -Root $root)) { throw "harness outside its managed root: $abs" }
     $repoAbs = [System.IO.Path]::GetFullPath($RepoRoot)
     $common = (git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir 2>$null)
@@ -1048,7 +1048,7 @@ function New-HarnessDir {
     # Unpredictable name, generated on first use, must not already exist. A caller-chosen or
     # reusable id could point at a pre-existing directory holding a planted AGENTS.md.
     param([Parameter(Mandatory)][string]$RepoRoot)
-    $root = Join-Path $env:LOCALAPPDATA 'codex-review\harness'
+    $root = Join-Path $env:LOCALAPPDATA 'gauntlet-review\harness'
     New-Item -ItemType Directory -Force $root | Out-Null
     $bytes = [byte[]]::new(16)
     [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
@@ -1077,7 +1077,7 @@ function Get-StateDir {
         if ($PrNumber -lt 1) { throw "invalid PR number $PrNumber" }
         $common = (git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir).Trim()
         if ($LASTEXITCODE -ne 0) { throw "not a git repository: $RepoRoot" }
-        $root = Join-Path $common 'info\codex-review'
+        $root = Join-Path $common 'info\gauntlet-review'
         $dir = [System.IO.Path]::GetFullPath((Join-Path $root "$($OwnerRepo -replace '/', '-')\pr-$PrNumber"))
     }
     # Test-PathUnderRoot, not a bare StartsWith: see its definition above for why a raw
@@ -1271,7 +1271,7 @@ function Get-ReviewMarker {
           [Parameter(Mandatory)][string]$NormalizedJson)
     $sha = [System.Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($NormalizedJson))
     $digest = (-join ($sha | ForEach-Object { $_.ToString('x2') })).Substring(0, 12)
-    "<!-- codex-review:pr=${Pr}:base=${Base}:base_ref=${BaseRefName}:base_tip=${BaseTipOid}:head=${Head}:round=${Round}:digest=${digest} -->"
+    "<!-- gauntlet-review:pr=${Pr}:base=${Base}:base_ref=${BaseRefName}:base_tip=${BaseTipOid}:head=${Head}:round=${Round}:digest=${digest} -->"
 }
 
 function ConvertTo-ReviewBody {
@@ -1634,7 +1634,7 @@ function Publish-CodexReview {
     }
 
     $dismissPayload = Join-Path $StateDir 'dismiss-body.json'
-    @{ message = "Dismissed by codex-review: verification failed for $marker"; event = 'DISMISS' } |
+    @{ message = "Dismissed by gauntlet-review: verification failed for $marker"; event = 'DISMISS' } |
         ConvertTo-Json | Set-Content $dismissPayload -Encoding utf8
     $put = Invoke-Gh -Token $Token -GhArgs @('api','-X','PUT',"repos/$OwnerRepo/pulls/$Pr/reviews/$reviewId/dismissals") -InputFile $dismissPayload
     if ($put.ExitCode -ne 0) { Write-Warning "HUMAN FLAG: stale review $reviewId active, dismissal denied"; return 4 }
@@ -1783,7 +1783,7 @@ function Revoke-SupersededReview {
     }
 
     $dismissPayload = Join-Path (Split-Path -Parent $PublicationFile) 'retire-body.json'
-    @{ message = "Retired by codex-review: superseded ($($fresh.Reason)) — $($pub.marker)"; event = 'DISMISS' } |
+    @{ message = "Retired by gauntlet-review: superseded ($($fresh.Reason)) — $($pub.marker)"; event = 'DISMISS' } |
         ConvertTo-Json | Set-Content $dismissPayload -Encoding utf8
     $put = Invoke-Gh -Token $Token -GhArgs @('api','-X','PUT',"repos/$OwnerRepo/pulls/$Pr/reviews/$($pub.github_review_id)/dismissals") -InputFile $dismissPayload
     if ($put.ExitCode -ne 0) {

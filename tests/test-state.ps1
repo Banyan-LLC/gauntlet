@@ -1,5 +1,5 @@
 . "$PSScriptRoot\helpers.ps1"
-. "$PSScriptRoot\..\codex-review\scripts\lib.ps1"
+. "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1"
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "codexstate-$([guid]::NewGuid())"
 New-Item -ItemType Directory -Force $tmp | Out-Null
 git -C $tmp init -q repo
@@ -30,7 +30,7 @@ Assert-Throws { Assert-HarnessSafe -Dir "$tmp\repo\sub" -RepoRoot "$tmp\repo" } 
 # is true. This directory is deliberately OUTSIDE both the true managed root's boundary and the
 # test repo, and is freshly created (so it is genuinely empty) -- the only thing that should make
 # Assert-HarnessSafe reject it is the sibling-prefix boundary check itself.
-$siblingRoot = Join-Path $env:LOCALAPPDATA "codex-review\harness-evil-$([guid]::NewGuid().ToString('n'))"
+$siblingRoot = Join-Path $env:LOCALAPPDATA "gauntlet-review\harness-evil-$([guid]::NewGuid().ToString('n'))"
 New-Item -ItemType Directory -Force $siblingRoot | Out-Null
 try {
     Assert-Throws { Assert-HarnessSafe -Dir $siblingRoot -RepoRoot "$tmp\repo" } "a sibling directory sharing the managed root as a STRING PREFIX only is rejected, not treated as inside it"
@@ -46,7 +46,7 @@ $expectedDoc = [System.IO.Path]::GetFullPath((Join-Path "$tmp\repo" 'docs\superp
 Assert-Eq $docDir $expectedDoc "doc path"
 $prDir = Get-StateDir -Mode pr -RepoRoot "$tmp\wt" -OwnerRepo 'Banyan-LLC/cavu.photo' -PrNumber 12
 $common = (git -C "$tmp\repo" rev-parse --path-format=absolute --git-common-dir).Trim()
-$expectedPr = [System.IO.Path]::GetFullPath((Join-Path $common 'info\codex-review\Banyan-LLC-cavu.photo\pr-12'))
+$expectedPr = [System.IO.Path]::GetFullPath((Join-Path $common 'info\gauntlet-review\Banyan-LLC-cavu.photo\pr-12'))
 Assert-Eq $prDir $expectedPr "pr path under COMMON dir from worktree"
 Assert-True ($prDir -notmatch 'worktrees') "pr state NOT under the per-worktree git dir (survives worktree cleanup)"
 Assert-Throws { Get-StateDir -Mode doc -RepoRoot "$tmp\repo" -Topic '..\..\escape' -Phase spec -Date '2026-08-09' } "topic traversal rejected"

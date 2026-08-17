@@ -1,5 +1,5 @@
 . "$PSScriptRoot\helpers.ps1"
-. "$PSScriptRoot\..\codex-review\scripts\lib.ps1"
+. "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1"
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "codexpub-$([guid]::NewGuid())"
 New-Item -ItemType Directory -Force $tmp | Out-Null
 
@@ -8,7 +8,7 @@ $hostileVerdict = @{verdict='request_changes'; summary="quotes `" back`` tick `$
     recommendations=@(@{severity='blocking'; location='a"b'; issue="i`n`"x`""; suggestion='s`$(y)'})} | ConvertTo-Json -Depth 5 -Compress
 $hv = $hostileVerdict | ConvertFrom-Json
 $marker = Get-ReviewMarker -Pr 7 -Base 'b0e1' -Head 'h3ad' -BaseRefName 'main' -BaseTipOid 'tip0000ab' -Round 2 -NormalizedJson $hostileVerdict
-Assert-True ($marker -match '^<!-- codex-review:pr=7:base=b0e1:base_ref=main:base_tip=tip0000ab:head=h3ad:round=2:digest=[0-9a-f]{12} -->$') "marker format"
+Assert-True ($marker -match '^<!-- gauntlet-review:pr=7:base=b0e1:base_ref=main:base_tip=tip0000ab:head=h3ad:round=2:digest=[0-9a-f]{12} -->$') "marker format"
 $body = ConvertTo-ReviewBody -NormalizedVerdict $hv -Marker $marker
 Assert-True ($body.Contains($marker)) "marker embedded"
 $hugeObj = @{verdict='approve';summary=('s'*800);recommendations=@(1..20 | ForEach-Object {
@@ -481,7 +481,7 @@ Write-AttemptMeta -StateDir $tmp -Round 1 -Attempt 1 -Meta @{
     round=1; pr_number=7; base_oid='b0e1'; head_sha='h3ad'; base_ref_name=$mainRef; base_tip_oid=$mainTip
 }
 $vFile = "$tmp\round-1-verdict.json"; Set-Content $vFile -Value $vJson -Encoding utf8
-$pubEntry = "$PSScriptRoot\..\codex-review\scripts\publish-review.ps1"
+$pubEntry = "$PSScriptRoot\..\gauntlet-review\scripts\publish-review.ps1"
 $pwshExe = [System.Environment]::ProcessPath   # resolved BEFORE PATH is restricted below: a
                                                 # PATH-less child cannot resolve `pwsh` by name
 $swPub = [System.Diagnostics.Stopwatch]::StartNew()
@@ -676,7 +676,7 @@ Assert-True $rOk.Logged "(d) fully matching arguments: gh WAS invoked -- positiv
 # itself, so the shadow in THIS process's scope never comes into it. See
 # Test-EmptyElementFailsClosed in helpers.ps1 for the full rationale and how this was verified to
 # fail against the old [Parameter(Mandatory)][string[]] contract.
-Test-EmptyElementFailsClosed -LibPath "$PSScriptRoot\..\codex-review\scripts\lib.ps1" `
+Test-EmptyElementFailsClosed -LibPath "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1" `
     -CallExpression "Invoke-Gh -Token 'faketoken' -GhArgs @('pr', '')" `
     -Name 'Invoke-Gh -GhArgs'
 
