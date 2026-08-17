@@ -1387,3 +1387,279 @@ pwsh -NoProfile -File tests\test-state.ps1       # 65 passed, 0 failed
    only, per this task's hard constraint against anything under `tests/live/` or live network
    calls.
 3. `docs/implementation-plan.md` not synced (same deferral as FIX 1's concern #1 above).
+
+---
+
+# Task 14 follow-up: four review findings — provenance binding, review retirement, sync-guard fix, doc sync (2026-08-16)
+
+Status: complete, all green. Baseline 516 (composer 37, discovery 27, invoke 285, policy 15,
+publish 78, schema 9, state 65) -> final 553 (composer 37, discovery 27, invoke 285, policy 15,
+publish 115, schema 9, state 65). Four commits, one per finding, on `main` in this repo (not
+pushed). No live model calls, no GitHub calls, no network -- every test uses fake `gh`/CLI shims,
+including a dedicated RECORDING fake `gh` for FINDING 1's "no gh call happened" proofs. Nothing
+under `tests/live/` was run.
+
+- `3030f38` -- FINDING 1: bind publish-review.ps1 arguments to the reviewed attempt
+- `0f783c7` -- FINDING 2: scan for the marker before drift, add review retirement
+- `de69306` -- FINDING 3: Wait-PrHeadSynced no longer rejects the first stale poll
+- `e7d5b71` -- FINDING 4: sync design.md/implementation-plan.md to the shipped provenance model
+
+## FINDING 1 (P1): publisher arguments were never bound to the attempt that produced the verdict
+
+`publish-review.ps1` accepted `-Pr`/`-Round`/`-BaseOid`/`-HeadSha`/`-BaseRefName`/`-BaseTipOid` as
+bare caller-supplied values, never cross-checked against anything. Proven live (per the finding): a
+round-3 verdict genuinely reviewed at base tip `3dc0738` was re-published with tip `2403a80` simply
+by passing different arguments -- a second `APPROVED` review whose marker differed only in
+`base_tip`, relabelling the verdict as covering a base context it never reviewed.
+
+New `Test-PublishProvenance` (`lib.ps1`), called from `publish-review.ps1` before anything else --
+including before resolving a `gh` token:
+1. `-VerdictFile` must be the canonical `round-<Round>-verdict.json` inside `-StateDir`, compared by
+   normalized path (case-insensitive -- a Windows filesystem identity check, not a content check),
+   which structurally rejects both an arbitrary path and a mismatched round.
+2. The HIGHEST-numbered `round-<Round>-attempt-<M>-meta.json` in `-StateDir` is read as the record
+   of what actually produced the canonical verdict. This is always correct: `invoke-codex.ps1`
+   numbers attempts strictly sequentially, and its own top-of-script guard
+   (`if (Test-Path $canonicalVerdict) { ... exit 14 }`) fires BEFORE a new attempt meta file is ever
+   written, so once a round's canonical verdict exists, no later attempt meta for that round can
+   ever have been created.
+3. PR number, round, base OID, base ref name, base tip OID, and head SHA are compared EXACTLY
+   (ordinal) against what that attempt record itself carries -- including the round comparison
+   catching a tampered attempt record whose own internal `round` field disagrees with its filename,
+   not just the path check. Any mismatch, or a missing/unreadable attempt record, returns a
+   structured `{Ok;Reason}` failure -- never throws -- and `publish-review.ps1` exits **6** before
+   any `gh` invocation whatsoever.
+
+Exit 6 documented everywhere exit codes are listed: `publish-review.ps1`'s header comment,
+`codex-review/SKILL.md` (step 4's exit list), `codex-reviewed-dev/SKILL.md` (the pipeline step and
+the "Human flags" trigger list), and `docs/design.md` (a new provenance-binding paragraph ahead of
+the publisher's numbered protocol). Also corrected, as directly-adjacent factual fixes while already
+touching these enumerations for this finding: two more places in `docs/implementation-plan.md` that
+listed the exit set as `0/2/3/4/5/11/12` now read `.../6/...` (flagged in the FINDING 4 commit,
+since neither was explicitly named by either finding).
+
+**Regressions** (`tests/test-publish.ps1`): direct `Test-PublishProvenance` unit tests for every
+mismatched field (base_tip_oid, head_sha, pr, base_oid, base_ref_name), an arbitrary `-VerdictFile`
+path, a `-Round` pointed at a different round's file, a tampered attempt record whose own internal
+`round` disagrees with its filename, and missing attempt metadata -- plus subprocess-level proof,
+via a recording fake `gh` that appends every invocation to a file, that a tip mismatch, head
+mismatch, wrong PR, wrong round, and missing attempt metadata each exit 6 with the recording file
+**never created**, while fully matching arguments clear the gate and reach `gh` (the recording file
+becomes non-empty, exit 12 against the always-failing shim) -- a positive control proving the
+recording shim genuinely works, not merely that every case looks empty by accident. The two
+pre-existing "PUBLISHER ENTRY PATH" subprocess tests (hanging `gh auth token`, `-Reviewer`
+forwarding) were updated to supply a canonical verdict path and matching attempt record, since they
+now must clear this gate before reaching what they actually test.
+
+**Discrimination** (fix reverted in `publish-review.ps1`, `tests/test-publish.ps1` run unchanged):
+
+```
+FAIL: (a) tip-A verdict + tip-B argument: publisher entry exits 6 (expected '6', got '12')
+FAIL: (a) tip mismatch: gh was NEVER invoked (recording file never created)
+FAIL: (b) head-A verdict + head-B argument: publisher entry exits 6 (expected '6', got '12')
+FAIL: (b) head mismatch: gh was NEVER invoked (recording file never created)
+FAIL: (c) wrong PR number: publisher entry exits 6 (expected '6', got '12')
+FAIL: (c) wrong PR number: gh was NEVER invoked (recording file never created)
+FAIL: (c) wrong round: publisher entry exits 6 (expected '6', got '12')
+FAIL: (c) wrong round: gh was NEVER invoked (recording file never created)
+FAIL: (e) missing attempt metadata: publisher entry exits 6 (expected '6', got '12')
+FAIL: (e) missing attempt metadata: gh was NEVER invoked (recording file never created)
+90 passed, 10 failed
+```
+
+Restored -> `100 passed, 0 failed`. The 10 failures are exactly the 10 subprocess-level regressions
+named above; the in-process `Test-PublishProvenance` unit tests stay green under the revert (the
+library function itself is untouched by this revert -- only the entry script's call to it), which
+is expected and correctly isolates what's being discriminated.
+
+## FINDING 2 (P1): drift was checked before marker recovery, so a stale review could never be found
+
+In `Publish-CodexReview` (`lib.ps1`) the pre-publication drift checks ran BEFORE the marker scan.
+Failure mode: GitHub accepts the POST but the process still returns a transient failure afterward
+(e.g. the read-back call fails) before `publication.json` is persisted; the base then moves; a retry
+checks drift FIRST and returns 2 WITHOUT ever discovering the review it already created, leaving a
+stale tool-owned review standing on GitHub forever, undiscoverable by any later retry.
+
+**(a) Reorder.** The marker scan now runs immediately after the identity gate. An exact marker match
+recovers straight to read-back + verification (unchanged), never gated by drift that happened since
+that publication. Drift is only consulted in the `else` branch, when no marker match exists yet --
+the same two comparisons as before, just no longer blocking recovery of an already-published review.
+
+**(b) New `Revoke-SupersededReview`** (`lib.ps1`) -- the mutating counterpart to the still-read-only
+`Test-HandoffFresh` (it gained no mutation; it still only reports). A separate, explicitly-invoked
+function with three independently-reverified safety preconditions, all checked against LIVE GitHub
+state, never trusted from the caller:
+- (i) authored by the configured `-Reviewer`, exactly;
+- (ii) carries the exact tool marker recorded in `publication.json`;
+- (iii) genuinely superseded -- re-derived by calling `Test-HandoffFresh` itself and requiring its
+  `Reason` be exactly `'head advanced'`, `'base advanced'`, or `'base ref renamed'`; any other
+  not-fresh reason (wrong reviewer, wrong state, marker absent, red/pending CI, an unreadable
+  endpoint, a transport error) is explicitly refused as NOT supersession.
+
+Because `Test-HandoffFresh`'s own checks verify author/marker before its drift checks, reaching a
+drift reason already implies (i)/(ii) held at that read -- but `Revoke-SupersededReview` still
+re-verifies both explicitly, against its own separate read-back, immediately before dismissing,
+rather than resting on that ordering alone (proven independent by the discrimination test below,
+which shows Test-HandoffFresh's OWN read seeing the correct author/marker while a LATER, separate
+read shows otherwise). Returns `{Revoked;Reason}`; a denied dismissal carries the same HUMAN FLAG
+severity as the identical failure mode already handled inside `Publish-CodexReview` (documented as
+mapping to exit 4 for a caller wiring this into an exit-code flow). Documented in both `SKILL.md`
+files' Handoff sections and in `docs/design.md`/`docs/implementation-plan.md` (FINDING 4).
+
+**Regressions** (`tests/test-publish.ps1`): every existing `Publish-CodexReview` fixture updated to
+the new call order; the page-2 marker-recovery test now additionally asserts the exact gh-call count
+(5, not 7) proving the pre-publication drift check is never even consulted when a marker matches; a
+new dedicated crash-then-base-moves scenario proving a retry recovers the marker and DISMISSES (3),
+never a stale drift (2); and for `Revoke-SupersededReview` -- a positive control (genuinely
+superseded, correctly authored, exact marker -> revoked), independent refusal of a wrong author and
+of a missing marker (each proven independent of `Test-HandoffFresh`'s own check ordering, per the
+above), refusal of a non-drift reason (red CI), refusal when still genuinely fresh, dismissal
+denial, and proof `Test-HandoffFresh` itself makes no mutating `gh` call.
+
+**Discrimination, part (a)** (drift restored ahead of the scan, `tests/test-publish.ps1` unchanged):
+
+```
+FAIL: happy path 0 (expected '0', got '2')
+FAIL: slurp pagination
+FAIL: downgraded verdict publishes (expected '0', got '2')
+FAIL: page-2 recovery verified (expected '0', got '2')
+FAIL: recovery via an exact marker match makes exactly 5 calls (...) (expected '5', got '3')
+FAIL: dismissed marker ignored (expected '0', got '2')
+FAIL: fresh POST after dismissed marker
+FAIL: post-POST base drift -> dismissed -> 3 (expected '3', got '2')
+FAIL: post-POST head drift -> dismissed -> 3 (expected '3', got '2')
+FAIL: post-POST base_tip drift -> dismissed -> 3 (expected '3', got '2')
+FAIL: COMMENTED state dismissed -> 3 (expected '3', got '2')
+FAIL: dismissal denied -> 4 (expected '4', got '2')
+FAIL: review authored by someone else fails post-verification -> dismissed (expected '3', got '2')
+FAIL: hostile verdict publishes (expected '0', got '2')
+FAIL: crash-then-base-moves: retry finds the already-published marker and DISMISSES on
+      since-drifted base tip, never a stale exit-2 (expected '3', got '2')
+80 passed, 15 failed
+```
+
+Restored -> `112 passed, 0 failed`. The crash-then-base-moves failure is the direct proof; the other
+14 are collateral (the reverted function now consumes the reordered test fixtures' scripted `gh`
+responses out of position), still valid evidence the change is load-bearing.
+
+**Discrimination, part (b)** (the independent author/marker re-check removed from
+`Revoke-SupersededReview`, trusting `Test-HandoffFresh`'s earlier read alone):
+
+```
+FAIL: retirement refuses a review NOT authored by the configured reviewer (independent re-check)
+FAIL: no dismissal attempted when the author check fails (expected '0', got '1')
+FAIL: retirement refuses a review whose exact tool marker is absent from the live body (independent re-check)
+FAIL: no dismissal attempted when the marker check fails (expected '0', got '1')
+FAIL: dismissal denial is refused with a Reason naming the denial (maps to exit 4)
+107 passed, 5 failed
+```
+
+Restored -> `112 passed, 0 failed`.
+
+## FINDING 3 (P2): `-StaleHead` was made optional but the guard was not updated
+
+`Wait-PrHeadSynced`'s `if ($lastSeen -and $lastSeen -ne $StaleHead)` compared against `$null` when
+`-StaleHead` was omitted, true for any non-null head -- so the very first poll of a genuinely stale
+head returned "unexpected head" instead of continuing to poll, defeating the helper for its most
+common caller (a first sync with no prior head to name). Reproduced by the reviewer: old->expected
+returned after one call instead of polling.
+
+Gated the branch on `$PSBoundParameters.ContainsKey('StaleHead')`, matching the parameter's own
+documented contract. Behavior with `-StaleHead` supplied is unchanged.
+
+**Regression** (`tests/test-publish.ps1`): with no `-StaleHead`, a head that starts stale and later
+becomes the expected commit returns `Synced=$true`, and the call count proves it actually polled
+more than once. The three pre-existing `-StaleHead` cases are unchanged.
+
+**Discrimination** (guard reverted to the unconditional form):
+
+```
+FAIL: (iv) no -StaleHead: becomes synced within the timeout, not rejected as 'unexpected' on the first stale read
+FAIL: (iv) no -StaleHead: reports the actual (now-synced) head (expected 'bbbbbbbbbb', got 'aaaaaaaaaa')
+FAIL: (iv) no -StaleHead: actually polled more than once (the pre-fix bug returned 'unexpected head' after exactly 1 poll)
+112 passed, 3 failed
+```
+
+Restored -> `115 passed, 0 failed`. Exactly the 3 new assertions fail, nothing else -- clean,
+precise discrimination.
+
+## FINDING 4: controlling documents were stale
+
+`docs/design.md` (pr-mode-inputs paragraph, and the publisher's numbered protocol) and
+`docs/implementation-plan.md` (Task 13 Step 2's e2e drill list) still described base drift as a
+two-field `(baseOid, headSha)` check via `baseRefOid` alone, and Drill 8 described an
+`HTTPS_PROXY`/`GH_HOST` fault-injection method that cannot work against this implementation
+(`Invoke-Gh` clears the child environment to `GH_TOKEN` + `SystemRoot`; nothing else set outside
+that call ever reaches the spawned `gh`). Corrected per this repo's convention -- existing text
+struck through and replaced, or annotated inline, dated and citing the finding, never silently
+rewritten:
+- Documented the real four-part provenance (`base_oid`, `base_ref_name`, `base_tip_oid`,
+  `head_sha`) and that `baseRefOid` is frozen by GitHub at PR-open time, so it can never evidence
+  base drift on its own -- in `docs/design.md`'s pr-mode-inputs paragraph, its publisher protocol
+  (steps 1/4/5, including the real five-field marker format), and `docs/implementation-plan.md`'s
+  base-drift drill (item 6).
+- FINDING 1 (verdict/attempt binding) and FINDING 2 (retirement) documented in both files'
+  Handoff/pipeline sections.
+- Drill 8 (item 8) struck through and replaced with the method actually used: a PATH-scoped
+  intercepted `gh`, process-scoped, never touching the workstation's real network or PATH state.
+- Item 9 struck through: "delete or archive" -> **archive only**, never delete.
+
+Doc-only; no code or test changes. Sanity-checked `tests/test-publish.ps1` still green after
+(`115 passed, 0 failed`), as expected for a docs-only commit.
+
+## Verification (every `tests/test-*.ps1`, run individually, per the task's instruction)
+
+BEFORE (confirmed at session start, matching the task's stated baseline exactly):
+
+    composer 37, discovery 27, invoke 285, policy 15, publish 78, schema 9, state 65 = 516
+
+AFTER:
+
+```
+pwsh -NoProfile -File tests/test-composer.ps1    # 37 passed, 0 failed
+pwsh -NoProfile -File tests/test-discovery.ps1   # 27 passed, 0 failed
+pwsh -NoProfile -File tests/test-invoke.ps1      # 285 passed, 0 failed
+pwsh -NoProfile -File tests/test-policy.ps1      # 15 passed, 0 failed
+pwsh -NoProfile -File tests/test-publish.ps1     # 115 passed, 0 failed (run three times, stable)
+pwsh -NoProfile -File tests/test-schema.ps1      # 9 passed, 0 failed
+pwsh -NoProfile -File tests/test-state.ps1       # 65 passed, 0 failed
+```
+
+= 553 total (+37 over the 516 baseline: +22 FINDING 1, +12 FINDING 2, +3 FINDING 3, all in
+`tests/test-publish.ps1`; `test-invoke.ps1`/`test-state.ps1`/etc. unchanged since none of the four
+findings touch `invoke-codex.ps1`, `calibrate-premises.ps1`, or the doc/composer/policy/schema/state
+surfaces). `git status --porcelain` clean after every run; only the files staged for each finding
+were modified (staged explicitly by path, never `git add -A`/`.`).
+
+## Concerns
+
+1. **Pre-existing, unrelated, out-of-scope defect found and flagged, not fixed here** (spawned as a
+   background-task suggestion during this session,
+   "Fix vacuous Assert-True in test-publish.ps1 happy path"): the happy-path test's
+   `Assert-True (($script:GhCalls | Where-Object {...}) -ne $null) "live base-branch-tip endpoint
+   called"` assertion has been silently erroring on every run since the drill-6 fix added a SECOND
+   `Get-BaseBranchTip` call to `Publish-CodexReview` (one pre-, one post-publication) -- both hit the
+   identical endpoint in the happy path, so the `Where-Object` now returns a 2-element array, and
+   PowerShell's `-ne $null` on a multi-element array filters element-wise rather than testing
+   truthiness, producing a 2-element array back that fails to coerce to `Assert-True`'s `[bool]`
+   parameter with a non-terminating "Cannot process argument transformation" error. That error
+   contributes to NEITHER the passed nor the failed counter, so this specific check has silently
+   verified nothing for some time while `N passed, 0 failed` kept reporting clean. Confirmed
+   deterministic (100% reproducible, not flaky) and confirmed pre-existing via `git stash` against
+   the untouched file at commit `af33ccd`. Does not affect any count reported above (it is
+   unaffected by, and unrelated to, all four findings) but is worth a dedicated fix.
+2. FINDING 1's exit code 6 and FINDING 2/4's provenance corrections were NOT propagated into
+   `docs/implementation-plan.md`'s large historical embedded code listings for `Get-PrOids`,
+   `Get-ReviewMarker`, `Publish-CodexReview`, and `Test-HandoffFresh` (~lines 2340-2570) --
+   consistent with how this same plan document has been left behind after every prior round per
+   this file's own Concern entries (the historical code sample there already predates the
+   `base_ref_name`/`base_tip_oid` fields entirely). Only the two specific anchors FINDING 4 named
+   (~line 140 in `docs/design.md`, ~line 3274 in `docs/implementation-plan.md`) plus the two
+   directly-adjacent exit-code enumerations noted under FINDING 1 above were touched. Flagging for a
+   decision rather than expanding scope unilaterally into a further, much larger rewrite of that
+   embedded listing.
+3. `Revoke-SupersededReview`, like `Test-HandoffFresh` and `Wait-PrHeadSynced` before it, is not
+   called from any shipped entry script -- it is a library primitive the orchestrator (a human or
+   the codex-reviewed-dev pipeline) is responsible for invoking directly, per both `SKILL.md` files.
+   This mirrors this repo's own established pattern for exactly this kind of gate (see this file's
+   prior FIX 2 Concern #1 for `Wait-PrHeadSynced`).
