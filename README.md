@@ -335,8 +335,3 @@ head-drift, base-drift, idempotency, and transient-recovery drills. Nothing was 
 Defects found by the live gates rather than the unit suite—including a previously unreachable
 base-drift guard, evidence gates that reported green without stamping evidence, and an
 installed-tree fingerprint failure—are documented in [`docs/build-log/`](docs/build-log/).
-
-## Origin
-
-Extracted from a `cavu.photo` development worktree at commit `51b2c71`. The standalone repository
-is now the source of truth; the old `cavu.photo` branch does not need to be merged.
