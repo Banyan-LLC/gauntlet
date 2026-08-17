@@ -1,6 +1,44 @@
 $script:Failures = [System.Collections.Generic.List[string]]::new()
 $script:Passes = 0
-function Assert-True([bool]$Condition, [string]$Name) {
+function Assert-True($Condition, [string]$Name) {
+    <# $Condition is deliberately UNTYPED with an explicit [bool] gate below, NOT [bool]$Condition.
+
+       [bool]$Condition looks stricter but is catastrophically WEAKER, because the strictness is
+       enforced by the parameter binder rather than by us. Hand it something it cannot convert --
+       most easily an Object[], which is exactly what `(pipeline) -ne $null` produces whenever the
+       pipeline yields more than one element, since `-ne` on a collection is PowerShell's
+       element-wise FILTERING operator and not a comparison -- and the binder raises
+       "Cannot process argument transformation on parameter 'Condition'". That error is
+       NON-TERMINATING at script level: the function body never runs, the run continues, and the
+       assertion increments NEITHER $script:Passes NOR $script:Failures. The result is an assertion
+       that verifies nothing while the file still reports "N passed, 0 failed" -- silent, and
+       invisible to the exit code both live gates live and die by.
+
+       That is not hypothetical. It shipped: drill 6's own P1 fix added a SECOND Get-BaseBranchTip
+       call to Publish-CodexReview (pre- AND post-publication), both hitting git/ref/heads/main, so
+       test-publish.ps1's "live base-branch-tip endpoint called" filter went from one element to
+       two and the assertion quietly stopped asserting -- the fix disarmed its own regression test,
+       and the suite kept reporting 0 failed. See docs/build-log/progress.md.
+
+       So: accept ANYTHING, then FAIL LOUDLY AND COUNTABLY on anything that is not exactly [bool].
+       A non-boolean condition is a defect in the TEST, and a test defect must be as visible as a
+       product defect -- never a silent skip. The received type and element count go into the
+       failure text because "some assertion silently degraded" is useless without knowing which
+       shape arrived. $null is reported as count 0 rather than @($null).Count's misleading 1.
+
+       Coverage note: this gate rejects single-element arrays too (@(1) is Object[], NOT unwrapped
+       by parameter binding -- verified). That is intentional. A one-element result is precisely
+       the state a `-ne $null` check sits in right before someone adds a second matching call and
+       silently disarms it, which is how the shipped bug above happened.
+
+       Durable regression: tests/test-harness.ps1. #>
+    if ($Condition -isnot [bool]) {
+        $type  = if ($null -eq $Condition) { '$null' } else { $Condition.GetType().FullName }
+        $count = if ($null -eq $Condition) { 0 } else { @($Condition).Count }
+        $detail = "$Name [NON-BOOLEAN CONDITION: type=$type count=$count -- the assertion was NOT evaluated; materialize the selector with @(...) and compare .Count]"
+        $script:Failures.Add($detail); Write-Host "FAIL: $detail" -ForegroundColor Red
+        return
+    }
     if ($Condition) { $script:Passes++ } else { $script:Failures.Add($Name); Write-Host "FAIL: $Name" -ForegroundColor Red }
 }
 function Assert-Eq($Actual, $Expected, [string]$Name) {

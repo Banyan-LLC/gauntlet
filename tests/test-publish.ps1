@@ -75,24 +75,31 @@ $script:GhScript = @(
 )
 $code = Publish-CodexReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -NormalizedVerdict $vObj -BaseOid 'b0e1' -HeadSha 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Round 2 -NormalizedJson $vJson -StateDir $tmp
 Assert-Eq $code 0 "happy path 0"
-$post = $script:GhCalls | Where-Object { $_.Args -contains 'POST' }
-Assert-True ($post.Input -match '"commit_id"\s*:\s*"h3ad"') "commit_id pinned"
-Assert-True ($post.Input -match '"event"\s*:\s*"APPROVE"') "event APPROVE"
-# `@(...).Count -gt 0`, NOT `(...) -ne $null`: on a MULTI-element result, `-ne $null` is
-# PowerShell's element-wise FILTERING operator, not a comparison -- it hands back every
-# non-null element, i.e. an Object[]. Assert-True's [bool]$Condition then fails argument
-# transformation ("Cannot convert value 'System.Object[]' to type 'System.Boolean'"), and that
-# error is NON-TERMINATING at script level: the run continues and the assertion contributes to
-# NEITHER $script:Passes NOR $script:Failures -- a silent no-op that still reports "N passed,
-# 0 failed". The base-tip check below is exactly how that bites: drill 6 (see
-# docs/build-log/task-14-report.md) added a SECOND Get-BaseBranchTip call (pre- AND
-# post-publication), both hitting this identical endpoint, so the filter started returning two
-# elements and the assertion stopped verifying anything. The slurp check above is the same shape
-# and survives only by luck -- one call matches today, so Where-Object yields a scalar and
-# `-ne $null` is a genuine [bool]. Wrapping both in @() and counting makes 0/1/many behave
-# identically and keeps a future second matching call from silently disarming the assertion.
-Assert-True (@($script:GhCalls | Where-Object { ($_.Args -join ' ') -match '--paginate --slurp' }).Count -gt 0) "slurp pagination"
-Assert-True (@($script:GhCalls | Where-Object { ($_.Args -join ' ') -match "git/ref/heads/$mainRef" }).Count -gt 0) "live base-branch-tip endpoint called"
+# SELECTOR DISCIPLINE (applied to every $script:GhCalls selector in this file): materialize with
+# @(...), assert the expected CARDINALITY, then index [0] to inspect content. Never rely on
+# Where-Object happening to yield a scalar.
+#
+# A bare `$post.Input -match '...'` reads like a scalar test but is not one. The moment a second
+# call matches the filter, $post.Input becomes an Object[], `-match` switches from comparison to
+# element-wise FILTERING, and the assertion's meaning silently changes from "the POST body says X"
+# to "SOME POST body says X" -- or, where the result reaches Assert-True directly, disappears
+# entirely. That is exactly how "live base-branch-tip endpoint called" below was disarmed when
+# drill 6 added a second Get-BaseBranchTip call (docs/build-log/progress.md).
+#
+# helpers.ps1's non-boolean backstop now catches the disappearing case, but it CANNOT catch this
+# one: pinning cardinality here is what makes a change in call count fail loudly and point at the
+# right line, rather than quietly weakening what the test claims.
+$post = @($script:GhCalls | Where-Object { $_.Args -contains 'POST' })
+Assert-Eq $post.Count 1 "happy path submits exactly one review POST"
+Assert-True ($post[0].Input -match '"commit_id"\s*:\s*"h3ad"') "commit_id pinned"
+Assert-True ($post[0].Input -match '"event"\s*:\s*"APPROVE"') "event APPROVE"
+Assert-Eq (@($script:GhCalls | Where-Object { ($_.Args -join ' ') -match '--paginate --slurp' }).Count) 1 "review scan is paginated with --paginate --slurp, exactly once"
+# EXACTLY TWO, not `-gt 0`: the two base-tip reads ARE the drill 6 fix -- one pre-publication
+# (before any mutation) and one post-publication (to detect a tip that moved underneath us). This
+# is the assertion drill 6 silently disarmed by adding the second call, so pinning the intended
+# count is the point: `-gt 0` would still pass if either check were dropped, which is precisely the
+# regression this line exists to catch.
+Assert-Eq (@($script:GhCalls | Where-Object { ($_.Args -join ' ') -match "git/ref/heads/$mainRef" }).Count) 2 "live base-branch-tip endpoint called exactly twice (pre- and post-publication)"
 $pub = Get-Content -Raw "$tmp\publication.json" | ConvertFrom-Json
 Assert-Eq $pub.github_review_id 555 "publication persisted"
 Assert-True ($pub.digest -match '^[0-9a-f]{12}$') "standalone digest recorded"
@@ -111,7 +118,9 @@ $script:GhScript = @(
 )
 $code = Publish-CodexReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -NormalizedVerdict $dgObj -BaseOid 'b0e1' -HeadSha 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Round 3 -NormalizedJson $dgJson -StateDir $tmp
 Assert-Eq $code 0 "downgraded verdict publishes"
-Assert-True (($script:GhCalls | Where-Object { $_.Args -contains 'POST' }).Input -match '"event"\s*:\s*"REQUEST_CHANGES"') "DOWNGRADED VERDICT PUBLISHES AS REQUEST_CHANGES"
+$dgPost = @($script:GhCalls | Where-Object { $_.Args -contains 'POST' })
+Assert-Eq $dgPost.Count 1 "downgrade path submits exactly one review POST"
+Assert-True ($dgPost[0].Input -match '"event"\s*:\s*"REQUEST_CHANGES"') "DOWNGRADED VERDICT PUBLISHES AS REQUEST_CHANGES"
 
 # Pre-publication drift (head) -> 2, no POST. FINDING 2 (P1): drift is now checked only AFTER the
 # marker scan finds no match -- so an empty scan response is now part of this fixture (it was not
@@ -155,7 +164,7 @@ $dismissed = @(@(@{ id=778; state='DISMISSED'; commit_id='h3ad'; user=@{login='B
 $script:GhScript = @((New-ActorOk), (New-JsonResponse $dismissed), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip),
     (New-JsonResponse $review), (New-JsonResponse $review), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip))
 Assert-Eq (Publish-CodexReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -NormalizedVerdict $vObj -BaseOid 'b0e1' -HeadSha 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Round 2 -NormalizedJson $vJson -StateDir $tmp) 0 "dismissed marker ignored"
-Assert-True (@($script:GhCalls | Where-Object { $_.Args -contains 'POST' }).Count -gt 0) "fresh POST after dismissed marker"
+Assert-Eq (@($script:GhCalls | Where-Object { $_.Args -contains 'POST' }).Count) 1 "fresh POST after dismissed marker (exactly one, not a duplicate)"
 
 # post-POST drift now has THREE independent ways to trip -- base oid, head oid, and (P1 fix) the
 # base branch's live TIP moving even while baseRefOid/name hold steady. Each case supplies its
@@ -170,8 +179,20 @@ foreach ($driftCase in @(
         (New-JsonResponse $review), (New-JsonResponse $review), $driftCase.oids, $driftCase.tip,
         (New-JsonResponse (@{ id=555; state='DISMISSED' })), (New-JsonResponse (@{ id=555; state='DISMISSED' })))
     Assert-Eq (Publish-CodexReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -NormalizedVerdict $vObj -BaseOid 'b0e1' -HeadSha 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Round 2 -NormalizedJson $vJson -StateDir $tmp) 3 "post-POST $($driftCase.name) drift -> dismissed -> 3"
-    $dis = $script:GhCalls | Where-Object { ($_.Args -join ' ') -match 'dismissals' }
-    Assert-True ($dis.Input -match '"event"\s*:\s*"DISMISS"' -and $dis.Input -match '"message"') "$($driftCase.name): dismissal body complete"
+    # The `-and` shape this replaces was the MOST deceptive selector in the file, and the one case
+    # helpers.ps1's backstop structurally cannot catch. With two matching calls, each operand of
+    # `-and` is an Object[] from element-wise -match filtering -- but `-and` coerces its operands to
+    # [bool] itself, so a genuine [bool] still reaches Assert-True and nothing looks wrong. The
+    # assertion silently degrades from "THE dismissal body is complete" to "SOME dismissal carries
+    # DISMISS and SOME (possibly different) dismissal carries a message". Only materializing the
+    # selector and pinning its cardinality detects that. Split into two assertions so a failure
+    # names which half of the body is missing.
+    # Cardinality is 1 by construction: production issues ONE PUT to .../dismissals, and its
+    # follow-up read-back is a plain review GET whose URL contains no 'dismissals' (lib.ps1).
+    $dis = @($script:GhCalls | Where-Object { ($_.Args -join ' ') -match 'dismissals' })
+    Assert-Eq $dis.Count 1 "$($driftCase.name): exactly one dismissal call is issued"
+    Assert-True ($dis[0].Input -match '"event"\s*:\s*"DISMISS"') "$($driftCase.name): dismissal body carries the DISMISS event"
+    Assert-True ($dis[0].Input -match '"message"') "$($driftCase.name): dismissal body carries a message"
 }
 
 $commented = @{ id=556; state='COMMENTED'; commit_id='h3ad'; user=@{login='BanyanLLC'}; body="x $marker2" }
@@ -212,8 +233,12 @@ $script:GhScript = @(
     (New-JsonResponse $hostileReview), (New-JsonResponse $hostileReview), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip)
 )
 Assert-Eq (Publish-CodexReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -NormalizedVerdict $hv -BaseOid 'b0e1' -HeadSha 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Round 9 -NormalizedJson $hostileVerdict -StateDir $tmp) 0 "hostile verdict publishes"
-$hPost = $script:GhCalls | Where-Object { $_.Args -contains 'POST' }
-$sent = $hPost.Input | ConvertFrom-Json
+$hPost = @($script:GhCalls | Where-Object { $_.Args -contains 'POST' })
+Assert-Eq $hPost.Count 1 "hostile-content path submits exactly one review POST"
+# Indexing [0] matters more here than anywhere else in the file: a two-element $hPost.Input would
+# make ConvertFrom-Json return an ARRAY of payloads, and every $sent.body assertion below would
+# then silently interrogate a property that does not exist on the array rather than the payload.
+$sent = $hPost[0].Input | ConvertFrom-Json
 Assert-True ($sent.body.Contains($hv.summary)) "hostile summary round-trips byte-exact through the JSON payload"
 Assert-True ($sent.body.Contains($hv.recommendations[0].suggestion)) "hostile suggestion round-trips byte-exact"
 Assert-Eq $sent.commit_id 'h3ad' "commit still pinned with hostile content"

@@ -663,9 +663,71 @@ OUTSTANDING before push/Task 13 (user decision): task-14 hard gates (premise liv
     114 passed, 2 FAILED, naming both assertions - proving they now genuinely bite rather than
     merely being counted. No production code in codex-review/ was touched; the newly-functioning
     assertion passes on its merits, so it uncovered no latent product defect.
-  NOTE (not actioned, needs a decision): the root cause of the SILENCE is Assert-True's
+  NOTE - BOTH ACTIONED, see the next section: the root cause of the SILENCE is Assert-True's
     [bool]$Condition failing transformation non-terminatingly and uncounted. A guard in
     helpers.ps1 - accept $Condition untyped and record an explicit FAILURE for any non-boolean -
-    would make this whole class impossible to reintroduce anywhere in the suite. Same class,
-    also unactioned: `(pipeline).Property -match '...'` (test-publish.ps1:79, 80, 101) returns
-    an Object[] the moment the pipeline yields more than one element.
+    makes this whole class impossible to reintroduce anywhere in the suite. Same class:
+    `(pipeline).Property -match '...'` (test-publish.ps1:79, 80, 101) returns an Object[] the
+    moment the pipeline yields more than one element.
+
+=== ASSERTION BACKSTOP + SELECTOR CARDINALITY (user-directed follow-up) ===
+  P1 BACKSTOP (helpers.ps1): Assert-True's $Condition is now UNTYPED with an explicit [bool] gate.
+    [bool]$Condition looked stricter but was catastrophically weaker, because the strictness was
+    enforced by the PARAMETER BINDER: an unconvertible argument raised a NON-TERMINATING
+    transformation error, the body never ran, and the assertion incremented neither counter. Any
+    non-[bool] now records a COUNTED failure carrying the received type and element count ($null
+    reported as count 0, not @($null).Count's misleading 1). This is the only fix that makes the
+    class non-recurring rather than fixing sites one at a time; it matters doubly because
+    Write-TestResult's exit code is what BOTH live gates live and die by.
+    Deliberately rejects single-element arrays too: @(1) is Object[] and is NOT unwrapped by
+    parameter binding (verified directly) -- and a one-element result is exactly the state a
+    `-ne $null` check sits in right before a second matching call silently disarms it.
+  DURABLE REGRESSION (tests/test-harness.ps1, NEW, 39 assertions): child-process probes, because
+    the claim under test IS $script:Passes/$script:Failures -- asserting it in-process would
+    corrupt the counters doing the reporting. Same isolation rationale as
+    Test-EmptyElementFailsClosed. Covers multi-element Object[], single-element, empty, string and
+    $null (each must be ONE counted failure naming type + count + which assertion), $true/$false/
+    an ordinary -match (behavior must be unchanged), and the original shipped expression
+    end-to-end. Named test-*.ps1 so run-tests.ps1's glob picks it up: the suite is now EIGHT
+    offline files, not seven. NOT added to Get-GateFingerprint's list - correctly, since the live
+    gates never execute it.
+    NEGATIVE CONTROL: run against HEAD's [bool]$Condition helpers.ps1 (via git show, so the
+    comparison is the real prior file) it reports 13 passed, 26 FAILED - every
+    "expected '1', got '0'" being the old silent skip caught in the act.
+  P2 SELECTOR CARDINALITY (test-publish.ps1): all six $script:GhCalls selectors materialized with
+    @(), cardinality asserted, then indexed [0] - happy-path POST, slurp scan, base-tip, downgrade
+    POST, fresh-POST-after-dismissed-marker, dismissal, hostile-content POST. Base-tip asserts
+    EXACTLY 2 (pre- and post-publication: the two reads that ARE the drill 6 fix), not `-gt 0`,
+    which would still pass if either check were dropped.
+    The dismissal site was the subtlest and the one the backstop structurally CANNOT catch:
+    `$dis.Input -match A -and $dis.Input -match B` has `-and` coerce both Object[] operands back to
+    [bool], so a genuine boolean still reaches Assert-True and the assertion merely degrades from
+    "THE dismissal body is complete" to "SOME dismissal has A and SOME has B". Split into two
+    assertions so a failure names which half is missing.
+    Cardinality 1 for dismissal is by construction, not by observation: production issues ONE PUT
+    to .../dismissals and its read-back is a plain review GET with no 'dismissals' in the URL.
+  IN PASSING: the first draft of test-harness.ps1 used `-like "*type=System.Object[]*"`, where []
+    parses as an empty CHARACTER CLASS -> WildcardPatternException -> also non-terminating, also
+    uncounted, silently 36 passed instead of 39. The same defect class, inside the test written to
+    catch it. Now uses literal .Contains(). Worth remembering: -like is unsafe for any needle
+    containing [ or ].
+  VERIFIED: offline 602/0 across EIGHT files (composer 37, discovery 27, harness 39, invoke 285,
+    policy 15, publish 125, schema 9, state 65). publish 116 -> 125 = +1 happy POST, +1 downgrade
+    POST, +1 hostile POST, +6 from the dismissal split across three loop iterations.
+    NEGATIVE CONTROL on cardinality: mutating every expected count yields exactly 9 failures,
+    including base-tip's "expected '1', got '2'" - proving it discriminates a DROPPED pre/post
+    check rather than merely "at least one".
+  LIVE (helpers.ps1 is in Get-GateFingerprint's fixed list, so both stamps had to be re-earned):
+    gate fp moved 82ab0290... -> cb4aeb7e..., confirming FINDING 1a's mechanism. schema gate 10/0,
+    security battery 112/0, both re-stamped; both records now carry ONE gate fp (cb4aeb7e...) and
+    ONE wrapper fp, each matching the freshly computed value. Wrapper fp UNCHANGED at 4f529e0a...
+    5342 - independent confirmation that no production code was touched. Test-PremiseManifest
+    (the real gate invoke-codex.ps1 and install.ps1 call) returns Valid=True.
+    FIRST battery run failed 56/2: a live round hung past Invoke-Control's 600s bound at HERMETIC
+    CONTROL (plugins-home), so the battery correctly refused to assert canary ABSENCE against a
+    non-usable run, threw, and withheld the stamp. NOT related to this change - Assert-Usable
+    passes $Result.Usable, a genuine [bool]; the log contained no NON-BOOLEAN failures; and nothing
+    in helpers.ps1 can affect a live codex.exe wall-clock. Clean 112/0 on re-run. Recording it
+    because a recurrence at that same stage would be a real CLI/API finding, not a test bug.
+    premises.json is gitignored (machine-bound), so these stamps are a LOCAL authorization gate;
+    the push carries only the three test files.
