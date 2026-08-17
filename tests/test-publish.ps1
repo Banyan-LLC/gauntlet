@@ -698,4 +698,18 @@ Assert-True ($r3.Reason -notmatch 'timed out') "(iii) reason is distinct from a 
 Assert-True ($r3.Reason -match 'unexpected') "(iii) reason flags the head as unexpected"
 Assert-True ($swThird.Elapsed.TotalSeconds -lt 5) "(iii) detected immediately, not after waiting out a 30s timeout"
 
+# (iv) FINDING 3 (P2, see docs/build-log/task-14-report.md): the regression this finding was
+# reported without -- WITHOUT -StaleHead (a first sync, with no prior head to name -- the most
+# common caller), a head that is initially stale and only later becomes the expected commit must
+# still return Synced=$true, and must genuinely have POLLED MORE THAN ONCE (the call count is the
+# proof: the pre-fix bug returned "unexpected head" on the FIRST poll instead of continuing, so a
+# call count of 1 here would mean the regression is back, even if Synced happened to read $true by
+# some other coincidence).
+$script:HeadPollCount = 0
+$script:HeadPollSequence = @($staleHead, $staleHead, $expectedHead)
+$r4 = Wait-PrHeadSynced -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -ExpectedHead $expectedHead -TimeoutSec 5 -PollIntervalSec 1
+Assert-True $r4.Synced "(iv) no -StaleHead: becomes synced within the timeout, not rejected as 'unexpected' on the first stale read"
+Assert-Eq $r4.ActualHead $expectedHead "(iv) no -StaleHead: reports the actual (now-synced) head"
+Assert-True ($script:HeadPollCount -ge 2) "(iv) no -StaleHead: actually polled more than once (the pre-fix bug returned 'unexpected head' after exactly 1 poll)"
+
 Write-TestResult

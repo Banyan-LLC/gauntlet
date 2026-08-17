@@ -1421,7 +1421,16 @@ function Wait-PrHeadSynced {
         if ($lastSeen -eq $ExpectedHead) {
             return [pscustomobject]@{ Synced=$true; ActualHead=$lastSeen; Reason=$null }
         }
-        if ($lastSeen -and $lastSeen -ne $StaleHead) {
+        # P2 FIX (see docs/build-log/task-14-report.md, FINDING 3). -StaleHead is OPTIONAL (see
+        # its own param comment above) -- when omitted it is $null, and the un-guarded
+        # `$lastSeen -ne $StaleHead` compared every non-expected head against $null, which is
+        # true for ANY non-null head. That made this branch fire on the FIRST poll for the most
+        # common caller (a first sync with no prior head to name), returning "unexpected head"
+        # instead of continuing to poll -- defeating the entire purpose of the helper for exactly
+        # that case. Gated on $PSBoundParameters so it only ever applies when -StaleHead was
+        # ACTUALLY supplied, matching the param comment's documented contract: absent it, any
+        # non-expected head is simply not-yet-synced until the deadline, never "unexpected".
+        if ($PSBoundParameters.ContainsKey('StaleHead') -and $lastSeen -and $lastSeen -ne $StaleHead) {
             return [pscustomobject]@{ Synced=$false; ActualHead=$lastSeen
                 Reason="unexpected head: '$lastSeen' is neither the expected commit '$ExpectedHead' nor the known-stale commit '$StaleHead' -- someone else may have pushed" }
         }
