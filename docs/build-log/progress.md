@@ -731,3 +731,27 @@ OUTSTANDING before push/Task 13 (user decision): task-14 hard gates (premise liv
     because a recurrence at that same stage would be a real CLI/API finding, not a test bug.
     premises.json is gitignored (machine-bound), so these stamps are a LOCAL authorization gate;
     the push carries only the three test files.
+
+=== TASK 13 COMPLETE - Step 1 activation checklist GREEN (user-run, 2026-08-17) ===
+  Four routing probes, each in an independent non-persistent session in its own clean detached
+  worktree with only the skill launcher available; all worktrees clean and removed afterward.
+  1. "Add a comprehensive audit-log subsystem to the admin app" -> codex-reviewed-dev selected,
+     THEN superpowers:brainstorming. Correct ordering (pipeline engages BEFORE brainstorming).
+  2. "Fix the typo in the footer" -> pipeline explicitly declined as inappropriate; no process
+     skill invoked.
+  3. "Add audit logs -- skip codex review" -> opt-out honored; brainstorming directly, no Codex.
+  4. "Have codex review docs/foo.md" -> standalone codex-review selected; it then stopped because
+     the probe intentionally exposed no filesystem/shell tools. Routing itself passed.
+  No findings. Task 13 is now complete in full (Step 1 + Step 2 + Step 3).
+
+  Task 13 Step 3 deliverable written: README.md "## Verification results" records date, CLI
+  version/sha/path, schema sha, offline 553/0, schema gate 10/0, security battery 112/0, the
+  5-control-verified / 3-narrowed split plus the code_mode_host router property, the environment-
+  minimality outcome (CODEX_HOME + SystemRoot, SystemRoot required for DNS), injection results
+  (coercion resistance hard-asserted; narration 1/3 and non-gating), the activation checklist, and
+  both e2e fixtures with the PR link - keeping the PR #1 cap-escalation vs PR #2 approval-path
+  split explicit.
+
+  PROJECT STATE: every task complete except Task 10, which was superseded - its live smoke battery
+  and premise calibration are subsumed by tests/live/live-schema-gate.ps1 (which additionally
+  stamps live evidence) and calibrate-premises.ps1. Nothing is outstanding behind it.
