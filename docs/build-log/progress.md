@@ -632,3 +632,40 @@ OUTSTANDING before push/Task 13 (user decision): task-14 hard gates (premise liv
 
   REMAINING: Task 13 Step 1 ONLY - the fresh-session activation checklist, which the user runs.
     Keep the cavu.photo worktree until that passes.
+
+=== SILENT NO-OP ASSERTION IN test-publish.ps1 (user-reported) ===
+  DEFECT (test-only; no product defect): `Assert-True ((pipeline) -ne $null)` is not a null
+    comparison when the pipeline returns MULTIPLE elements - `-ne` goes element-wise and FILTERS,
+    handing back an Object[]. Assert-True's [bool]$Condition then fails argument transformation
+    ("Cannot convert value 'System.Object[]' to type 'System.Boolean'"), and that error is
+    NON-TERMINATING at script level: the run continues and the assertion increments NEITHER
+    $script:Passes NOR $script:Failures. It silently verifies nothing while the file still
+    reports "N passed, 0 failed".
+  HOW IT GOT IN: drill 6's own P1 fix added the SECOND Get-BaseBranchTip call (pre- AND
+    post-publication). Both hit git/ref/heads/main, so the happy-path filter went from one
+    element to two and "live base-branch-tip endpoint called" stopped asserting - i.e. the fix
+    disarmed its own regression test. 100% deterministic, not flaky; easy to miss only because
+    the error prints mid-stream rather than at the end.
+  AUDIT METHOD: not grep alone. Assert-True was TEMPORARILY instrumented (type untyped + report
+    any non-[bool] condition with caller file:line) and all seven files re-run, which proves
+    EMPIRICALLY that across all 553 executing assertions exactly ONE non-boolean condition
+    reached Assert-True. Instrumentation then reverted; `git diff --stat` confirms helpers.ps1
+    is untouched. A static sweep of tests/ (including live/) independently found only two
+    `-ne $null` conditions in the entire tree, both on these two adjacent lines.
+  FIXED: both lines now use `@(...).Count -gt 0`, so 0/1/many behave identically. Line 81
+    ("slurp pagination") was NOT broken yet - one call matches today, so Where-Object yields a
+    scalar and `-ne $null` is a genuine [bool] - but it is the same booby trap and was hardened
+    with it, since a second matching call would silently disarm it exactly as above.
+  VERIFIED: offline 554/0 (from 553/0). The +1 is precisely the previously-uncounted assertion;
+    every other file is byte-identical in count (composer 37, discovery 27, invoke 285, policy
+    15, publish 115->116, schema 9, state 65). No transformation errors anywhere in the run.
+    NEGATIVE CONTROL: with both regexes mutated to non-matching sentinels the file reports
+    114 passed, 2 FAILED, naming both assertions - proving they now genuinely bite rather than
+    merely being counted. No production code in codex-review/ was touched; the newly-functioning
+    assertion passes on its merits, so it uncovered no latent product defect.
+  NOTE (not actioned, needs a decision): the root cause of the SILENCE is Assert-True's
+    [bool]$Condition failing transformation non-terminatingly and uncounted. A guard in
+    helpers.ps1 - accept $Condition untyped and record an explicit FAILURE for any non-boolean -
+    would make this whole class impossible to reintroduce anywhere in the suite. Same class,
+    also unactioned: `(pipeline).Property -match '...'` (test-publish.ps1:79, 80, 101) returns
+    an Object[] the moment the pipeline yields more than one element.

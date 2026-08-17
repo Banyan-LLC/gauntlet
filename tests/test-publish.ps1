@@ -78,8 +78,21 @@ Assert-Eq $code 0 "happy path 0"
 $post = $script:GhCalls | Where-Object { $_.Args -contains 'POST' }
 Assert-True ($post.Input -match '"commit_id"\s*:\s*"h3ad"') "commit_id pinned"
 Assert-True ($post.Input -match '"event"\s*:\s*"APPROVE"') "event APPROVE"
-Assert-True (($script:GhCalls | Where-Object { ($_.Args -join ' ') -match '--paginate --slurp' }) -ne $null) "slurp pagination"
-Assert-True (($script:GhCalls | Where-Object { ($_.Args -join ' ') -match "git/ref/heads/$mainRef" }) -ne $null) "live base-branch-tip endpoint called"
+# `@(...).Count -gt 0`, NOT `(...) -ne $null`: on a MULTI-element result, `-ne $null` is
+# PowerShell's element-wise FILTERING operator, not a comparison -- it hands back every
+# non-null element, i.e. an Object[]. Assert-True's [bool]$Condition then fails argument
+# transformation ("Cannot convert value 'System.Object[]' to type 'System.Boolean'"), and that
+# error is NON-TERMINATING at script level: the run continues and the assertion contributes to
+# NEITHER $script:Passes NOR $script:Failures -- a silent no-op that still reports "N passed,
+# 0 failed". The base-tip check below is exactly how that bites: drill 6 (see
+# docs/build-log/task-14-report.md) added a SECOND Get-BaseBranchTip call (pre- AND
+# post-publication), both hitting this identical endpoint, so the filter started returning two
+# elements and the assertion stopped verifying anything. The slurp check above is the same shape
+# and survives only by luck -- one call matches today, so Where-Object yields a scalar and
+# `-ne $null` is a genuine [bool]. Wrapping both in @() and counting makes 0/1/many behave
+# identically and keeps a future second matching call from silently disarming the assertion.
+Assert-True (@($script:GhCalls | Where-Object { ($_.Args -join ' ') -match '--paginate --slurp' }).Count -gt 0) "slurp pagination"
+Assert-True (@($script:GhCalls | Where-Object { ($_.Args -join ' ') -match "git/ref/heads/$mainRef" }).Count -gt 0) "live base-branch-tip endpoint called"
 $pub = Get-Content -Raw "$tmp\publication.json" | ConvertFrom-Json
 Assert-Eq $pub.github_review_id 555 "publication persisted"
 Assert-True ($pub.digest -match '^[0-9a-f]{12}$') "standalone digest recorded"
