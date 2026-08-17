@@ -62,11 +62,14 @@ $review = @{ id=555; state='APPROVED'; commit_id='h3ad'; user=@{login='BanyanLLC
 
 # Happy path (hostile chars already covered above through the body builder). Pre- and
 # post-publication base-tip checks each add one call (Get-BaseBranchTip) alongside the existing
-# Get-PrOids call they sit next to.
+# Get-PrOids call they sit next to. FINDING 2 (P1, see docs/build-log/task-14-report.md): the
+# marker scan now comes right after the identity gate, BEFORE the pre-publication drift check
+# (oids/tip) -- reordered from this suite's original sequence, to match the reordering in
+# Publish-CodexReview itself.
 $script:GhScript = @(
     (New-ActorOk),
-    (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip),
     (New-JsonResponse @(@(@{id=1;state='APPROVED';user=@{login='someone'};body='no'}), @())),
+    (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip),
     (New-JsonResponse $review), (New-JsonResponse $review),
     (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip)
 )
@@ -90,46 +93,56 @@ $dgMarker = Get-ReviewMarker -Pr 7 -Base 'b0e1' -Head 'h3ad' -BaseRefName $mainR
 $dgReview = @{ id=600; state='CHANGES_REQUESTED'; commit_id='h3ad'; user=@{login='BanyanLLC'}; body="x $dgMarker" }
 $script:GhCalls.Clear()
 $script:GhScript = @(
-    (New-ActorOk), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip), (New-JsonResponse @(@())),
+    (New-ActorOk), (New-JsonResponse @(@())), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip),
     (New-JsonResponse $dgReview), (New-JsonResponse $dgReview), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip)
 )
 $code = Publish-CodexReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -NormalizedVerdict $dgObj -BaseOid 'b0e1' -HeadSha 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Round 3 -NormalizedJson $dgJson -StateDir $tmp
 Assert-Eq $code 0 "downgraded verdict publishes"
 Assert-True (($script:GhCalls | Where-Object { $_.Args -contains 'POST' }).Input -match '"event"\s*:\s*"REQUEST_CHANGES"') "DOWNGRADED VERDICT PUBLISHES AS REQUEST_CHANGES"
 
-# Pre-publication drift (head) -> 2, no POST, no live-tip call (short-circuits at the oids check).
-$script:GhCalls.Clear(); $script:GhScript = @((New-ActorOk), (New-OidsResponse 'b0e1' 'NEWHEAD' $mainRef))
+# Pre-publication drift (head) -> 2, no POST. FINDING 2 (P1): drift is now checked only AFTER the
+# marker scan finds no match -- so an empty scan response is now part of this fixture (it was not
+# before the reorder, since drift used to run unconditionally first).
+$script:GhCalls.Clear(); $script:GhScript = @((New-ActorOk), (New-JsonResponse @(@())), (New-OidsResponse 'b0e1' 'NEWHEAD' $mainRef))
 Assert-Eq (Publish-CodexReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -NormalizedVerdict $vObj -BaseOid 'b0e1' -HeadSha 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Round 2 -NormalizedJson $vJson -StateDir $tmp) 2 "pre-drift (head) 2"
 Assert-True (-not ($script:GhCalls | Where-Object { $_.Args -contains 'POST' })) "no mutation"
 
-# Pre-publication drift (base ref RENAMED) -> 2, no POST, no live-tip call (name check is part of
-# the same short-circuiting oids check as base/head oid drift).
-$script:GhCalls.Clear(); $script:GhScript = @((New-ActorOk), (New-OidsResponse 'b0e1' 'h3ad' 'renamed-branch'))
+# Pre-publication drift (base ref RENAMED) -> 2, no POST. Same FINDING 2 fixture update as above.
+$script:GhCalls.Clear(); $script:GhScript = @((New-ActorOk), (New-JsonResponse @(@())), (New-OidsResponse 'b0e1' 'h3ad' 'renamed-branch'))
 Assert-Eq (Publish-CodexReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -NormalizedVerdict $vObj -BaseOid 'b0e1' -HeadSha 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Round 2 -NormalizedJson $vJson -StateDir $tmp) 2 "pre-drift (base ref renamed) 2"
 Assert-True (-not ($script:GhCalls | Where-Object { $_.Args -contains 'POST' })) "no mutation"
 
 # Pre-publication drift (base branch TIP moved, baseRefOid/name unchanged) -> 2, no POST. Same
 # defect class as drill 6, caught one stage earlier than handoff (see the Handoff section below
-# for the dedicated discrimination proof of this exact scenario).
-$script:GhCalls.Clear(); $script:GhScript = @((New-ActorOk), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse 'MOVEDPRETIP'))
+# for the dedicated discrimination proof of this exact scenario). Same FINDING 2 fixture update.
+$script:GhCalls.Clear(); $script:GhScript = @((New-ActorOk), (New-JsonResponse @(@())), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse 'MOVEDPRETIP'))
 Assert-Eq (Publish-CodexReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -NormalizedVerdict $vObj -BaseOid 'b0e1' -HeadSha 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Round 2 -NormalizedJson $vJson -StateDir $tmp) 2 "pre-drift (base tip moved) 2"
 Assert-True (-not ($script:GhCalls | Where-Object { $_.Args -contains 'POST' })) "no mutation"
 
 # Recovery beyond page one; DISMISSED marker does not suppress; post-POST BASE/HEAD/BASE-TIP drift; wrong state; 403.
+# FINDING 2 (P1, see docs/build-log/task-14-report.md): this is the DIRECT proof of the
+# reordering's whole point. An exact marker match now short-circuits straight to read-back +
+# verification -- the pre-publication drift check (oids/tip) is never even consulted when an
+# existing marker is found, so this fixture no longer supplies those two responses at all (it did
+# before the reorder, when drift always ran first regardless of what the scan would find).
 $page1 = @(1..30 | ForEach-Object { @{id=$_; state='COMMENTED'; user=@{login='BanyanLLC'}; body="unrelated $_"} })
 $page2 = @(@{ id=777; state='APPROVED'; commit_id='h3ad'; user=@{login='BanyanLLC'}; body="recovered $marker2" })
 $script:GhCalls.Clear()
-$script:GhScript = @((New-ActorOk), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip), (New-JsonResponse @($page1, $page2)),
+$script:GhScript = @((New-ActorOk), (New-JsonResponse @($page1, $page2)),
     (New-JsonResponse $page2[0]), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip))
 Assert-Eq (Publish-CodexReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -NormalizedVerdict $vObj -BaseOid 'b0e1' -HeadSha 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Round 2 -NormalizedJson $vJson -StateDir $tmp) 0 "page-2 recovery verified"
 Assert-True (-not ($script:GhCalls | Where-Object { $_.Args -contains 'POST' })) "no duplicate POST"
+Assert-Eq $script:GhCalls.Count 5 "recovery via an exact marker match makes exactly 5 calls (identity, scan, get-back, post-verify oids+tip) -- the pre-publication drift check (2 more calls) is never consulted (FINDING 2); a regression here would exhaust this fixture's queue and fail some other way, but this pins the exact count directly"
 
+# A dismissed review carrying the marker does NOT count as "existing" (filtered by state), so this
+# scenario still goes through the "not found" -> drift-check -> POST path -- scan moves to right
+# after the identity gate (FINDING 2), but the pre-publication oids/tip check still runs.
 $script:GhCalls.Clear()
 $dismissed = @(@(@{ id=778; state='DISMISSED'; commit_id='h3ad'; user=@{login='BanyanLLC'}; body="old $marker2" }))
-$script:GhScript = @((New-ActorOk), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip), (New-JsonResponse $dismissed),
+$script:GhScript = @((New-ActorOk), (New-JsonResponse $dismissed), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip),
     (New-JsonResponse $review), (New-JsonResponse $review), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip))
 Assert-Eq (Publish-CodexReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -NormalizedVerdict $vObj -BaseOid 'b0e1' -HeadSha 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Round 2 -NormalizedJson $vJson -StateDir $tmp) 0 "dismissed marker ignored"
-Assert-True (($script:GhCalls | Where-Object { $_.Args -contains 'POST' }) -ne $null) "fresh POST after dismissed marker"
+Assert-True (@($script:GhCalls | Where-Object { $_.Args -contains 'POST' }).Count -gt 0) "fresh POST after dismissed marker"
 
 # post-POST drift now has THREE independent ways to trip -- base oid, head oid, and (P1 fix) the
 # base branch's live TIP moving even while baseRefOid/name hold steady. Each case supplies its
@@ -140,7 +153,7 @@ foreach ($driftCase in @(
     @{oids=(New-OidsResponse 'b0e1' 'h3ad' $mainRef); tip=(New-RefResponse 'MOVEDPOSTTIP'); name='base_tip'}
 )) {
     $script:GhCalls.Clear()
-    $script:GhScript = @((New-ActorOk), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip), (New-JsonResponse @(@())),
+    $script:GhScript = @((New-ActorOk), (New-JsonResponse @(@())), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip),
         (New-JsonResponse $review), (New-JsonResponse $review), $driftCase.oids, $driftCase.tip,
         (New-JsonResponse (@{ id=555; state='DISMISSED' })), (New-JsonResponse (@{ id=555; state='DISMISSED' })))
     Assert-Eq (Publish-CodexReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -NormalizedVerdict $vObj -BaseOid 'b0e1' -HeadSha 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Round 2 -NormalizedJson $vJson -StateDir $tmp) 3 "post-POST $($driftCase.name) drift -> dismissed -> 3"
@@ -149,12 +162,12 @@ foreach ($driftCase in @(
 }
 
 $commented = @{ id=556; state='COMMENTED'; commit_id='h3ad'; user=@{login='BanyanLLC'}; body="x $marker2" }
-$script:GhScript = @((New-ActorOk), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip), (New-JsonResponse @(@())),
+$script:GhScript = @((New-ActorOk), (New-JsonResponse @(@())), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip),
     (New-JsonResponse $commented), (New-JsonResponse $commented), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip),
     (New-JsonResponse (@{ id=556; state='DISMISSED' })), (New-JsonResponse (@{ id=556; state='DISMISSED' })))
 Assert-Eq (Publish-CodexReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -NormalizedVerdict $vObj -BaseOid 'b0e1' -HeadSha 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Round 2 -NormalizedJson $vJson -StateDir $tmp) 3 "COMMENTED state dismissed -> 3"
 
-$script:GhScript = @((New-ActorOk), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip), (New-JsonResponse @(@())),
+$script:GhScript = @((New-ActorOk), (New-JsonResponse @(@())), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip),
     (New-JsonResponse $review), (New-JsonResponse $review), (New-OidsResponse 'MOVEDBASE' 'h3ad' $mainRef), (New-RefResponse $mainTip), (New-FailResponse))
 Assert-Eq (Publish-CodexReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -NormalizedVerdict $vObj -BaseOid 'b0e1' -HeadSha 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Round 2 -NormalizedJson $vJson -StateDir $tmp) 4 "dismissal denied -> 4"
 
@@ -172,7 +185,7 @@ Assert-Eq $script:GhCalls.Count 1 "actor mismatch stops after the identity check
 # this is the defence-in-depth half, independent of the pre-mutation token check above.
 $wrongAuthor = @{ id=557; state='APPROVED'; commit_id='h3ad'; user=@{login='someone-else'}; body="x $marker2" }
 $script:GhCalls.Clear()
-$script:GhScript = @((New-ActorOk), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip), (New-JsonResponse @(@())),
+$script:GhScript = @((New-ActorOk), (New-JsonResponse @(@())), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip),
     (New-JsonResponse $wrongAuthor), (New-JsonResponse $wrongAuthor), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip),
     (New-JsonResponse (@{ id=557; state='DISMISSED' })), (New-JsonResponse (@{ id=557; state='DISMISSED' })))
 Assert-Eq (Publish-CodexReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -NormalizedVerdict $vObj -BaseOid 'b0e1' -HeadSha 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Round 2 -NormalizedJson $vJson -StateDir $tmp) 3 "review authored by someone else fails post-verification -> dismissed"
@@ -182,7 +195,7 @@ $script:GhCalls.Clear()
 $hostileMarker = Get-ReviewMarker -Pr 7 -Base 'b0e1' -Head 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Round 9 -NormalizedJson $hostileVerdict
 $hostileReview = @{ id=999; state='CHANGES_REQUESTED'; commit_id='h3ad'; user=@{login='BanyanLLC'}; body="x $hostileMarker" }
 $script:GhScript = @(
-    (New-ActorOk), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip), (New-JsonResponse @(@())),
+    (New-ActorOk), (New-JsonResponse @(@())), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip),
     (New-JsonResponse $hostileReview), (New-JsonResponse $hostileReview), (New-OidsResponse 'b0e1' 'h3ad' $mainRef), (New-RefResponse $mainTip)
 )
 Assert-Eq (Publish-CodexReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -NormalizedVerdict $hv -BaseOid 'b0e1' -HeadSha 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Round 9 -NormalizedJson $hostileVerdict -StateDir $tmp) 0 "hostile verdict publishes"
@@ -271,6 +284,135 @@ Assert-True (-not (Test-HandoffFresh -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -Public
 $malformed = { param($a) [pscustomobject]@{ExitCode=0; Stdout='not json at all'} }
 $script:GhScript = @($malformed)
 Assert-True (-not (Test-HandoffFresh -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -PublicationFile "$tmp\publication.json").Fresh) "MALFORMED response is caught"
+
+# =====================================================================================
+# FINDING 2 (P1, see docs/build-log/task-14-report.md): (a) the marker scan now runs before the
+# drift check (already exercised throughout the Publish-CodexReview tests above, reordered); this
+# section covers the two things not yet exercised: the crash-then-base-moves recovery scenario,
+# and Revoke-SupersededReview's three independent safety preconditions plus Test-HandoffFresh's
+# read-only contract.
+# =====================================================================================
+
+# --- Crash recovery under drift: POST succeeds, but the process fails BEFORE publication.json is
+# persisted (simulated directly: this call models a RETRY of that crashed attempt), and the base
+# branch has ALREADY moved by the time the retry runs. The retry must FIND the marker (it really
+# was already published) and route it through post-verification -- which independently re-checks
+# LIVE base state and correctly finds it has drifted -- so it must DISMISS (return 3), never the
+# stale exit-2 "drift" outcome (which, pre-fix, would only ever have been reachable by never
+# discovering the already-published review in the first place).
+$script:GhCalls.Clear()
+$crashMarker = Get-ReviewMarker -Pr 7 -Base 'b0e1' -Head 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Round 11 -NormalizedJson $vJson
+$crashReview = @{ id=888; state='APPROVED'; commit_id='h3ad'; user=@{login='BanyanLLC'}; body="x $crashMarker" }
+$script:GhScript = @(
+    (New-ActorOk),
+    (New-JsonResponse @(@($crashReview))),                 # scan finds it -- POST already happened on GitHub
+    (New-JsonResponse $crashReview),                        # get-back
+    (New-OidsResponse 'b0e1' 'h3ad' $mainRef),               # post-verify oids: base/head still match...
+    (New-RefResponse 'MOVEDTIPSINCECRASH'),                  # ...but the base branch's LIVE TIP has since moved
+    (New-JsonResponse (@{ id=888; state='DISMISSED' })),     # dismiss PUT
+    (New-JsonResponse (@{ id=888; state='DISMISSED' }))      # dismiss re-GET
+)
+$retryCode = Publish-CodexReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -NormalizedVerdict $vObj -BaseOid 'b0e1' -HeadSha 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Round 11 -NormalizedJson $vJson -StateDir $tmp
+Assert-Eq $retryCode 3 "crash-then-base-moves: retry finds the already-published marker and DISMISSES on since-drifted base tip, never a stale exit-2"
+Assert-True (-not ($script:GhCalls | Where-Object { $_.Args -contains 'POST' })) "crash-then-base-moves: no duplicate POST -- the marker recovery path never re-publishes"
+
+# --- Revoke-SupersededReview: dedicated fixture, isolated from the shared $tmp\publication.json
+# used by the Handoff-freshness section above.
+$retireDir = Join-Path $tmp 'retirement'; New-Item -ItemType Directory -Force $retireDir | Out-Null
+$retireMarker = Get-ReviewMarker -Pr 7 -Base 'b0e1' -Head 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Round 4 -NormalizedJson $vJson
+$retirePubFile = Join-Path $retireDir 'publication.json'
+@{ base_oid='b0e1'; reviewed_head_sha='h3ad'; base_ref_name=$mainRef; base_tip_oid=$mainTip
+   github_review_id=901; digest='abcdefabcdef'; marker=$retireMarker; round=4 } |
+    ConvertTo-Json | Set-Content $retirePubFile -Encoding utf8
+$retireReviewOk = @{ id=901; state='APPROVED'; commit_id='h3ad'; user=@{login='BanyanLLC'}; body="x $retireMarker" }
+
+# (positive control) genuinely superseded (head advanced), correctly authored, exact marker ->
+# revoked. Without this, every refusal test below could trivially "pass" by refusing everything.
+$script:GhCalls.Clear()
+$script:GhScript = @(
+    (New-JsonResponse $retireReviewOk),                  # Test-HandoffFresh: get review (author/marker/state/commit all ok)
+    (New-OidsResponse 'b0e1' 'MOVEDHEAD901' $mainRef),    # Test-HandoffFresh: Get-PrOids -> head advanced
+    (New-JsonResponse $retireReviewOk),                   # Revoke-SupersededReview: its OWN re-read (author ok, marker ok, not dismissed)
+    (New-JsonResponse (@{ id=901; state='DISMISSED' })),  # dismiss PUT
+    (New-JsonResponse (@{ id=901; state='DISMISSED' }))   # dismiss re-GET
+)
+$revOk = Revoke-SupersededReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -PublicationFile $retirePubFile
+Assert-True $revOk.Revoked "(positive control) a genuinely superseded, correctly-authored, exact-marker review IS revoked"
+
+# retirement refuses a review NOT authored by the configured reviewer -- Test-HandoffFresh's OWN
+# earlier read sees the CORRECT author (so it reaches the drift check and reports 'head advanced'
+# normally); Revoke-SupersededReview's OWN SEPARATE later re-read sees a DIFFERENT author. This
+# proves precondition (i) is a genuinely independent re-check, not merely inherited from
+# Test-HandoffFresh's check ordering.
+$script:GhCalls.Clear()
+$retireReviewWrongAuthorLater = @{ id=901; state='APPROVED'; commit_id='h3ad'; user=@{login='someone-else'}; body="x $retireMarker" }
+$script:GhScript = @(
+    (New-JsonResponse $retireReviewOk),
+    (New-OidsResponse 'b0e1' 'MOVEDHEAD901' $mainRef),
+    (New-JsonResponse $retireReviewWrongAuthorLater)
+)
+$revBadAuthor = Revoke-SupersededReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -PublicationFile $retirePubFile
+Assert-True ((-not $revBadAuthor.Revoked) -and $revBadAuthor.Reason -match 'authored by') "retirement refuses a review NOT authored by the configured reviewer (independent re-check)"
+Assert-Eq (@($script:GhCalls | Where-Object { ($_.Args -join ' ') -match 'dismissals' }).Count) 0 "no dismissal attempted when the author check fails"
+
+# retirement refuses a review whose live body no longer carries the exact marker -- same
+# independent-re-check proof as above, this time for precondition (ii).
+$script:GhCalls.Clear()
+$retireReviewNoMarkerLater = @{ id=901; state='APPROVED'; commit_id='h3ad'; user=@{login='BanyanLLC'}; body='body edited, marker gone' }
+$script:GhScript = @(
+    (New-JsonResponse $retireReviewOk),
+    (New-OidsResponse 'b0e1' 'MOVEDHEAD901' $mainRef),
+    (New-JsonResponse $retireReviewNoMarkerLater)
+)
+$revNoMarker = Revoke-SupersededReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -PublicationFile $retirePubFile
+Assert-True ((-not $revNoMarker.Revoked) -and $revNoMarker.Reason -match 'marker') "retirement refuses a review whose exact tool marker is absent from the live body (independent re-check)"
+Assert-Eq (@($script:GhCalls | Where-Object { ($_.Args -join ' ') -match 'dismissals' }).Count) 0 "no dismissal attempted when the marker check fails"
+
+# retirement refuses a NON-drift not-fresh reason -- a red build is not supersession, and must
+# never trigger retirement of a review that may still accurately describe the current code.
+$script:GhCalls.Clear()
+$retireRedChecks = { param($a) [pscustomobject]@{ExitCode=0; Stdout=(@(@{check_runs=@(@{name='ci';status='completed';conclusion='failure'})}) | ConvertTo-Json -Depth 6)} }
+$script:GhScript = @(
+    (New-JsonResponse $retireReviewOk),
+    (New-OidsResponse 'b0e1' 'h3ad' $mainRef),    # head UNCHANGED
+    (New-RefResponse $mainTip),                    # base tip UNCHANGED
+    $retireRedChecks
+)
+$revCiRed = Revoke-SupersededReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -PublicationFile $retirePubFile
+Assert-True ((-not $revCiRed.Revoked) -and $revCiRed.Reason -match 'not a head/base drift condition') "retirement refuses a CI-failure (non-drift) reason -- never mistakes red CI for supersession"
+
+# retirement refuses when the review is still genuinely fresh (nothing moved at all).
+$script:GhCalls.Clear()
+$script:GhScript = @(
+    (New-JsonResponse $retireReviewOk),
+    (New-OidsResponse 'b0e1' 'h3ad' $mainRef),
+    (New-RefResponse $mainTip),
+    $greenChecks, $noStatuses
+)
+$revFresh = Revoke-SupersededReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -PublicationFile $retirePubFile
+Assert-True ((-not $revFresh.Revoked) -and $revFresh.Reason -match 'still fresh') "retirement refuses a review that is genuinely still fresh -- nothing is superseded"
+
+# dismissal DENIAL (e.g. protected-branch restriction) -- reason names the denial, for a caller to
+# map to exit 4, exactly like the identical failure mode already handled inside Publish-CodexReview.
+$script:GhCalls.Clear()
+$script:GhScript = @(
+    (New-JsonResponse $retireReviewOk),
+    (New-OidsResponse 'b0e1' 'MOVEDHEAD901' $mainRef),
+    (New-JsonResponse $retireReviewOk),
+    (New-FailResponse)
+)
+$revDenied = Revoke-SupersededReview -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -PublicationFile $retirePubFile
+Assert-True ((-not $revDenied.Revoked) -and $revDenied.Reason -match 'denied') "dismissal denial is refused with a Reason naming the denial (maps to exit 4)"
+
+# Test-HandoffFresh MUST remain read-only: it reports, it never mutates -- even when it detects
+# drift. Proven against a RECORDING check of every call this in-process fake made (equivalent to a
+# recording fake `gh`, since this file's own Invoke-Gh override IS the interception point every
+# call in this process goes through).
+$script:GhCalls.Clear()
+$script:GhScript = @((New-JsonResponse $retireReviewOk), (New-OidsResponse 'b0e1' 'MOVEDHEAD901' $mainRef))
+$null = Test-HandoffFresh -Token 'tok' -OwnerRepo 'o/r' -Pr 7 -PublicationFile $retirePubFile
+$mutatingCalls = @($script:GhCalls | Where-Object { ($_.Args -join ' ') -match '(-X\s+(POST|PUT))|dismissals' })
+Assert-Eq $mutatingCalls.Count 0 "Test-HandoffFresh performs NO mutating gh call even when it detects drift (read-only contract)"
 
 # PUBLISHER ENTRY PATH: a hanging `gh auth token` must return exit 12 within the deadline.
 # The generic bounded-runner test would still pass if publish-review.ps1 itself regressed, so

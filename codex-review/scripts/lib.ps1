@@ -1558,19 +1558,20 @@ function Publish-CodexReview {
         return 12
     }
 
-    $oids = Get-PrOids -Token $Token -OwnerRepo $OwnerRepo -Pr $Pr
-    if ($oids.BaseOid -ne $BaseOid -or $oids.HeadOid -ne $HeadSha -or $oids.BaseRefName -cne $BaseRefName) {
-        Write-Warning "drift before publication; aborting without mutation"
-        return 2
-    }
-    # Base branch TIP, independently of the (static) baseRefOid check just above -- see
-    # Get-BaseBranchTip's own comment for why baseRefOid alone cannot detect this.
-    $preTip = Get-BaseBranchTip -Token $Token -OwnerRepo $OwnerRepo -BaseRefName $BaseRefName
-    if (-not $preTip.Ok -or $preTip.Sha -ne $BaseTipOid) {
-        Write-Warning "base branch drift before publication; aborting without mutation"
-        return 2
-    }
-
+    # FINDING 2 (P1, see docs/build-log/task-14-report.md): the marker scan now runs BEFORE the
+    # drift check -- REORDERED from the original, which ran drift first. Failure mode this closes:
+    # GitHub ACCEPTS the POST below but the process still returns a transient failure afterward
+    # (e.g. the read-back call fails) before publication.json is ever written; the base then
+    # moves; a retry that checks drift FIRST returns 2 WITHOUT EVER discovering the review it
+    # already created, leaving a stale tool-owned review standing on GitHub forever, undiscoverable
+    # by any later retry. An EXACT marker match means this precise
+    # (pr, base, base_ref, base_tip, head, round, digest) tuple was already reviewed -- and
+    # possibly already published -- so recovering and verifying it (below, unchanged) must never
+    # be blocked by drift that happened SINCE that publication. Drift is therefore only ever
+    # consulted inside the `else` branch immediately below, i.e. only when NO exact marker match
+    # exists yet for this tuple. This does not weaken the drift check itself -- it is the exact
+    # same two comparisons as before, just no longer gating a marker match that would recover
+    # (and then independently re-verify, below) a review already known to cover this tuple.
     $scan = Invoke-Gh -Token $Token -GhArgs @('api','--paginate','--slurp',"repos/$OwnerRepo/pulls/$Pr/reviews")
     if ($scan.ExitCode -ne 0) { throw "TRANSIENT: review scan failed" }
     $pages = $scan.Stdout | ConvertFrom-Json
@@ -1580,6 +1581,18 @@ function Publish-CodexReview {
     if ($existing) {
         $reviewId = $existing.id          # recovered — verified below, no free pass
     } else {
+        $oids = Get-PrOids -Token $Token -OwnerRepo $OwnerRepo -Pr $Pr
+        if ($oids.BaseOid -ne $BaseOid -or $oids.HeadOid -ne $HeadSha -or $oids.BaseRefName -cne $BaseRefName) {
+            Write-Warning "drift before publication; aborting without mutation"
+            return 2
+        }
+        # Base branch TIP, independently of the (static) baseRefOid check just above -- see
+        # Get-BaseBranchTip's own comment for why baseRefOid alone cannot detect this.
+        $preTip = Get-BaseBranchTip -Token $Token -OwnerRepo $OwnerRepo -BaseRefName $BaseRefName
+        if (-not $preTip.Ok -or $preTip.Sha -ne $BaseTipOid) {
+            Write-Warning "base branch drift before publication; aborting without mutation"
+            return 2
+        }
         $body = ConvertTo-ReviewBody -NormalizedVerdict $NormalizedVerdict -Marker $marker   # throws OVERSIZED
         $payload = Join-Path $StateDir 'post-body.json'
         @{ commit_id = $HeadSha; event = $event; body = $body } | ConvertTo-Json -Depth 4 | Set-Content $payload -Encoding utf8
@@ -1687,4 +1700,91 @@ function Test-HandoffFresh {
     } catch {
         return (& $fail "transport or malformed response: $($_.Exception.Message)")
     }
+}
+
+function Revoke-SupersededReview {
+    <# EXPLICIT retirement of a stale, tool-owned approval -- the mutating counterpart to the
+       READ-ONLY Test-HandoffFresh (P1 fix, FINDING 2, see docs/build-log/task-14-report.md).
+       Test-HandoffFresh only ever REPORTS; it must never itself dismiss a review, or a caller
+       that merely wants to CHECK freshness would silently mutate GitHub as a side effect. This is
+       a SEPARATE, explicitly-invoked operation: a caller calls it once Test-HandoffFresh has
+       reported the approval is stale specifically because the base or head moved.
+
+       Never dismisses on the caller's say-so alone. Three safety preconditions, ALL independently
+       re-verified here against LIVE GitHub state -- never merely inferred or trusted from the
+       caller, or from publication.json's own (possibly stale) claims:
+         (i)   the review is authored by the configured -Reviewer, exactly;
+         (ii)  the review's live body still carries the EXACT tool marker recorded in
+               publication.json (this IS the review we published -- not a same-marker collision,
+               and not one whose body was since edited to look like ours);
+         (iii) it is genuinely superseded -- re-derived by calling Test-HandoffFresh itself and
+               requiring its Reason be exactly one of the DRIFT-specific reasons ('head advanced',
+               'base advanced', 'base ref renamed'). Any other non-fresh reason (wrong reviewer,
+               wrong state, marker absent, red/pending CI, an unreadable endpoint, a transport
+               error) is explicitly NOT supersession and is refused -- retiring on a CI failure or
+               an identity mismatch would be wrong: the review may still accurately describe the
+               current code, it is just not currently mergeable, or something else is wrong that a
+               human -- not this function -- needs to look at.
+       Because Test-HandoffFresh's own checks verify author/marker BEFORE the drift checks,
+       reaching one of the three drift reasons already implies (i) and (ii) held at that read --
+       but this function still re-verifies both explicitly, against its OWN separate read-back,
+       immediately before dismissing, rather than resting on that ordering alone.
+
+       Returns {Revoked;Reason}, structurally matching Test-HandoffFresh's own {Fresh;Reason} --
+       never throws for an ordinary refusal. Dismissal denial (GitHub rejects the dismissal, e.g.
+       protected-branch restrictions) carries the same HUMAN FLAG severity as the identical
+       failure mode already handled inside Publish-CodexReview -- a caller wiring this into an
+       exit-code-based flow maps it to exit 4, exactly like that existing path. #>
+    param([Parameter(Mandatory)][string]$Token, [Parameter(Mandatory)][string]$OwnerRepo,
+          [Parameter(Mandatory)][int]$Pr, [Parameter(Mandatory)][string]$PublicationFile,
+          [string]$Reviewer = 'BanyanLLC')
+    $fail = { param($why) [pscustomobject]@{ Revoked=$false; Reason=$why } }
+    $driftReasons = @('head advanced', 'base advanced', 'base ref renamed')
+    try {
+        $pub = Get-Content -Raw $PublicationFile | ConvertFrom-Json
+    } catch {
+        return (& $fail "publication record unreadable: $($_.Exception.Message)")
+    }
+    if (-not $pub.github_review_id -or -not $pub.marker) {
+        return (& $fail "publication record is missing 'github_review_id' or 'marker' -- nothing to revoke")
+    }
+
+    # (iii) genuinely superseded -- re-derived independently, never trusted from the caller.
+    $fresh = Test-HandoffFresh -Token $Token -OwnerRepo $OwnerRepo -Pr $Pr -PublicationFile $PublicationFile -Reviewer $Reviewer
+    if ($fresh.Fresh) {
+        return (& $fail 'refusing to revoke: the review is still fresh -- nothing is superseded')
+    }
+    if ($driftReasons -notcontains $fresh.Reason) {
+        return (& $fail "refusing to revoke: not a head/base drift condition (reason: '$($fresh.Reason)') -- this function retires drift-superseded reviews only, never a CI/state/identity/marker failure")
+    }
+
+    # (i) + (ii), re-verified independently against a fresh read-back, immediately before mutating.
+    $get = Invoke-Gh -Token $Token -GhArgs @('api',"repos/$OwnerRepo/pulls/$Pr/reviews/$($pub.github_review_id)")
+    if ($get.ExitCode -ne 0) { return (& $fail 'review read failed') }
+    $rv = $get.Stdout | ConvertFrom-Json
+    $authorLogin = try { $rv.user.login } catch { $null }
+    if ($authorLogin -cne $Reviewer) {
+        return (& $fail "refusing to revoke: authored by '$authorLogin', not the configured reviewer '$Reviewer'")
+    }
+    if (-not $rv.body -or -not $rv.body.Contains($pub.marker)) {
+        return (& $fail 'refusing to revoke: the exact tool marker is not present in the live review body')
+    }
+    if ($rv.state -eq 'DISMISSED') {
+        return (& $fail 'already dismissed -- nothing to revoke')
+    }
+
+    $dismissPayload = Join-Path (Split-Path -Parent $PublicationFile) 'retire-body.json'
+    @{ message = "Retired by codex-review: superseded ($($fresh.Reason)) — $($pub.marker)"; event = 'DISMISS' } |
+        ConvertTo-Json | Set-Content $dismissPayload -Encoding utf8
+    $put = Invoke-Gh -Token $Token -GhArgs @('api','-X','PUT',"repos/$OwnerRepo/pulls/$Pr/reviews/$($pub.github_review_id)/dismissals") -InputFile $dismissPayload
+    if ($put.ExitCode -ne 0) {
+        Write-Warning "HUMAN FLAG: superseded review $($pub.github_review_id) active, dismissal denied"
+        return (& $fail 'dismissal denied (HUMAN FLAG -- map to exit 4)')
+    }
+    $reGet = Invoke-Gh -Token $Token -GhArgs @('api',"repos/$OwnerRepo/pulls/$Pr/reviews/$($pub.github_review_id)")
+    if ($reGet.ExitCode -ne 0 -or (($reGet.Stdout | ConvertFrom-Json).state) -ne 'DISMISSED') {
+        Write-Warning "HUMAN FLAG: dismissal did not stick"
+        return (& $fail 'dismissal did not stick (HUMAN FLAG -- map to exit 4)')
+    }
+    [pscustomobject]@{ Revoked=$true; Reason=$null }
 }

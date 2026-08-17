@@ -129,4 +129,14 @@ prompt anyway.
 
 Handoff: `Test-HandoffFresh` from `lib.ps1` must return `Fresh` before notifying the human — this
 now independently re-verifies the base ref's name AND its live tip (`Get-BaseBranchTip`), not
-just `headRefOid`.
+just `headRefOid`. `Test-HandoffFresh` is READ-ONLY — it never mutates. Not fresh specifically
+because `Reason` is `'head advanced'`, `'base advanced'`, or `'base ref renamed'` (P1, FINDING 2,
+see task-14-report.md) → call `Revoke-SupersededReview -Token <t> -OwnerRepo <o/r> -Pr <n>
+-PublicationFile <file>` (`lib.ps1`) to retire the stale tool-owned approval before re-syncing and
+re-entering the loop — it independently re-verifies the review is genuinely ours (exact author +
+exact marker) and genuinely superseded before dismissing, never trusting the caller's say-so.
+Returns `{Revoked;Reason}`; a denied dismissal (`Reason` contains `'denied'`) is a HUMAN FLAG, same
+severity as `publish-review.ps1` exit 4. Any OTHER not-fresh reason (wrong state, red/pending CI,
+wrong identity, absent marker, unreadable endpoint) is NOT supersession — do not call
+`Revoke-SupersededReview` for those; it refuses them itself, but the right response is to
+investigate, not retire the review.
