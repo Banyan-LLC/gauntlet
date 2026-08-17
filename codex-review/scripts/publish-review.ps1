@@ -1,6 +1,11 @@
 #Requires -Version 7
 <# Exit: 0 published/recovered+verified | 2 drift | 3 dismissed, re-review | 4 HUMAN FLAG
-        | 5 transient gh failure (retry once) | 11 invalid/oversized verdict | 12 token missing #>
+        | 5 transient gh failure (retry once)
+        | 6 publish arguments do not match the attempt that produced the canonical verdict --
+          fails LOCALLY, before any `gh` call (see Test-PublishProvenance, lib.ps1; FINDING 1,
+          docs/build-log/task-14-report.md). Not retryable as-is: re-derive -Round/-BaseOid/
+          -HeadSha/-BaseRefName/-BaseTipOid from the named attempt record before re-invoking.
+        | 11 invalid/oversized verdict | 12 token missing #>
 param(
     [Parameter(Mandatory)][string]$OwnerRepo,
     [Parameter(Mandatory)][int]$Pr,
@@ -18,6 +23,15 @@ param(
     [string]$Reviewer = 'BanyanLLC'
 )
 . "$PSScriptRoot\lib.ps1"
+# FINDING 1 (P1, see docs/build-log/task-14-report.md): bind these caller-supplied arguments to
+# the immutable attempt record that actually produced round $Round's canonical verdict BEFORE
+# doing anything else -- including before resolving a gh token. A caller that supplies a
+# genuinely-reviewed verdict alongside DIFFERENT provenance arguments must never be able to
+# publish a formal review that misrepresents what was actually reviewed. Entirely local: no `gh`
+# call happens above or inside this check.
+$provenance = Test-PublishProvenance -StateDir $StateDir -Round $Round -VerdictFile $VerdictFile `
+    -Pr $Pr -BaseOid $BaseOid -HeadSha $HeadSha -BaseRefName $BaseRefName -BaseTipOid $BaseTipOid
+if (-not $provenance.Ok) { Write-Error "refusing to publish: $($provenance.Reason)"; exit 6 }
 $normalizedJson = Get-Content -Raw $VerdictFile
 # Single schema now (see task-7-report.md): schemas/verdict.schema.json serves both
 # --output-schema (invoke-codex.ps1) and this structural re-validation.

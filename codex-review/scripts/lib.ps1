@@ -1434,6 +1434,96 @@ function Wait-PrHeadSynced {
     }
 }
 
+function Test-PublishProvenance {
+    <# P1 FIX (see docs/build-log/task-14-report.md, FINDING 1). publish-review.ps1 used to accept
+       -Pr/-Round/-BaseOid/-HeadSha/-BaseRefName/-BaseTipOid as bare caller-supplied values and
+       never checked them against anything else -- so a genuinely-reviewed verdict could be
+       published alongside DIFFERENT provenance arguments, producing a formal GitHub review that
+       claimed to cover a base context it never actually reviewed. PROVEN LIVE: a round-3 verdict
+       reviewed at base tip 3dc0738 was re-published with tip 2403a80 simply by passing different
+       arguments -- the verdict was relabelled as covering a base context it never reviewed.
+
+       This binds the publisher's caller-supplied arguments to the IMMUTABLE attempt record that
+       actually produced the canonical verdict, entirely locally (no `gh` call), before
+       publish-review.ps1 does anything else. Two checks, in order:
+
+       1. -VerdictFile must BE the canonical round-<Round>-verdict.json inside -StateDir -- not
+          merely a file with equivalent-looking content sitting somewhere else, and not a verdict
+          for a different round. Compared by PATH (normalized, case-insensitive -- this is a
+          Windows filesystem identity check, not a content-equality check: two strings naming the
+          same real file only by differing letter case must still count as the canonical file).
+       2. The HIGHEST-numbered round-<Round>-attempt-<M>-meta.json in -StateDir is the attempt
+          that produced the canonical verdict. invoke-codex.ps1 numbers attempts strictly
+          sequentially (attempt = prior-attempts-for-this-round + 1), and its own top-of-script
+          guard (`if (Test-Path $canonicalVerdict) { ... exit 14 }`) fires BEFORE a new attempt
+          meta file is ever written -- so once round $Round's canonical verdict exists, no LATER
+          attempt meta for that round can ever have been created; the highest-numbered one that
+          exists is necessarily the one whose run wrote the canonical verdict. Every field checked
+          below was written into that meta file by Write-AttemptMeta BEFORE Codex ever ran (see
+          invoke-codex.ps1), so none of it could have been shaped by anything the review itself
+          said.
+
+       Every one of PR number, round, base OID, base ref name, base tip OID, and head SHA is
+       compared EXACTLY (ordinal) against what the attempt record itself carries. Any mismatch, or
+       a missing/unreadable attempt record, fails closed.
+
+       Never throws for an ordinary validation failure -- returns the same {Ok;Reason} structured
+       result this file's other fail-closed gates use (Get-BaseBranchTip, Wait-PrHeadSynced,
+       Test-HandoffFresh), so publish-review.ps1 can act on it directly, and a caller can never
+       mistake an uncaught exception for "not yet checked". #>
+    param(
+        [Parameter(Mandatory)][string]$StateDir, [Parameter(Mandatory)][int]$Round,
+        [Parameter(Mandatory)][string]$VerdictFile, [Parameter(Mandatory)][int]$Pr,
+        [Parameter(Mandatory)][string]$BaseOid, [Parameter(Mandatory)][string]$HeadSha,
+        [Parameter(Mandatory)][string]$BaseRefName, [Parameter(Mandatory)][string]$BaseTipOid
+    )
+    $bad = { param($why) [pscustomobject]@{ Ok=$false; Reason=$why } }
+    $canonicalFull = [System.IO.Path]::GetFullPath((Join-Path $StateDir "round-$Round-verdict.json"))
+    $suppliedFull = try { [System.IO.Path]::GetFullPath($VerdictFile) } catch { return (& $bad "-VerdictFile '$VerdictFile' is not a resolvable path: $($_.Exception.Message)") }
+    if (-not [string]::Equals($suppliedFull, $canonicalFull, [StringComparison]::OrdinalIgnoreCase)) {
+        return (& $bad "-VerdictFile must be the canonical verdict for round $Round ('$canonicalFull'), got '$suppliedFull'")
+    }
+    $attemptFiles = @(Get-ChildItem -Path $StateDir -Filter "round-$Round-attempt-*-meta.json" -ErrorAction SilentlyContinue)
+    if ($attemptFiles.Count -eq 0) {
+        return (& $bad "no attempt metadata found for round $Round in '$StateDir' -- cannot verify what produced this verdict")
+    }
+    $numbered = @($attemptFiles | ForEach-Object {
+        if ($_.Name -match '^round-\d+-attempt-(\d+)-meta\.json$') { [pscustomobject]@{ Num=[int]$Matches[1]; File=$_ } }
+    })
+    if ($numbered.Count -eq 0) {
+        return (& $bad "attempt metadata file name(s) for round $Round in '$StateDir' did not match the expected naming pattern")
+    }
+    # Highest attempt number wins -- see the docstring above for why this is always the attempt
+    # that produced the canonical verdict, never an earlier failed one.
+    $chosen = ($numbered | Sort-Object Num -Descending | Select-Object -First 1).File
+    try {
+        $meta = Get-Content -Raw $chosen.FullName | ConvertFrom-Json
+    } catch {
+        return (& $bad "attempt metadata '$($chosen.FullName)' is not readable/valid JSON: $($_.Exception.Message)")
+    }
+    $names = Get-PropertyNames -InputObject $meta
+    $required = @('round','pr_number','base_oid','head_sha','base_ref_name','base_tip_oid')
+    $missing = @($required | Where-Object { $names -notcontains $_ -or $null -eq $meta.$_ })
+    if ($missing.Count -gt 0) {
+        return (& $bad "attempt metadata '$($chosen.FullName)' is missing required provenance field(s): $($missing -join ', ') -- was round $Round run in pr mode?")
+    }
+    # -as never throws (unlike a bare [int] cast); a non-numeric or absent value becomes $null,
+    # which the check below turns into an ordinary mismatch instead of an uncaught exception.
+    $metaRound = $meta.round -as [int]
+    $metaPr = $meta.pr_number -as [int]
+    $mismatches = [System.Collections.Generic.List[string]]::new()
+    if ($null -eq $metaRound -or $metaRound -ne $Round) { $mismatches.Add("round (attempt record '$($meta.round)' vs supplied '$Round')") }
+    if ($null -eq $metaPr -or $metaPr -ne $Pr) { $mismatches.Add("pr (attempt record '$($meta.pr_number)' vs supplied '$Pr')") }
+    if (-not [string]::Equals($meta.base_oid, $BaseOid, [StringComparison]::Ordinal)) { $mismatches.Add("base_oid (attempt record '$($meta.base_oid)' vs supplied '$BaseOid')") }
+    if (-not [string]::Equals($meta.head_sha, $HeadSha, [StringComparison]::Ordinal)) { $mismatches.Add("head_sha (attempt record '$($meta.head_sha)' vs supplied '$HeadSha')") }
+    if (-not [string]::Equals($meta.base_ref_name, $BaseRefName, [StringComparison]::Ordinal)) { $mismatches.Add("base_ref_name (attempt record '$($meta.base_ref_name)' vs supplied '$BaseRefName')") }
+    if (-not [string]::Equals($meta.base_tip_oid, $BaseTipOid, [StringComparison]::Ordinal)) { $mismatches.Add("base_tip_oid (attempt record '$($meta.base_tip_oid)' vs supplied '$BaseTipOid')") }
+    if ($mismatches.Count -gt 0) {
+        return (& $bad "publish arguments do not match the attempt that produced round $Round's canonical verdict: $($mismatches -join '; ')")
+    }
+    [pscustomobject]@{ Ok=$true; Reason=$null }
+}
+
 function Publish-CodexReview {
     # -BaseRefName/-BaseTipOid (P1 fix, see docs/build-log/task-14-report.md, drill 6): the base
     # provenance captured BEFORE the review was composed. -BaseOid stays exactly what it always

@@ -67,7 +67,14 @@ One artifact, one bounded loop. Modes: `doc` (spec/plan) and `pr`. The reviewer 
    - **10 / 14** → human flag (budget overflow; round cap, attempt cap, or a round that already completed).
 4. `pr` mode: publish:
    `pwsh -File <skill>/scripts/publish-review.ps1 -OwnerRepo <o/r> -Pr <n> -Round <n> -VerdictFile <round-N-verdict.json> -StateDir <pr state dir> -BaseOid <oid> -HeadSha <sha> -BaseRefName <name> -BaseTipOid <tip>`
-   - 0 → done. 2/3 → refresh oids, re-review (counts a round). 4 → HUMAN FLAG now. 5 → retry once, then human flag. 11/12 → human flag.
+   - 0 → done. 2/3 → refresh oids, re-review (counts a round). 4 → HUMAN FLAG now. 5 → retry once, then human flag.
+   - **6** → HUMAN FLAG now. The supplied `-Round`/`-BaseOid`/`-HeadSha`/`-BaseRefName`/`-BaseTipOid`/`-Pr`
+     do not match the immutable attempt record that actually produced this round's canonical
+     verdict (`Test-PublishProvenance`, lib.ps1; see FINDING 1, task-14-report.md) — checked
+     entirely locally, before any `gh` call, so nothing was published or read. Do NOT blindly
+     retry: the error names which field(s) mismatched and the attempt-record file they should
+     have come from — re-derive the arguments from that file before re-invoking.
+   - 11/12 → human flag.
 5. `approve` → done; report outstanding nits at the human gate (never dropped).
 6. `request_changes` → address with judgment (receiving-code-review discipline). Where a recommendation is wrong, the place to push back is the ledger's `reason` on a `disputed` entry — that is what the reviewer will see. Commit. Round+1 → step 2b, rebuilding the ledger from every `round-*-verdict.json`.
 

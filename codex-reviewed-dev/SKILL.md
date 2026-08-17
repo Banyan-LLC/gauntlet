@@ -34,6 +34,9 @@ author `geoffroth` · reviewer `BanyanLLC` · round cap 10/phase · CI-fix cap 3
       blob and wasted a full round of the 10-round cap re-reporting an already-fixed defect.
       prompt = metadata + exact-base diff (ALL untrusted); invoke-codex → publish-review as
       BanyanLLC. Exits 2/3 → refresh oids, re-review (a round). Exit 4 → human flag NOW. Exit 5 → retry once.
+      Exit 6 → human flag NOW — the publish arguments don't match the attempt record that produced
+      the round's canonical verdict (checked locally, before any `gh` call); do not blindly retry,
+      re-derive the arguments from the named attempt record first (see codex-review/SKILL.md).
    d. request_changes → fix, push, green CI, confirm the new head is synced (`Wait-PrHeadSynced`,
       same requirement as (c) — this is the exact push→re-review transition the live drill's
       wasted round happened on), then a FRESH round whose ledger records each prior finding as
@@ -46,8 +49,9 @@ No `gh auth switch`, ever. geoffroth token for author calls, BanyanLLC token ins
 
 ## Human flags
 
-Stop; summarize state and sticking points; push notification. Triggers: exits 4/10/14, cap
-reached, CI-fix cap, transient-failure retry exhausted, dismissal denied.
+Stop; summarize state and sticking points; push notification. Triggers: exits 4/6/10/14, cap
+reached, CI-fix cap, transient-failure retry exhausted, dismissal denied, publish-argument/
+attempt-provenance mismatch (exit 6 — see codex-review/SKILL.md).
 
 Exit 12 is NOT unconditional. Two self-serve manifest causes, both handled exactly as the
 codex-review protocol says: stack-identity drift (absent, stale, or bound to a different

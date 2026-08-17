@@ -293,7 +293,14 @@ Set-Content -Path "$PSScriptRoot\ran.sentinel" -Value "ran" -Encoding utf8
 Start-Sleep 300
 '@
 Set-Content "$ghDir\gh.cmd" -Encoding ascii -Value "@`"$([System.Environment]::ProcessPath)`" -NoProfile -File `"%~dp0gh.ps1`" %*"
-$vFile = "$tmp\norm-verdict.json"; Set-Content $vFile -Value $vJson -Encoding utf8
+# FINDING 1 (P1, see docs/build-log/task-14-report.md): the provenance gate (Test-PublishProvenance)
+# now runs before ANY gh call, so this fixture must supply a canonical verdict path AND a
+# matching attempt record for the arguments used below, or the real script would be rejected at
+# the NEW gate (exit 6) before ever reaching the gh-hang behavior this test actually exercises.
+Write-AttemptMeta -StateDir $tmp -Round 1 -Attempt 1 -Meta @{
+    round=1; pr_number=7; base_oid='b0e1'; head_sha='h3ad'; base_ref_name=$mainRef; base_tip_oid=$mainTip
+}
+$vFile = "$tmp\round-1-verdict.json"; Set-Content $vFile -Value $vJson -Encoding utf8
 $pubEntry = "$PSScriptRoot\..\codex-review\scripts\publish-review.ps1"
 $pwshExe = [System.Environment]::ProcessPath   # resolved BEFORE PATH is restricted below: a
                                                 # PATH-less child cannot resolve `pwsh` by name
@@ -323,11 +330,163 @@ if ($a[0] -eq 'api' -and $a -contains 'user') { Write-Output 'custom-reviewer'; 
 exit 7
 '@
 Set-Content "$ghDir2\gh.cmd" -Encoding ascii -Value "@`"$([System.Environment]::ProcessPath)`" -NoProfile -File `"%~dp0gh.ps1`" %*"
-$vFile2 = "$tmp\norm-verdict2.json"; Set-Content $vFile2 -Value $vJson -Encoding utf8
+# FINDING 1 (P1): own round number (2, not 1) so this fixture is independent of the block above's
+# round-1 attempt record/verdict in the same $tmp -- same reasoning as that block's comment.
+Write-AttemptMeta -StateDir $tmp -Round 2 -Attempt 1 -Meta @{
+    round=2; pr_number=7; base_oid='b0e1'; head_sha='h3ad'; base_ref_name=$mainRef; base_tip_oid=$mainTip
+}
+$vFile2 = "$tmp\round-2-verdict.json"; Set-Content $vFile2 -Value $vJson -Encoding utf8
 $oldPath2 = $env:PATH; $env:PATH = $ghDir2   # ONLY the shim dir, same isolation as the block above
-& $pwshExe -NoProfile -File $pubEntry -OwnerRepo 'o/r' -Pr 7 -Round 1 -VerdictFile $vFile2 -StateDir $tmp -BaseOid 'b0e1' -HeadSha 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Reviewer 'custom-reviewer'
+& $pwshExe -NoProfile -File $pubEntry -OwnerRepo 'o/r' -Pr 7 -Round 2 -VerdictFile $vFile2 -StateDir $tmp -BaseOid 'b0e1' -HeadSha 'h3ad' -BaseRefName $mainRef -BaseTipOid $mainTip -Reviewer 'custom-reviewer'
 $fwdExit = $LASTEXITCODE; $env:PATH = $oldPath2
 Assert-Eq $fwdExit 5 "non-default -Reviewer is forwarded end-to-end (clears the identity gate under the custom name, then fails later — not exit 12)"
+
+# =====================================================================================
+# FINDING 1 (P1, see docs/build-log/task-14-report.md): publish-review.ps1 must bind its
+# caller-supplied -Pr/-Round/-BaseOid/-HeadSha/-BaseRefName/-BaseTipOid to the immutable attempt
+# record that actually produced the canonical verdict, and refuse LOCALLY -- before any `gh`
+# call -- on any mismatch. PROVEN LIVE (see the finding): a round-3 verdict genuinely reviewed at
+# base tip 3dc0738 was re-published with tip 2403a80 simply by passing different arguments --
+# the verdict was relabelled as covering a base context it never reviewed.
+# =====================================================================================
+
+# --- Direct unit tests of Test-PublishProvenance: fast, precise, no process spawn.
+$provDir = Join-Path $tmp 'provenance'; New-Item -ItemType Directory -Force $provDir | Out-Null
+Write-AttemptMeta -StateDir $provDir -Round 5 -Attempt 1 -Meta @{
+    round=5; pr_number=42; base_oid='baseoidAAA'; head_sha='headshaAAA'
+    base_ref_name='main'; base_tip_oid='tipAAA'
+}
+$provVerdict = Join-Path $provDir 'round-5-verdict.json'
+Set-Content $provVerdict -Value $vJson -Encoding utf8
+
+function New-ProvArgs([hashtable]$Overrides = @{}) {
+    $a = @{ StateDir=$provDir; Round=5; VerdictFile=$provVerdict; Pr=42
+            BaseOid='baseoidAAA'; HeadSha='headshaAAA'; BaseRefName='main'; BaseTipOid='tipAAA' }
+    foreach ($k in $Overrides.Keys) { $a[$k] = $Overrides[$k] }
+    return $a
+}
+
+# NOTE: `Test-PublishProvenance @(New-ProvArgs ...)` would be WRONG here -- `@(...)` is the array-
+# subexpression operator, which wraps the hashtable in a 1-element ARRAY rather than splatting it;
+# splatting requires `@` directly against a variable holding the hashtable. Each call below
+# assigns to a variable first, then splats that variable, so PowerShell actually maps the keys
+# onto Test-PublishProvenance's named parameters instead of failing a type-conversion bind.
+$argsD = New-ProvArgs
+Assert-True (Test-PublishProvenance @argsD).Ok "(d) fully matching arguments pass Test-PublishProvenance"
+
+$argsTip = New-ProvArgs @{ BaseTipOid='tipBBB' }
+$tipMismatch = Test-PublishProvenance @argsTip
+Assert-True ((-not $tipMismatch.Ok) -and $tipMismatch.Reason -match 'base_tip_oid') "(a) base-tip mismatch fails closed and names base_tip_oid"
+
+$argsHead = New-ProvArgs @{ HeadSha='headshaBBB' }
+$headMismatch = Test-PublishProvenance @argsHead
+Assert-True ((-not $headMismatch.Ok) -and $headMismatch.Reason -match 'head_sha') "(b) head-sha mismatch fails closed and names head_sha"
+
+$argsPr = New-ProvArgs @{ Pr=999 }
+$prMismatch = Test-PublishProvenance @argsPr
+Assert-True ((-not $prMismatch.Ok) -and $prMismatch.Reason -match '\bpr\b') "(c) wrong PR number fails closed and names pr"
+
+$argsBaseOid = New-ProvArgs @{ BaseOid='baseoidZZZ' }
+$baseOidMismatch = Test-PublishProvenance @argsBaseOid
+Assert-True ((-not $baseOidMismatch.Ok) -and $baseOidMismatch.Reason -match 'base_oid') "base-oid mismatch fails closed and names base_oid"
+
+$argsRef = New-ProvArgs @{ BaseRefName='other-branch' }
+$refMismatch = Test-PublishProvenance @argsRef
+Assert-True ((-not $refMismatch.Ok) -and $refMismatch.Reason -match 'base_ref_name') "base-ref-name mismatch fails closed and names base_ref_name"
+
+$arbitraryFile = Join-Path $tmp 'some-other-file.json'; Set-Content $arbitraryFile -Value $vJson -Encoding utf8
+$argsArb = New-ProvArgs @{ VerdictFile=$arbitraryFile }
+$arbResult = Test-PublishProvenance @argsArb
+Assert-True ((-not $arbResult.Ok) -and $arbResult.Reason -match 'canonical') "an arbitrary -VerdictFile path (not the canonical round file) is rejected"
+
+$argsWrongRound = New-ProvArgs @{ Round=6 }
+$wrongRoundPath = Test-PublishProvenance @argsWrongRound
+Assert-True ((-not $wrongRoundPath.Ok) -and $wrongRoundPath.Reason -match 'canonical') "-VerdictFile for a different round than -Round claims is rejected"
+
+# (c) wrong round, the OTHER way: the attempt record's own internal 'round' field disagrees with
+# the filename/-Round used to locate it (a tampered or hand-edited attempt record) -- the
+# canonical-PATH check alone cannot catch this, since -VerdictFile still correctly names round 7's
+# file; only the attempt record's own CONTENT check does. Own round number (7), isolated from the
+# round-5 fixture above, so this scenario's tampered record cannot become "the highest attempt"
+# picked for any other test in this section.
+Write-AttemptMeta -StateDir $provDir -Round 7 -Attempt 1 -Meta @{
+    round=99; pr_number=42; base_oid='baseoidAAA'; head_sha='headshaAAA'
+    base_ref_name='main'; base_tip_oid='tipAAA'
+}
+$verdict7 = Join-Path $provDir 'round-7-verdict.json'; Set-Content $verdict7 -Value $vJson -Encoding utf8
+$roundFieldMismatch = Test-PublishProvenance -StateDir $provDir -Round 7 -VerdictFile $verdict7 `
+    -Pr 42 -BaseOid 'baseoidAAA' -HeadSha 'headshaAAA' -BaseRefName 'main' -BaseTipOid 'tipAAA'
+Assert-True ((-not $roundFieldMismatch.Ok) -and $roundFieldMismatch.Reason -match '\bround\b') "attempt record's own 'round' field disagreeing with the filename/-Round is caught, not just the path check"
+
+# (e) missing attempt metadata entirely -- a canonical verdict exists but no attempt record does.
+$noAttemptDir = Join-Path $tmp 'provenance-noattempt'; New-Item -ItemType Directory -Force $noAttemptDir | Out-Null
+$noAttemptVerdict = Join-Path $noAttemptDir 'round-1-verdict.json'; Set-Content $noAttemptVerdict -Value $vJson -Encoding utf8
+$noAttempt = Test-PublishProvenance -StateDir $noAttemptDir -Round 1 -VerdictFile $noAttemptVerdict -Pr 1 -BaseOid 'x' -HeadSha 'y' -BaseRefName 'main' -BaseTipOid 'z'
+Assert-True ((-not $noAttempt.Ok) -and $noAttempt.Reason -match 'no attempt metadata') "(e) missing attempt metadata fails closed"
+
+# --- Subprocess-level proof: a mismatch must fail with EXIT 6 and never invoke `gh` at all --
+# proven via a fake `gh` that records every invocation to a file; the file must never be created.
+# A fully-matching call, by contrast, must clear this gate and reach `gh` (proven by the SAME
+# recording file becoming non-empty) -- a positive control, so an accidentally-inert recording
+# shim cannot make every case look like "no gh call" trivially.
+$provEntryDir = Join-Path $tmp 'provenance-entry'; New-Item -ItemType Directory -Force $provEntryDir | Out-Null
+Write-AttemptMeta -StateDir $provEntryDir -Round 1 -Attempt 1 -Meta @{
+    round=1; pr_number=7; base_oid='b0e1'; head_sha='h3ad'; base_ref_name=$mainRef; base_tip_oid=$mainTip
+}
+$provEntryVerdict = Join-Path $provEntryDir 'round-1-verdict.json'
+Set-Content $provEntryVerdict -Value $vJson -Encoding utf8
+$verdict3Entry = Join-Path $provEntryDir 'round-3-verdict.json'; Set-Content $verdict3Entry -Value $vJson -Encoding utf8
+
+$ghDirRec = "$tmp\fakegh-recording"; New-Item -ItemType Directory -Force $ghDirRec | Out-Null
+$callsLog = "$ghDirRec\calls.log"
+Set-Content "$ghDirRec\gh.ps1" -Encoding utf8 -Value @'
+param()
+Add-Content -Path "$PSScriptRoot\calls.log" -Value ($args -join ' ') -Encoding utf8
+exit 1
+'@
+Set-Content "$ghDirRec\gh.cmd" -Encoding ascii -Value "@`"$([System.Environment]::ProcessPath)`" -NoProfile -File `"%~dp0gh.ps1`" %*"
+
+function New-EntryArgs([hashtable]$Overrides = @{}) {
+    $a = @{ OwnerRepo='o/r'; Pr=7; Round=1; VerdictFile=$provEntryVerdict; StateDir=$provEntryDir
+            BaseOid='b0e1'; HeadSha='h3ad'; BaseRefName=$mainRef; BaseTipOid=$mainTip }
+    foreach ($k in $Overrides.Keys) { $a[$k] = $Overrides[$k] }
+    return $a
+}
+function Invoke-PublisherEntryRecording([hashtable]$PublishArgs) {
+    if (Test-Path $callsLog) { Remove-Item $callsLog -Force }
+    $argv = [System.Collections.Generic.List[string]]::new()
+    $argv.Add('-NoProfile'); $argv.Add('-File'); $argv.Add($pubEntry)
+    foreach ($k in $PublishArgs.Keys) { $argv.Add("-$k"); $argv.Add([string]$PublishArgs[$k]) }
+    $oldPathRec = $env:PATH; $env:PATH = $ghDirRec
+    & $pwshExe @argv
+    $exit = $LASTEXITCODE
+    $env:PATH = $oldPathRec
+    [pscustomobject]@{ Exit=$exit; Logged=(Test-Path $callsLog) }
+}
+
+$rTip = Invoke-PublisherEntryRecording (New-EntryArgs @{ BaseTipOid='WRONGTIP' })
+Assert-Eq $rTip.Exit 6 "(a) tip-A verdict + tip-B argument: publisher entry exits 6"
+Assert-True (-not $rTip.Logged) "(a) tip mismatch: gh was NEVER invoked (recording file never created)"
+
+$rHead = Invoke-PublisherEntryRecording (New-EntryArgs @{ HeadSha='WRONGHEAD' })
+Assert-Eq $rHead.Exit 6 "(b) head-A verdict + head-B argument: publisher entry exits 6"
+Assert-True (-not $rHead.Logged) "(b) head mismatch: gh was NEVER invoked (recording file never created)"
+
+$rPr = Invoke-PublisherEntryRecording (New-EntryArgs @{ Pr=999 })
+Assert-Eq $rPr.Exit 6 "(c) wrong PR number: publisher entry exits 6"
+Assert-True (-not $rPr.Logged) "(c) wrong PR number: gh was NEVER invoked (recording file never created)"
+
+$rRound = Invoke-PublisherEntryRecording (New-EntryArgs @{ Round=2; VerdictFile=(Join-Path $provEntryDir 'round-2-verdict.json') })
+Assert-Eq $rRound.Exit 6 "(c) wrong round: publisher entry exits 6"
+Assert-True (-not $rRound.Logged) "(c) wrong round: gh was NEVER invoked (recording file never created)"
+
+$rMissingAttempt = Invoke-PublisherEntryRecording (New-EntryArgs @{ Round=3; VerdictFile=$verdict3Entry })
+Assert-Eq $rMissingAttempt.Exit 6 "(e) missing attempt metadata: publisher entry exits 6"
+Assert-True (-not $rMissingAttempt.Logged) "(e) missing attempt metadata: gh was NEVER invoked (recording file never created)"
+
+$rOk = Invoke-PublisherEntryRecording (New-EntryArgs)
+Assert-Eq $rOk.Exit 12 "(d) fully matching arguments clear the provenance gate and proceed as before (reaches the gh-token stage, exit 12 against this always-fails shim)"
+Assert-True $rOk.Logged "(d) fully matching arguments: gh WAS invoked -- positive control proving the recording shim genuinely works"
 
 # Parameter-contract safety: Invoke-Gh -GhArgs is deliberately NOT [Parameter(Mandatory)] (see
 # Assert-NoEmptyStringElements in lib.ps1) -- Mandatory would let an array containing an empty
