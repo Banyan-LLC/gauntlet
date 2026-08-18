@@ -1,7 +1,7 @@
 # Cross-Platform (Unix/macOS) Gauntlet — Container-Sandbox Port Design
 
 **Date:** 2026-08-18
-**Status:** Draft for review (Codex rounds 1–7: `request_changes` addressed)
+**Status:** Draft for review (Codex rounds 1–8: `request_changes` addressed)
 **Supersedes:** the "Cross-platform scripts" future note in [`docs/design.md`](../../design.md) (§ Out of scope / future)
 
 ## Overview
@@ -172,14 +172,28 @@ requirement is:
 control) it ensures a valid access token — refreshing host-side using the durable refresh token if
 needed — and writes an **access-token-only** `auth.json` (no refresh token) plus a copy of
 `AGENTS.md` into a fresh, host-created **staging directory**, after validating each source is a
-**regular file** (not a symlink/socket/device) and copying with no-follow semantics. That staging
-directory is the **only** user bind-mount, mounted **read-only** at the container's `CODEX_HOME`,
-owned by the invoking host user with owner-only (0700) permissions. Because Linux bind mounts
-**preserve numeric ownership**, the container is **run as that same invoking host UID/GID against an
-arbitrary-UID-compatible image (corrects round-5 P2)**, so it can read the staged files without any
-`chown` an unprivileged installer could not perform; on Docker Desktop (macOS) the same
-UID/GID-as-invoker mapping is used, and the effective mapping is recorded in the invocation profile
-and re-checked by inspection. The container performs no in-session refresh (the mount is read-only). Before creating the container the broker requires the staged
+**regular file** (not a symlink/socket/device) and copying with no-follow semantics. Because
+`AGENTS.md` is executed by Codex as **trusted instructions**, the broker copies it from an
+**`O_NOFOLLOW` file descriptor**, hashes the exact bytes written to staging, re-opens the staged
+regular file, and **compares that hash to the manifest's `agents_md_sha256` immediately before
+container creation (corrects round-8 P1)** — so a concurrent rewrite between premise validation and
+copy cannot slip uncertified instructions into the container; any mismatch fails the round closed.
+(`auth.json` legitimately changes on refresh, so it is validated as a well-formed access-only token
+rather than against a fixed hash.) That staging directory is the **only** user bind-mount, mounted
+**read-only** at the container's `CODEX_HOME`, owned by the invoking host user with owner-only (0700)
+permissions. Because Linux bind mounts **preserve numeric ownership**, the container is **run as that
+same invoking host UID/GID against an arbitrary-UID-compatible image (corrects round-5 P2)**, so it
+can read the staged files without any `chown` an unprivileged installer could not perform; on Docker
+Desktop (macOS) the same UID/GID-as-invoker mapping is used, and the effective mapping is recorded in
+the invocation profile and re-checked by inspection. **Under rootless Docker or a userns-remap daemon
+the numeric mapping differs (corrects round-8 P2):** the container UID maps to a *subordinate* host
+UID, so a 0700 dir owned by the invoking host UID is not readable as-is. The runner therefore
+**inspects the daemon's effective user-namespace mapping** and uses a **mapping-aware mount** (an
+idmapped mount or a `keep-id`-equivalent) so the staged files remain readable; where no such
+mechanism is available it **rejects the configuration at installer preflight** with actionable
+guidance rather than silently producing an unreadable mount. The effective mapping is part of the
+security-policy validation and the live tests. The container performs no in-session refresh (the
+mount is read-only). Before creating the container the broker requires the staged
 token's **verified remaining lifetime to be at least the maximum round/watchdog deadline plus
 container-startup and clock-skew margins (corrects round-3 P2)**; if it is below that threshold the
 broker refreshes or re-mints host-side, and if the provider cannot supply a sufficiently long-lived
@@ -372,10 +386,14 @@ sidecar is an optional future hardening tier, explicitly out of scope for v1.
      round-6 P1, round-7 P2)** — POSIX `rename` cannot replace a non-empty directory, so instead
      populate a **new immutable, versioned sibling directory** holding **both** skill trees, and
      **re-hash it and confirm it equals `host_impl_digest` there, before exposure**. Make it durable
-     **before** exposure: `fsync` every installed regular file and evidence artifact, then `fsync`
-     directories bottom-up including the version-directory's parent (re-hashing verifies page-cache
-     contents, not on-disk durability — after a power loss `current` must never survive pointing at
-     truncated or missing files). Then repoint the `current` symlink by **creating a uniquely-named
+     **before** exposure with a **platform-specific durability protocol (corrects round-8 P2)**:
+     flush every installed regular file and evidence artifact to the storage device — `fsync` on
+     Linux, **`fcntl(F_FULLFSYNC)` on macOS** (ordinary `fsync` does not flush the drive cache
+     there) — then flush directories bottom-up including the version-directory's parent. Where a
+     filesystem/backend cannot provide the required directory-/rename-persistence primitives, the
+     installer **fails closed or narrows the durability guarantee** rather than assuming it
+     (re-hashing verifies page-cache contents, not on-disk durability — after a power loss `current`
+     must never survive pointing at truncated or missing files). Then repoint the `current` symlink by **creating a uniquely-named
      temporary symlink in the same directory and replacing `current` with a single atomic
      `rename`/`os.replace`** (same-filesystem-validated, `lstat`-checked) — *not* `ln -sfn`, which
      unlinks-then-symlinks and can leave `current` missing — and `fsync` the parent of `current`.
@@ -437,8 +455,9 @@ changing the untouched Windows writers — round-2 P2):
    image, including **control-reachability preconditions**, the **runtime-qualified mount
    allowlist**, and the **security-policy validator's negative tests** (weakening any single
    mandatory control — `--user 0:0`, dropped `--cap-drop ALL`, `no-new-privileges` off, a writable
-   rootfs, etc. — makes the gate **fail**, never merely re-fingerprint). Real model calls; consumes
-   usage; deliberately invoked.
+   rootfs, etc. — makes the gate **fail**, never merely re-fingerprint), and **validation of the
+   effective user-namespace mapping** (rootless / userns-remap must yield a readable credential mount
+   or be rejected at preflight). Real model calls; consumes usage; deliberately invoked.
 3. **Live schema gate** — the shipped schema is accepted by the real API through the container, with
    exactly one terminal `turn.completed` and the usage gate satisfied.
 4. **Serialization + id golden corpus** — a corpus carrying **authoritative expected bytes** for the
@@ -451,7 +470,9 @@ changing the untouched Windows writers — round-2 P2):
    lifetime is below the deadline-plus-margin threshold is refreshed/re-minted or fails closed before
    launch; and a **concurrent-refresh test** — including a provider response that **rotates the
    refresh token** — asserts the interprocess lock plus fsync-atomic, generation-checked persistence
-   never lets two brokers clobber each other's credential.
+   never lets two brokers clobber each other's credential. A **concurrent-rewrite test** replaces
+   `AGENTS.md` between premise validation and staging and asserts the staged-byte hash check against
+   `agents_md_sha256` fails the round closed.
 6. **Crash-safety & concurrency test** — with the host runner killed mid-round, the in-container
    watchdog still terminates the run by its absolute deadline; a subsequent reaper reclaims a stale
    run's **container and** staging directory only after acquiring that run's per-run lease
@@ -462,7 +483,8 @@ changing the untouched Windows writers — round-2 P2):
    `current` flip, and a **reader paused after its first lookup while the flip occurs**, both observe
    a **single consistent bundle** (only the old or only the new; never missing, mixed across skill
    trees, or unverified); and a **power-loss/recovery test** asserts a surviving `current` never
-   points at truncated or missing files — startup validation refuses or rolls back a `current` whose
+   points at truncated or missing files — using `F_FULLFSYNC` on macOS and failing closed on backends
+   lacking the required primitives — and startup validation refuses or rolls back a `current` whose
    complete digest no longer matches.
 
 ## Risks and mitigations
