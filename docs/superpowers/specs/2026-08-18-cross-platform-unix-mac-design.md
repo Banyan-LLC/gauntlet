@@ -1,7 +1,10 @@
 # Cross-Platform (Unix/macOS) Gauntlet — Container-Sandbox Port Design
 
 **Date:** 2026-08-18
-**Status:** Draft for review (Codex rounds 1–9: `request_changes` addressed)
+**Status:** Draft — Codex review reached the **10-round cap** without approval. All 41 findings
+across rounds 1–10 were accepted and addressed; rounds 1–9 were re-reviewed (each round confirmed
+the prior fixes held and surfaced new, deeper issues rather than re-raising old ones), and round-10's
+four findings are incorporated but **not** re-reviewed. Awaiting a human decision on next steps.
 **Supersedes:** the "Cross-platform scripts" future note in [`docs/design.md`](../../design.md) (§ Out of scope / future)
 
 ## Overview
@@ -97,6 +100,13 @@ Container run configuration (the new boundary):
   section, round-5 P2); `--read-only` root filesystem; `--cap-drop ALL`;
   `--security-opt no-new-privileges`; `--pids-limit`; memory and CPU limits; a bounded run timeout
   (the container analogue of `Invoke-BoundedProcess`).
+- **Private namespaces + no privilege escalation (corrects round-10 P1).** Private **PID, IPC, UTS,
+  and cgroup** namespaces (never `--pid=host`/`--ipc=host`/etc.), `Privileged=false`, no unconfined
+  seccomp/AppArmor profile, and no unapproved device or device-cgroup requests — required because the
+  container runs as the invoking host UID, so a host PID namespace plus a shell-denial regression
+  could otherwise expose same-UID host process data through `/proc`. These are part of the semantic
+  profile and the mandatory-value policy validator, with a **host-PID same-UID canary** in the
+  negative live tests.
 - **`--log-driver=none`** so the daemon does not persist stdout/stderr to host-side container logs
   (an otherwise-un-audited disclosure channel — round-2 P2). The runner captures the attached
   streams directly instead. The effective logging configuration is part of the invocation profile
@@ -129,9 +139,13 @@ container. The runner therefore copies while the container is still alive:
    container termination if a limit is exceeded**, so a long or malformed run cannot exhaust host
    memory or disk; the copied verdict/exit-status artifacts are read under the same bounded-read
    discipline. The `--json` JSONL feeds the usage gate;
-4. once Codex has exited (observed via the marker/exit-status), the runner **`docker cp`s the
-   verdict file and exit-status out while the container is still running** (tmpfs live), so the
-   verdict source is the `-o` file exactly as on Windows;
+4. once Codex has exited (observed via the marker/exit-status), the runner copies the verdict file
+   and exit-status out while the container is still running (tmpfs live), so the verdict source is
+   the `-o` file exactly as on Windows — using a **size-bounded transfer (corrects round-10 P2)**:
+   streaming `docker cp CONTAINER:path -` through a bounded tar parser into an owner-only temp file
+   and aborting + cleaning up immediately on declared or actual over-limit data, because a plain
+   `docker cp` materializes the whole file before any post-copy check and an oversized verdict would
+   otherwise consume host storage first; host-side copy overflow is tested;
 5. the runner then releases the wrapper and issues an explicit `kill` against the retained id — the
    round timeout is likewise enforced by an explicit `kill`, because killing the client process
    alone does **not** stop a daemon-managed container — and a guaranteed cleanup removes the
@@ -261,8 +275,8 @@ Same fail-closed structure as the Windows manifest, with container-appropriate f
 
 ```
 { image_config_digest, platform_manifest_digest?, os_arch, codex_version_in_image,
-  schema_sha256, agents_md_sha256, host_impl_digest, container_invocation_profile_hash,
-  live_evidence { schema_gate, security_battery } }
+  schema_sha256, agents_md_sha256, host_impl_digest, python_runtime_fingerprint,
+  container_invocation_profile_hash, live_evidence { schema_gate, security_battery } }
 ```
 
 - `host_impl_digest` is the container-stack analogue of the Windows `wrapper_fingerprint`
@@ -280,6 +294,16 @@ Same fail-closed structure as the Windows manifest, with container-appropriate f
   P1)**, because the semantic invocation-profile values can be unchanged while the code that applies
   them is edited. The offline suite, both live gates, and every review round run against the exact
   bytes this closed set covers.
+
+- `python_runtime_fingerprint` binds the **host Python runtime that executes the enforcement code
+  (corrects round-10 P1)**. `host_impl_digest` covers source files, but dispatch would otherwise
+  resolve a mutable PATH `python3`, so a changed interpreter, standard library, or dependency could
+  run *different* code for no-follow copying, credential handling, stream limiting, cleanup, hashing,
+  and durability while evidence still read "current." The design pins the **resolved interpreter
+  path** and fingerprints its **implementation/version/build plus all runtime dependencies**
+  (preferably an immutable packaged runtime or versioned environment); the Unix dispatch invokes that
+  pinned interpreter, not a bare `python3`; and any change to this execution substrate invalidates
+  evidence and forces all gates to rerun.
 
 - `container_invocation_profile_hash` is a **canonical *semantic* profile, not the literal run
   argv (corrects round-2 P1).** Per-run paths and identifiers (the staging directory source path,
@@ -407,7 +431,11 @@ sidecar is an optional future hardening tier, explicitly out of scope for v1.
      `rename`/`os.replace`** (same-filesystem-validated, `lstat`-checked) — *not* `ln -sfn`, which
      unlinks-then-symlinks and can leave `current` missing — and `fsync` the parent of `current`.
      Startup validation refuses or rolls back a `current` whose complete digest no longer matches;
-  7. append the activation pointer to `~/.claude/CLAUDE.md` if absent.
+  7. add the activation pointer to `~/.claude/CLAUDE.md` if absent, **crash-/concurrency-/symlink-
+     safely (corrects round-10 P2)**: validate the destination with no-follow semantics, serialize
+     updates and detect concurrent generations, write a complete sibling file preserving the intended
+     metadata, durably flush it, and atomically replace the destination — with failure ordering such
+     that an unsuccessful activation update leaves the prior configuration intact.
   Because step 3 runs the battery inside the pinned image on the host arch, installing on an
   Apple-Silicon Mac verifies the arm64 boundary on arm64 before anything is installed.
 - **`SKILL.md` platform branch.** The loop protocol is shared prose; the invocation lines branch by
