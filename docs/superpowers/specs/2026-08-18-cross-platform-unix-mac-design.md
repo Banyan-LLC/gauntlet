@@ -1,7 +1,7 @@
 # Cross-Platform (Unix/macOS) Gauntlet — Container-Sandbox Port Design
 
 **Date:** 2026-08-18
-**Status:** Draft for review (Codex rounds 1–2: `request_changes` addressed)
+**Status:** Draft for review (Codex rounds 1–3: `request_changes` addressed)
 **Supersedes:** the "Cross-platform scripts" future note in [`docs/design.md`](../../design.md) (§ Out of scope / future)
 
 ## Overview
@@ -111,8 +111,12 @@ container. The runner therefore copies while the container is still alive:
 2. the container's entrypoint is a **small wrapper**: it runs `codex exec … -o <tmpfs>/verdict.json
    -`, records Codex's **exit status** to `<tmpfs>/exit-status`, then **blocks on a marker** so the
    tmpfs stays mounted and the verdict remains retrievable after Codex itself exits;
-3. the runner streams the prompt to the wrapper's stdin and captures `stdout`/`stderr` directly,
-   feeding the `--json` JSONL to the usage gate;
+3. the runner streams the prompt to the wrapper's stdin and captures `stdout`/`stderr` directly
+   with **streaming parsing under explicit per-channel and aggregate byte bounds (corrects round-3
+   P2)** — online secret-scanning as it reads, bounded diagnostic retention, and **immediate
+   container termination if a limit is exceeded**, so a long or malformed run cannot exhaust host
+   memory or disk; the copied verdict/exit-status artifacts are read under the same bounded-read
+   discipline. The `--json` JSONL feeds the usage gate;
 4. once Codex has exited (observed via the marker/exit-status), the runner **`docker cp`s the
    verdict file and exit-status out while the container is still running** (tmpfs live), so the
    verdict source is the `-o` file exactly as on Windows;
@@ -120,6 +124,16 @@ container. The runner therefore copies while the container is still alive:
    round timeout is likewise enforced by an explicit `kill`, because killing the client process
    alone does **not** stop a daemon-managed container — and a guaranteed cleanup removes the
    container on success, failure, and timeout alike.
+
+**Crash-safe bounding (corrects round-3 P1).** Host-side enforcement alone is insufficient: if the
+runner is killed or loses its daemon connection, a wrapper that blocks on the host would wait
+forever, leaking the container and its credential bind. The wrapper therefore also runs an
+**in-container watchdog** that kills Codex and exits after an **absolute deadline, independent of
+the host**, so the run is bounded even with no host present. Every container is **labeled with a
+narrowly-scoped owner/run identifier**; on startup the runner **reaps verified-stale owned
+containers**, and a stale staging directory is reclaimed **only after confirming no owned live
+container still references it**. The bounded-run and guaranteed-cleanup guarantees thus hold across
+runner crashes, not only clean exits.
 
 **Confidentiality argument (stated precisely).** The reviewer has no shell and no file-read tool
 (default-deny), so it cannot read the one secret staged into the container (a short-lived,
@@ -148,8 +162,12 @@ needed — and writes an **access-token-only** `auth.json` (no refresh token) pl
 **regular file** (not a symlink/socket/device) and copying with no-follow semantics. That staging
 directory is the **only** host bind-mount, mounted **read-only** at the container's `CODEX_HOME`
 with a defined UID/GID so the image's non-root user can read it. The container performs no in-session
-refresh (the mount is read-only); the broker's launch-time freshness covers a bounded round, and an
-expiry mid-round **fails closed**. This simultaneously fixes round-2 P1 ("a dummy credential cannot
+refresh (the mount is read-only). Before creating the container the broker requires the staged
+token's **verified remaining lifetime to be at least the maximum round/watchdog deadline plus
+container-startup and clock-skew margins (corrects round-3 P2)**; if it is below that threshold the
+broker refreshes or re-mints host-side, and if the provider cannot supply a sufficiently long-lived
+access-only token the round **fails closed before launch** rather than risking a mid-round expiry.
+This simultaneously fixes round-2 P1 ("a dummy credential cannot
 authenticate real model calls"): the staged token is a *real, working* access token, so the
 force-enabled battery controls authenticate and fire — while the durable refresh token stays on the
 host, resolving the refresh-rotation risk (round-1 P2).
@@ -207,13 +225,24 @@ Same fail-closed structure as the Windows manifest, with container-appropriate f
 
 - `container_invocation_profile_hash` is a **canonical *semantic* profile, not the literal run
   argv (corrects round-2 P1).** Per-run paths and identifiers (the staging directory source path,
-  the cidfile, container ids) are replaced by **typed placeholders**; what is hashed is the
-  security-relevant shape: each mount's **type, destination, and options** (e.g. "credential mount:
-  type=bind, dest=`$CODEX_HOME`, ro; working root: type=tmpfs"), the capability drops, network mode,
-  **logging driver**, the runtime identity, the platform, the image identity, and the complete
-  `--disable` set. Fresh but equivalent staging paths therefore hash **equal**, while any
-  security-relevant change hashes **different** — verified by an explicit test. `os_arch` is
-  fingerprinted separately so evidence never crosses architectures.
+  the cidfile, container ids) are replaced by **typed placeholders**; what is hashed is **every
+  security-relevant effective setting (corrects round-3 P1)**, not an illustrative subset:
+  - the **complete Codex argv template** with typed dynamic values — every hermetic flag
+    (`--ignore-user-config`, `--ignore-rules`, `--ephemeral`, `-s read-only`,
+    `-c web_search="disabled"`, `-c shell_environment_policy.inherit="none"`, the model pin) **and**
+    the complete `--disable` set, not merely `--disable`;
+  - each **mount's type, destination, and options** (credential bind, ro, at `$CODEX_HOME`; tmpfs
+    working root);
+  - the container security posture: **non-root UID/GID**, **`--read-only` rootfs**,
+    **`--cap-drop ALL`**, **`--security-opt no-new-privileges`**, **`--pids-limit`** and memory/CPU
+    **resource limits**, **published ports (none)**, the **environment allowlist**, the
+    **`--log-driver=none`** logging driver, the **stream-attachment / wrapper protocol**, the
+    network mode, the runtime/backend identity, the platform, and the image identity.
+  The recorded profile is **derived from, and cross-checked against, runtime inspection** of an
+  actual container, so drift between "what we intend to pass" and "what the runtime actually applied"
+  is caught. Fresh but equivalent staging paths hash **equal**; **changing any single field
+  invalidates evidence**, verified by a per-field test. `os_arch` is fingerprinted separately so
+  evidence never crosses architectures.
 - The two independently-fingerprinted `live_evidence` sub-records (`schema_gate`,
   `security_battery`) and the "recalibration drops evidence, forcing a live re-run" semantics are
   preserved unchanged.
@@ -326,8 +355,10 @@ changing the untouched Windows writers — round-2 P2):
 1. **Offline pytest suite** — ports the coverage of the 602-test PowerShell suite: verdict
    normalization and severity downgrade, id derivation against authoritative vectors, the usage gate
    (malformed/duplicated/over-limit streams), default-deny feature computation, the **canonical
-   semantic invocation-profile hash** (fresh equivalent staging paths hash equal; security-relevant
-   changes do not), premises/live-evidence gating, state paths and the carry-over ledger, and
+   semantic invocation-profile hash** (fresh equivalent staging paths hash equal; changing any
+   single security-relevant field invalidates evidence — a per-field test), **bounded stream
+   capture** (per-channel and aggregate over-limit behavior terminates the run),
+   premises/live-evidence gating, state paths and the carry-over ledger, and
    publication hardening (JSON-safe bodies, `--paginate --slurp` pagination, provenance binding,
    drift, dismissal). No container, no network, no model calls.
 2. **Container live battery** — the re-conceived security battery above, run inside the pinned
@@ -341,16 +372,23 @@ changing the untouched Windows writers — round-2 P2):
    severity-downgrade path, and carry-over-ledger transitions. The Python stack is checked against
    the authoritative expectations (not merely against PowerShell).
 5. **Credential/refresh test** — two sequential rounds via the broker assert host auth still works
-   afterward (the durable refresh token was never exposed or invalidated).
+   afterward (the durable refresh token was never exposed or invalidated), and a token whose
+   remaining lifetime is below the deadline-plus-margin threshold is refreshed/re-minted or fails
+   closed before launch.
+6. **Crash-safety test** — with the host runner killed mid-round, the in-container watchdog still
+   terminates the run by its absolute deadline; a subsequent run reaps the stale owned container and
+   reclaims its staging directory only after confirming no owned live container references it.
 
 ## Risks and mitigations
 
 - **Container runtime dependency.** Heavier prerequisite than Python alone; the installer verifies
   it up front and fails closed with guidance.
-- **Access-token lifetime vs round length.** The broker guarantees freshness at launch; a bounded
-  round fits inside an access token's validity, and expiry mid-round fails closed. The durable
-  refresh token is refreshed host-side and never enters the container, so refresh-token rotation
-  cannot invalidate the host credential.
+- **Access-token lifetime vs round length.** The broker requires the staged token's remaining
+  lifetime to exceed the maximum round/watchdog deadline plus startup and clock-skew margins before
+  launch — refreshing or re-minting otherwise, and failing closed before launch if it cannot — so a
+  bounded round fits inside the token's validity by construction. The durable refresh token is
+  refreshed host-side and never enters the container, so refresh-token rotation cannot invalidate
+  the host credential.
 - **Podman divergence.** Only drop-in compatibility is promised; the semantic invocation-profile
   hash pins the exact runtime identity so a substitution is never silent.
 - **Image / architecture drift.** The architecture-qualified image identity is the pin, re-verified
