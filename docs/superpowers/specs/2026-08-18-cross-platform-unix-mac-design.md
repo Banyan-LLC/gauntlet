@@ -1,7 +1,7 @@
 # Cross-Platform (Unix/macOS) Gauntlet — Container-Sandbox Port Design
 
 **Date:** 2026-08-18
-**Status:** Draft for review (Codex rounds 1–4: `request_changes` addressed)
+**Status:** Draft for review (Codex rounds 1–5: `request_changes` addressed)
 **Supersedes:** the "Cross-platform scripts" future note in [`docs/design.md`](../../design.md) (§ Out of scope / future)
 
 ## Overview
@@ -85,14 +85,20 @@ runs inside the container** — nothing about the Codex invocation is relaxed; t
 
 Container run configuration (the new boundary):
 
-- No published ports; a non-root user; `--read-only` root filesystem; `--cap-drop ALL`;
+- No published ports; **run as the invoking host UID/GID** (`--user <uid>:<gid>`) against an
+  **arbitrary-UID-compatible image** — both non-root *and* what lets the container read the
+  owner-only credential staging dir, since Linux bind mounts preserve numeric ownership (credential
+  section, round-5 P2); `--read-only` root filesystem; `--cap-drop ALL`;
   `--security-opt no-new-privileges`; `--pids-limit`; memory and CPU limits; a bounded run timeout
   (the container analogue of `Invoke-BoundedProcess`).
 - **`--log-driver=none`** so the daemon does not persist stdout/stderr to host-side container logs
   (an otherwise-un-audited disclosure channel — round-2 P2). The runner captures the attached
   streams directly instead. The effective logging configuration is part of the invocation profile
   (§ Premises) and is asserted by the battery.
-- **No host bind-mounts except the credential staging mount** (below). The reviewed repository, the
+- **No *user-requested* host bind-mounts except the credential staging mount** (below). The runtime
+  itself still injects its own generated binds — `/etc/hosts`, `/etc/hostname`, `/etc/resolv.conf` —
+  which are expected and distinguished from user binds by the battery (item 2, round-5 P1); what is
+  excluded is any *user-supplied* bind other than the credential dir. The reviewed repository, the
   user's home directory, and every other host path are absent from the container.
 - **Working root = an in-container tmpfs** that also holds the `-o` verdict file. This *is* the
   harness. The Windows "harness outside every repo, verified empty" invariants collapse to "a fresh
@@ -160,9 +166,13 @@ control) it ensures a valid access token — refreshing host-side using the dura
 needed — and writes an **access-token-only** `auth.json` (no refresh token) plus a copy of
 `AGENTS.md` into a fresh, host-created **staging directory**, after validating each source is a
 **regular file** (not a symlink/socket/device) and copying with no-follow semantics. That staging
-directory is the **only** host bind-mount, mounted **read-only** at the container's `CODEX_HOME`
-with a defined UID/GID so the image's non-root user can read it. The container performs no in-session
-refresh (the mount is read-only). Before creating the container the broker requires the staged
+directory is the **only** user bind-mount, mounted **read-only** at the container's `CODEX_HOME`,
+owned by the invoking host user with owner-only (0700) permissions. Because Linux bind mounts
+**preserve numeric ownership**, the container is **run as that same invoking host UID/GID against an
+arbitrary-UID-compatible image (corrects round-5 P2)**, so it can read the staged files without any
+`chown` an unprivileged installer could not perform; on Docker Desktop (macOS) the same
+UID/GID-as-invoker mapping is used, and the effective mapping is recorded in the invocation profile
+and re-checked by inspection. The container performs no in-session refresh (the mount is read-only). Before creating the container the broker requires the staged
 token's **verified remaining lifetime to be at least the maximum round/watchdog deadline plus
 container-startup and clock-skew margins (corrects round-3 P2)**; if it is below that threshold the
 broker refreshes or re-mints host-side, and if the provider cannot supply a sufficiently long-lived
@@ -172,10 +182,17 @@ authenticate real model calls"): the staged token is a *real, working* access to
 force-enabled battery controls authenticate and fire — while the durable refresh token stays on the
 host, resolving the refresh-rotation risk (round-1 P2).
 
-**Lifecycle & isolation of the staging directory:** created per round with owner-only permissions;
-removed in a guaranteed cleanup on every outcome (success, failure, timeout, crash-recovery of
-stale directories on next run); its access-only token is short-lived so even a leaked staging dir
-ages out quickly.
+**Lifecycle, concurrency & isolation of the staging directory (corrects round-5 P2).** Each staging
+directory is correlated with its container by an **unguessable run id**, and the runner holds a
+**per-run file lease from before the staging directory is created through final cleanup**. A reaper
+may delete a stale directory only after it **acquires that lease non-blockingly *and* confirms no
+matching live container exists** — "no live container references it" alone is insufficient, because
+a directory legitimately exists in the window before its container is created. The broker itself
+serializes all credential work — read → refresh → validate → persist — under an **OS-level
+interprocess lock**, and persists any rotated durable credential with an **fsync-backed atomic
+replacement guarded by a generation check**, so concurrent installers, rounds, or battery controls
+cannot refresh with the same rotating token and clobber each other's newly issued host credential.
+The staged access-only token is short-lived, so even a leaked staging dir ages out quickly.
 
 ## The Codex image
 
@@ -271,15 +288,18 @@ a positive control that proves the detector can see what it rules out:
    the broker's real access token, each positive control must be confirmed to actually reach the
    real API and fire *before* its absence under the hermetic policy is accepted as evidence — a
    control that silently failed to authenticate proves nothing.
-2. **The mount/device/socket table matches a runtime-qualified allowlist (corrects round-2 P1).**
-   A real container legitimately has the overlay root, `proc`, `sys`, `cgroup`, `/dev`, `devpts`,
-   shm, and runtime-generated files (`/etc/hosts`, `/etc/hostname`, `/etc/resolv.conf`) — so the
-   assertion is **not** "only two mounts." The runner inspects the container's runtime config *and*
-   in-container `mountinfo` and asserts: the set matches a **runtime-qualified allowlist** of those
-   expected pseudo-filesystems/devices/generated files **plus** the single credential staging bind
-   and the tmpfs working root; **no bind-mount has a host source other than the credential staging
-   dir**; and **no container-runtime socket** (`docker.sock`/`podman.sock`), unexpected device, or
-   other host path is present. A control that deliberately adds a host bind must surface it.
+2. **The mount/device/socket table matches a runtime-qualified allowlist (corrects round-2 P1 and
+   the round-5 self-contradiction).** A real container legitimately has the overlay root, `proc`,
+   `sys`, `cgroup`, `/dev`, `devpts`, shm, and the runtime's own generated binds `/etc/hosts`,
+   `/etc/hostname`, `/etc/resolv.conf` — so the assertion is neither "only two mounts" nor "no bind
+   has a host source" (those generated files *are* host-backed binds). The check therefore
+   **separates user-requested binds from runtime-generated binds**: from the runtime configuration
+   (`docker inspect` Mounts / `HostConfig.Binds`) the **sole user-requested bind must be the
+   credential staging dir**; the generated `/etc/*` trio is allowed **only at those enumerated
+   destinations with runtime-qualified source classes and options**; the expected
+   pseudo-filesystems, devices, and the tmpfs working root are allowed; and **any other host bind,
+   any container-runtime socket** (`docker.sock`/`podman.sock`)**, and any unexpected device are
+   rejected**. A control that deliberately adds a user bind must surface it.
 3. **Egress posture is exactly what is claimed** (§ Network egress).
 4. **A synthetic secret never appears in ANY captured output channel** — a canary must not appear in
    the verdict, the JSONL stream, stderr, **or any daemon-side container log** (closed by
@@ -329,10 +349,13 @@ sidecar is an optional future hardening tier, explicitly out of scope for v1.
      **recording** each gate's fingerprinted evidence (bound to `host_impl_digest`) on success;
   5. **revalidate** the now-complete manifest (the same check a review round enforces) and refuse if
      anything is stale or mismatched;
-  6. **install by atomic directory replacement** — populate a temp directory beside the target and
-     `rename` it into place (never an in-place copy into a live skill directory, which an
-     interruption or a concurrent run could leave mixed or partial), then **re-hash the installed
-     bytes and confirm they equal `host_impl_digest`** before activation;
+  6. **install as a versioned sibling + atomic symlink flip (corrects round-5 P1)** — POSIX
+     `rename` cannot replace a non-empty directory, so instead populate a **new immutable, versioned
+     sibling directory**, **re-hash it and confirm it equals `host_impl_digest` there, before
+     exposure**, then atomically repoint a `current` symlink (e.g. `ln -sfn`, which replaces the
+     symlink by rename) that the skill paths resolve through. Both skill trees switch **as one
+     bundle**; the previous release stays active if anything fails, so an interrupted or concurrent
+     install never exposes unverified or mixed bytes;
   7. append the activation pointer to `~/.claude/CLAUDE.md` if absent.
   Because step 3 runs the battery inside the pinned image on the host arch, installing on an
   Apple-Silicon Mac verifies the arm64 boundary on arm64 before anything is installed.
@@ -391,12 +414,17 @@ changing the untouched Windows writers — round-2 P2):
    severity-downgrade path, and carry-over-ledger transitions. The Python stack is checked against
    the authoritative expectations (not merely against PowerShell).
 5. **Credential/refresh test** — two sequential rounds via the broker assert host auth still works
-   afterward (the durable refresh token was never exposed or invalidated), and a token whose
-   remaining lifetime is below the deadline-plus-margin threshold is refreshed/re-minted or fails
-   closed before launch.
-6. **Crash-safety test** — with the host runner killed mid-round, the in-container watchdog still
-   terminates the run by its absolute deadline; a subsequent run reaps the stale owned container and
-   reclaims its staging directory only after confirming no owned live container references it.
+   afterward (the durable refresh token was never exposed or invalidated); a token whose remaining
+   lifetime is below the deadline-plus-margin threshold is refreshed/re-minted or fails closed before
+   launch; and a **concurrent-refresh test** — including a provider response that **rotates the
+   refresh token** — asserts the interprocess lock plus fsync-atomic, generation-checked persistence
+   never lets two brokers clobber each other's credential.
+6. **Crash-safety & concurrency test** — with the host runner killed mid-round, the in-container
+   watchdog still terminates the run by its absolute deadline; a subsequent run reaps the stale owned
+   container and reclaims its staging directory only after acquiring the per-run lease non-blockingly
+   and confirming no owned live container references it; and a **concurrent-start/reaper test**
+   asserts an active runner's staging directory (created before its container) is never deleted by a
+   concurrent reaper.
 
 ## Risks and mitigations
 

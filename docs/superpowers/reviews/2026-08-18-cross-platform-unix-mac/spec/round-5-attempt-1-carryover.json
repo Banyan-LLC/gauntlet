@@ -1,0 +1,182 @@
+[
+  {
+    "id": "r1-e805239798592b730f78df49e5028c46",
+    "severity": "blocking",
+    "location": "Architecture: the container as the boundary; Python module layout (`sandbox.py`)",
+    "issue": "[P1] `docker run --rm` with no writable host mount cannot preserve the file produced by `-o <verdict-file>` after exit. Killing a timed-out Docker client also does not reliably terminate or remove the daemon-managed container, so the bounded-run guarantee is incomplete.",
+    "suggestion": "Define a concrete lifecycle that retains the container ID, attaches with bounded stdout/stderr capture, explicitly kills it on timeout, copies the verdict before removal, and removes it in a guaranteed cleanup path. Alternatively, specify and validate a bounded, unambiguous output-framing protocol that returns the verdict separately from JSONL.",
+    "status": "addressed",
+    "reason": "Round-1 fix retained; verdict retrieval corrected in round 2 and further bounded/crash-safed in round 3. Reviewer confirmed addressed."
+  },
+  {
+    "id": "r1-fa298131696612cdf1716e0de54758fb",
+    "severity": "blocking",
+    "location": "The credential (auth + AGENTS.md); Confidentiality argument",
+    "issue": "[P1] Mounting host `~/.codex` read-only exposes every file in that directory, directly contradicting the claim that only `auth.json` and `AGENTS.md` are exposed. Read-only prevents mutation, not disclosure, and any force-enabled capability control running under the Codex UID could read the live credential. The container is therefore not an independent boundary around that secret.",
+    "suggestion": "Expose only validated regular files through individual mounts or a host-created minimal staging directory, define UID/permission and symlink handling, and never use the live credential in capability-enabled controls. Narrow the independence claim or introduce credential brokering that keeps the refresh credential outside the reviewer container.",
+    "status": "addressed",
+    "reason": "Whole-~/.codex mount replaced by host-side staging of only validated regular files; superseded/strengthened by the broker + access-only token. Reviewer confirmed addressed."
+  },
+  {
+    "id": "r1-0088335d07ea4b6284c75f20c02277d3",
+    "severity": "blocking",
+    "location": "Installer & skill dispatch, steps 2–4; Premises / live-evidence",
+    "issue": "[P1] The installer requires current live-evidence before it runs the local schema gate and security battery. Because the invocation fingerprint includes the local runtime identity and run profile, a fresh machine or changed runtime will normally have no current evidence and will be refused before it can generate any.",
+    "suggestion": "Use a transactional bootstrap sequence: pin and fingerprint the stack, invalidate old evidence, run offline checks and both live gates, atomically record their successful evidence, revalidate the completed manifest, and only then install or publish.",
+    "status": "addressed",
+    "reason": "Installer reordered to a transactional bootstrap that generates evidence before verifying it; round-4 added immutable staging + atomic install. Reviewer confirmed addressed."
+  },
+  {
+    "id": "r1-62b2b7d0a282774db00489ecf3b0d917",
+    "severity": "blocking",
+    "location": "Overview; Platform matrix; The Codex image",
+    "issue": "[P1] “Same image” and “image digest” are underspecified for Apple Silicon and other multi-architecture hosts. An OCI index digest can select different architecture-specific manifests and binaries, while a local Docker image ID is a different identity again. Thus a Linux x86 verification does not establish the claimed macOS boundary, and the per-round comparison may pin the wrong object.",
+    "suggestion": "Define the exact OCI identity being pinned. Either mandate one platform with `--platform` and pin its child manifest digest, or record and verify the index digest, selected child-manifest digest, config/image ID, OS, and architecture separately. Key live evidence to the actually executed platform image.",
+    "status": "addressed",
+    "reason": "Image pin made architecture-qualified and generalized to built+pulled images. Reviewer confirmed addressed."
+  },
+  {
+    "id": "r1-a5713ea151d9558bf953ee86a59782ea",
+    "severity": "important",
+    "location": "The credential (auth + AGENTS.md); Risks and mitigations",
+    "issue": "[P2] Discarding refreshed `auth.json` assumes refresh tokens remain reusable. If the provider rotates or invalidates refresh tokens, the first container refresh can invalidate the unchanged host credential, breaking later rounds and possibly host authentication; concurrent rounds can worsen this race.",
+    "suggestion": "Establish and test the pinned CLI/provider’s refresh-token semantics. If rotation is possible, use a locked host-side broker or an atomic, narrowly validated persistence mechanism, or mint a short-lived per-round credential before launching the sandbox.",
+    "status": "addressed",
+    "reason": "Refresh-token rotation resolved at the root: durable refresh token stays host-side with the broker; only a short-lived access-only token is staged. Reviewer confirmed addressed."
+  },
+  {
+    "id": "r1-f1046db54e41932520a8da24d5eef624",
+    "severity": "important",
+    "location": "The security battery, items 2 and 4; Network egress",
+    "issue": "[P2] A single invisible canary does not prove that no other host path or runtime socket was mounted, and checking only whether `auth.json` appears in the verdict does not cover JSONL, stderr, diagnostics, or arbitrary open-egress disclosure. These tests do not support the stated confidentiality proof.",
+    "suggestion": "Verify the actual runtime mount/device/socket table via runtime inspection and in-container mount information against an exact allowlist, including absence of Docker/Podman sockets. Audit every captured output channel for synthetic secrets, and explicitly scope the guarantee to a trusted pinned CLI/runtime unless network mediation is added.",
+    "status": "addressed",
+    "reason": "Battery strengthened to a runtime-qualified mount/device/socket allowlist and all-output-channel audit incl. daemon logs. Reviewer confirmed addressed."
+  },
+  {
+    "id": "r1-cad4f2ce8f847c9756833ad92aa9195d",
+    "severity": "important",
+    "location": "Behavioral equivalence requirements; Testing strategy, item 4",
+    "issue": "[P2] One equivalence fixture is insufficient to enforce byte-for-byte normalization and state compatibility across PowerShell and Python serializers, especially for Unicode escaping, key ordering, newline conventions, malformed values, and numeric boundaries.",
+    "suggestion": "Create a shared golden corpus covering all verdict and state artifacts, edge-case Unicode and escaping, bounds, failure cases, and carry-over transitions; run both implementations against it and byte-compare outputs in cross-platform CI.",
+    "status": "addressed",
+    "reason": "Equivalence reframed: identical id-derivation + normalization semantics + state schema, RFC 8785 (JCS) for Python output, golden corpus with authoritative expected bytes. Reviewer confirmed addressed."
+  },
+  {
+    "id": "r2-eb45c7ad51107a0cbdc160f8f86cb1cc",
+    "severity": "blocking",
+    "location": "Architecture: the container as the boundary — working tmpfs and lifecycle step 4",
+    "issue": "[P1] Docker removes a container's tmpfs mounts when the container stops. The proposed `docker cp` therefore cannot retrieve a verdict written to the working tmpfs from the exited container. The stated stdout fallback is also not a verdict protocol: stdout contains JSONL events, with no specified unambiguous extraction or framing rule.",
+    "suggestion": "Keep a wrapper container alive after Codex exits until the runner copies the verdict, use a retained Docker-managed output volume, or define and validate a bounded framing protocol that separates the verdict from JSONL. Preserve the Codex exit status and apply timeout cleanup to the revised lifecycle.",
+    "status": "addressed",
+    "reason": "Lifecycle copies the verdict out WHILE the container runs (tmpfs live) via a blocking wrapper; round-3 added an in-container watchdog. Reviewer confirmed addressed."
+  },
+  {
+    "id": "r2-b7ff8d7189f79fddec70bc154a5a22e4",
+    "severity": "blocking",
+    "location": "The credential — capability-enabled controls; Security battery item 1",
+    "issue": "[P1] A synthetic dummy `auth.json` cannot authenticate the real model calls needed to make force-enabled shell, web, MCP, app, or plugin controls fire. As written, those controls fail at authentication and cannot generate valid security evidence.",
+    "suggestion": "Provide a concrete control-only authentication mechanism, such as a disposable short-lived credential or a host-side authentication broker that never exposes the durable refresh credential. Verify expiry or revocation and demonstrate that each control reaches the real API before accepting its evidence.",
+    "status": "addressed",
+    "reason": "Host-side broker mints a real short-lived access-only token so force-enabled controls actually authenticate and fire; control-reachability precondition added. Reviewer confirmed addressed."
+  },
+  {
+    "id": "r2-a711114f08ee45f2b23ae560affaa4fa",
+    "severity": "blocking",
+    "location": "The credential — fresh staging directory; Premises/live-evidence — `container_invocation_profile_hash`",
+    "issue": "[P1] The hash is said to cover the full runtime argv, but that argv contains the source path of a fresh staging directory. Its path changes each round, so installer evidence cannot match a subsequent review invocation. Using a stable path would instead introduce concurrency and stale-credential hazards.",
+    "suggestion": "Define a canonical semantic invocation profile that replaces validated per-run paths and identifiers with typed placeholders while hashing all security-relevant mount types, destinations, flags, content hashes, ownership/permission constraints, runtime identity, platform, and image identity. Test that fresh equivalent staging paths match and meaningful configuration changes do not.",
+    "status": "addressed",
+    "reason": "Profile hash redefined as a canonical semantic profile with typed placeholders; round-3 completed the enumerated field set. Reviewer confirmed addressed."
+  },
+  {
+    "id": "r2-e3d7e7d557acd072f05e7b964ccec46a",
+    "severity": "blocking",
+    "location": "Security battery item 2; Architecture — mount/device/socket claims",
+    "issue": "[P1] A normal Docker or Podman container's mountinfo never contains only the credential bind and working tmpfs. It also includes the overlay root, procfs, sysfs, cgroups, `/dev`, devpts, shared memory, and runtime-generated mounts such as `/etc/hosts`, `/etc/hostname`, and `/etc/resolv.conf`; standard devices are also present. The literal exact-allowlist assertion will fail on every supported runtime and contradicts the stated host-mount claim.",
+    "suggestion": "Specify a runtime-qualified allowlist of required pseudo-filesystems, generated files, devices, mount sources/classes, destinations, and options. Distinguish safe runtime-managed mounts from arbitrary host binds, and continue to reject unexpected devices, sockets, bind sources, and container-runtime sockets.",
+    "status": "addressed",
+    "reason": "Battery item 2 rewritten to a runtime-qualified allowlist that rejects other host binds and runtime sockets. Reviewer confirmed addressed."
+  },
+  {
+    "id": "r2-2dea8c2237d25fe8775815a903f7ea58",
+    "severity": "important",
+    "location": "The credential — staging mechanism and container lifecycle",
+    "issue": "[P2] The design does not define the staging directory's actual mode, container UID/GID mapping, or read/write mount mode. A fixed non-root image UID may be unable to read or atomically rewrite host-owned files, while refresh generally requires directory write access. It also provides no guaranteed cleanup for the host-side directory containing the copied durable credential.",
+    "suggestion": "Define cross-runtime UID/GID and permission handling, including directory-write requirements for atomic refresh, handle-based no-follow copying, a narrowly writable staging mount, cleanup on every outcome, and protected stale-directory recovery after runner crashes.",
+    "status": "addressed",
+    "reason": "Staging dir mode/UID-GID/read-only mount, no-follow copying, and guaranteed cleanup incl. crash-recovery defined. Reviewer confirmed addressed."
+  },
+  {
+    "id": "r2-ddb466d6ca55f56967696cfc8a3fe941",
+    "severity": "important",
+    "location": "Container lifecycle; Security battery item 4",
+    "issue": "[P2] Docker's default logging driver persists container stdout and stderr in daemon-managed host logs. Those logs are an output channel not covered by the listed verdict/JSONL/stderr/diagnostic audit and can survive an interrupted cleanup, undermining the no-disclosure claim.",
+    "suggestion": "Disable daemon persistence with a verified logging configuration such as `--log-driver=none` while capturing the attached streams directly, or explicitly collect, audit, bound, permission, and remove runtime logs. Include the effective logging configuration in the invocation fingerprint and battery.",
+    "status": "addressed",
+    "reason": "--log-driver=none added and included in the profile + battery; daemon-side logs named as an audited channel. Reviewer confirmed addressed."
+  },
+  {
+    "id": "r2-74a27e026df4918ebac289452fd7755f",
+    "severity": "important",
+    "location": "The Codex image; Installer step 2",
+    "issue": "[P2] The installer permits either building or pulling while requiring a selected child-manifest digest. A normal locally built Docker image has a config/image ID but commonly no registry child-manifest digest, so the required pin cannot be recorded or later resolved by the stated procedure.",
+    "suggestion": "Either require pulling an immutable platform child digest, or define an OCI-layout/build-export workflow that deterministically computes and retains the child manifest, verifies its platform and config digest, and executes the corresponding loaded image.",
+    "status": "addressed",
+    "reason": "Image identity works for built AND pulled images; installer pulls by digest or does a deterministic build/OCI-export. Reviewer confirmed addressed."
+  },
+  {
+    "id": "r2-e7de865a89a96da2588019a4d8ea242d",
+    "severity": "important",
+    "location": "Behavioral equivalence requirements; Testing strategy item 4",
+    "issue": "[P2] The canonical serialization remains underspecified: “sorted keys,” “unless required,” and “fixed number formatting” do not define the Unicode comparator, escaping and surrogate policy, numeric domains and rendering, negative zero/exponents, normalization, or whether a terminal LF is emitted. A finite golden corpus cannot resolve unspecified inputs.",
+    "suggestion": "Adopt a named canonical JSON standard or provide a complete serialization algorithm covering those cases and rejection rules, then make the corpus contain authoritative expected bytes rather than merely comparing the two implementations to each other.",
+    "status": "addressed",
+    "reason": "Named RFC 8785 (JCS); dropped impossible cross-stack byte-identity; golden corpus carries authoritative expected bytes. Reviewer confirmed addressed."
+  },
+  {
+    "id": "r3-c14208726466da7c4627159be72185ed",
+    "severity": "blocking",
+    "location": "Premises / live-evidence — container_invocation_profile_hash",
+    "issue": "[P1] The enumerated semantic profile omits several settings on which the boundary depends: the non-root UID/GID, read-only rootfs, no-new-privileges, exact Codex argv flags other than `--disable`, environment allowlist, published ports, resource limits, and attachment/control behavior. Evidence can therefore remain current after one of these protections is weakened or removed. This means the earlier invocation-fingerprint finding is not fully addressed.",
+    "suggestion": "Canonicalize and hash every security-relevant effective setting, including the complete Codex argv template with typed dynamic values, UID/GID, rootfs mode, security options, environment, port mappings, resource limits, mounts, stream attachment, runtime server/backend identity, and wrapper protocol. Derive or cross-check the record against runtime inspection, and test that changing each field invalidates evidence.",
+    "status": "addressed",
+    "reason": "Profile hash expanded to hash EVERY security-relevant setting (full argv template, UID/GID, --read-only, cap-drop, no-new-privileges, limits, ports, env allowlist, log driver, wrapper protocol, network/runtime/platform/image identity), cross-checked against runtime inspection, with a per-field invalidation test. Reviewer confirmed addressed."
+  },
+  {
+    "id": "r3-c768d627f0ce5cb4f1f926b0bb5d904f",
+    "severity": "blocking",
+    "location": "Architecture: container lifecycle and verdict retrieval; Credential lifecycle",
+    "issue": "[P1] The wrapper intentionally remains alive until the host releases it, while the timeout and cleanup are enforced only by the runner. If the runner is killed, crashes, or loses its daemon connection, the container can run or wait forever, retaining the credential bind and preventing safe stale-directory recovery. Thus the claimed bounded run and guaranteed cleanup do not hold for a predictable failure mode.",
+    "suggestion": "Add an in-container watchdog that kills Codex and exits the wrapper after an absolute deadline independently of the host client. Label containers with narrowly scoped ownership/run identifiers, reap verified stale containers on startup, and remove a stale staging directory only after confirming that no owned live container references it.",
+    "status": "addressed",
+    "reason": "Added an in-container watchdog with an absolute host-independent deadline; scoped owner/run labels; startup reaping of stale owned containers; staging-dir reclamation only after confirming no owned live container references it. Reviewer confirmed addressed."
+  },
+  {
+    "id": "r3-3569044b63f6d7c69259eba77c426176",
+    "severity": "important",
+    "location": "Container lifecycle, step 3",
+    "issue": "[P2] Direct stdout/stderr and JSONL capture has no stated per-stream or aggregate byte bound. A long or malformed run can exhaust host memory or disk despite container memory limits, regressing the previously requested bounded-stream lifecycle.",
+    "suggestion": "Use streaming parsing and online secret scanning with explicit per-channel and aggregate limits, bounded diagnostic retention, and immediate container termination when a limit is exceeded. Apply bounded reads to copied verdict/status artifacts as well, and test over-limit behavior.",
+    "status": "addressed",
+    "reason": "Streams captured with per-channel + aggregate byte bounds, online secret-scanning, bounded diagnostics, immediate termination on limit; copied artifacts bounded-read; over-limit tested. Reviewer confirmed addressed."
+  },
+  {
+    "id": "r3-49a49f8077586815464cf208391484f9",
+    "severity": "important",
+    "location": "The credential — host-side broker; Risks and mitigations — token lifetime",
+    "issue": "[P2] “Valid” or “fresh” at launch does not ensure that the token outlives the configured round. No minimum remaining lifetime, clock-skew margin, or relationship between token expiry and the maximum wrapper deadline is defined.",
+    "suggestion": "Require verified remaining lifetime of at least the maximum round deadline plus startup and clock-skew margins before container creation. Refresh or mint again when below that threshold, and fail before launch if the provider cannot supply a sufficiently long-lived access-only token.",
+    "status": "addressed",
+    "reason": "Broker requires staged-token remaining lifetime >= max round/watchdog deadline + startup + clock-skew margins before launch; refresh/re-mint otherwise; fail closed before launch if unavailable. Reviewer confirmed addressed."
+  },
+  {
+    "id": "r4-69544484b4f42594bd69f5861adb6a4f",
+    "severity": "blocking",
+    "location": "Premises / live-evidence manifest; Installer & skill dispatch, steps 3–5",
+    "issue": "[P1] Live evidence is keyed to the image, runtime profile, schema, and AGENTS.md, but not to the host-side enforcement implementation. Changes to sandbox.py, broker.py, premises.py, stream/secret handling, or the battery can therefore retain apparently current evidence when their semantic profile values are unchanged. Moreover, the installer verifies the source tree and then performs an unspecified copy into an existing skill directory; interruption or concurrent modification can leave a mixed,未",
+    "suggestion": "Create an immutable staged installation artifact and include its canonical tree/package digest—covering all host-side enforcement, battery, publication, and skill-dispatch files—in the premise and live-evidence fingerprints. Run tests and live gates against that exact staged artifact, install it via an atomic directory replacement, then hash and revalidate the installed bytes before activation.",
+    "status": "addressed",
+    "reason": "Added host_impl_digest to the premises manifest and bound both live-evidence sub-records to it: a canonical tree digest over every host-side enforcement/verdict-shaping file (sandbox.py, broker.py, premises.py, verdict.py, usage.py, features.py, publish.py, state.py, invoke_codex.py, the battery, SKILL.md dispatch, Dockerfile/entrypoint wrapper, schema), verified unconditionally every round so an edit that leaves the semantic profile unchanged still invalidates evidence. Installer now stages an immutable artifact, runs the offline suite and both live gates against it, installs by atomic directory replacement (temp dir + rename, never in-place copy), and re-hashes the installed bytes to confirm they equal host_impl_digest before activation."
+  }
+]
