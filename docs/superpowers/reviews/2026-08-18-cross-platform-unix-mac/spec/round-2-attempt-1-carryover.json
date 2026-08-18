@@ -1,0 +1,65 @@
+[
+  {
+    "id": "r1-e805239798592b730f78df49e5028c46",
+    "severity": "blocking",
+    "location": "Architecture: the container as the boundary; Python module layout (`sandbox.py`)",
+    "issue": "[P1] `docker run --rm` with no writable host mount cannot preserve the file produced by `-o <verdict-file>` after exit. Killing a timed-out Docker client also does not reliably terminate or remove the daemon-managed container, so the bounded-run guarantee is incomplete.",
+    "suggestion": "Define a concrete lifecycle that retains the container ID, attaches with bounded stdout/stderr capture, explicitly kills it on timeout, copies the verdict before removal, and removes it in a guaranteed cleanup path. Alternatively, specify and validate a bounded, unambiguous output-framing protocol that returns the verdict separately from JSONL.",
+    "status": "addressed",
+    "reason": "Added an explicit 'Container lifecycle and verdict retrieval' subsection: create the container with a retained id (never --rm), capture stdout/stderr with a bounded reader, enforce the timeout with an explicit kill against the retained id, copy the -o verdict file out with docker cp before removal (stdout JSONL as fallback), and remove in a guaranteed cleanup path on success/failure/timeout."
+  },
+  {
+    "id": "r1-fa298131696612cdf1716e0de54758fb",
+    "severity": "blocking",
+    "location": "The credential (auth + AGENTS.md); Confidentiality argument",
+    "issue": "[P1] Mounting host `~/.codex` read-only exposes every file in that directory, directly contradicting the claim that only `auth.json` and `AGENTS.md` are exposed. Read-only prevents mutation, not disclosure, and any force-enabled capability control running under the Codex UID could read the live credential. The container is therefore not an independent boundary around that secret.",
+    "suggestion": "Expose only validated regular files through individual mounts or a host-created minimal staging directory, define UID/permission and symlink handling, and never use the live credential in capability-enabled controls. Narrow the independence claim or introduce credential brokering that keeps the refresh credential outside the reviewer container.",
+    "status": "addressed",
+    "reason": "Replaced the whole-~/.codex read-only mount with a host-side staging directory holding only validated regular auth.json + AGENTS.md (symlink/ownership/permission checked); nothing else from the host is bound. Battery positive controls now use a synthetic dummy credential, never the live auth.json. The confidentiality argument was narrowed to state honestly that the staged credential lives inside the boundary and is protected by tool denial, and the battery audits every output channel for it."
+  },
+  {
+    "id": "r1-0088335d07ea4b6284c75f20c02277d3",
+    "severity": "blocking",
+    "location": "Installer & skill dispatch, steps 2–4; Premises / live-evidence",
+    "issue": "[P1] The installer requires current live-evidence before it runs the local schema gate and security battery. Because the invocation fingerprint includes the local runtime identity and run profile, a fresh machine or changed runtime will normally have no current evidence and will be refused before it can generate any.",
+    "suggestion": "Use a transactional bootstrap sequence: pin and fingerprint the stack, invalidate old evidence, run offline checks and both live gates, atomically record their successful evidence, revalidate the completed manifest, and only then install or publish.",
+    "status": "addressed",
+    "reason": "Installer reordered into a transactional bootstrap that GENERATES evidence before VERIFYING it: verify runtime+arch; pin the image and run the offline suite; invalidate prior evidence and run both live gates on the host arch, recording each gate's fingerprinted evidence atomically on success; revalidate the completed manifest; only then install. A fresh machine can no longer be refused for lacking evidence it never had a chance to produce."
+  },
+  {
+    "id": "r1-62b2b7d0a282774db00489ecf3b0d917",
+    "severity": "blocking",
+    "location": "Overview; Platform matrix; The Codex image",
+    "issue": "[P1] “Same image” and “image digest” are underspecified for Apple Silicon and other multi-architecture hosts. An OCI index digest can select different architecture-specific manifests and binaries, while a local Docker image ID is a different identity again. Thus a Linux x86 verification does not establish the claimed macOS boundary, and the per-round comparison may pin the wrong object.",
+    "suggestion": "Define the exact OCI identity being pinned. Either mandate one platform with `--platform` and pin its child manifest digest, or record and verify the index digest, selected child-manifest digest, config/image ID, OS, and architecture separately. Key live evidence to the actually executed platform image.",
+    "status": "addressed",
+    "reason": "Image pin is now architecture-qualified: mandate --platform and record the selected child-manifest digest + image config/ID + os/arch (not a bare index digest); re-verify that tuple every round; key live evidence to the actually-executed platform image; fingerprint os_arch separately so evidence never crosses architectures. The 'verified once' claim was corrected to per-architecture, enforced by the self-verifying install running the battery on the host arch (arm64 on Apple Silicon)."
+  },
+  {
+    "id": "r1-a5713ea151d9558bf953ee86a59782ea",
+    "severity": "important",
+    "location": "The credential (auth + AGENTS.md); Risks and mitigations",
+    "issue": "[P2] Discarding refreshed `auth.json` assumes refresh tokens remain reusable. If the provider rotates or invalidates refresh tokens, the first container refresh can invalidate the unchanged host credential, breaking later rounds and possibly host authentication; concurrent rounds can worsen this race.",
+    "suggestion": "Establish and test the pinned CLI/provider’s refresh-token semantics. If rotation is possible, use a locked host-side broker or an atomic, narrowly validated persistence mechanism, or mint a short-lived per-round credential before launching the sandbox.",
+    "status": "addressed",
+    "reason": "Added a required-before-v1 risk item: establish the pinned CLI/provider refresh-token rotation semantics empirically; if refresh tokens rotate, either serialize rounds and persist the rotated credential atomically via a host-side broker owning ~/.codex, or mint a short-lived per-round credential so the container never holds the durable refresh token. Validated by a two-sequential-round test asserting host auth still works."
+  },
+  {
+    "id": "r1-f1046db54e41932520a8da24d5eef624",
+    "severity": "important",
+    "location": "The security battery, items 2 and 4; Network egress",
+    "issue": "[P2] A single invisible canary does not prove that no other host path or runtime socket was mounted, and checking only whether `auth.json` appears in the verdict does not cover JSONL, stderr, diagnostics, or arbitrary open-egress disclosure. These tests do not support the stated confidentiality proof.",
+    "suggestion": "Verify the actual runtime mount/device/socket table via runtime inspection and in-container mount information against an exact allowlist, including absence of Docker/Podman sockets. Audit every captured output channel for synthetic secrets, and explicitly scope the guarantee to a trusted pinned CLI/runtime unless network mediation is added.",
+    "status": "addressed",
+    "reason": "Battery item 2 now inspects the actual runtime mount/device/socket table AND in-container mountinfo against an exact allowlist, explicitly asserting no docker/podman socket and no other host path/device/socket is present (with a positive control). Item 4 now audits ALL captured output channels (verdict, JSONL, stderr, diagnostics) for a synthetic secret. Added a 'Scope of the guarantee' note scoping the claim to a trusted pinned CLI/runtime and stating there is no network isolation without egress mediation."
+  },
+  {
+    "id": "r1-cad4f2ce8f847c9756833ad92aa9195d",
+    "severity": "important",
+    "location": "Behavioral equivalence requirements; Testing strategy, item 4",
+    "issue": "[P2] One equivalence fixture is insufficient to enforce byte-for-byte normalization and state compatibility across PowerShell and Python serializers, especially for Unicode escaping, key ordering, newline conventions, malformed values, and numeric boundaries.",
+    "suggestion": "Create a shared golden corpus covering all verdict and state artifacts, edge-case Unicode and escaping, bounds, failure cases, and carry-over transitions; run both implementations against it and byte-compare outputs in cross-platform CI.",
+    "status": "addressed",
+    "reason": "Defined a single canonical serialization (sorted keys, UTF-8 without ASCII-escaping unless required, LF endings, fixed number formatting) that BOTH stacks must emit, making byte-equivalence a precise testable contract rather than an accident of two serializers. Replaced the single equivalence fixture with a shared golden corpus (multi-byte/escape Unicode, key ordering, newlines, size/numeric boundaries, malformed/normalized values, severity-downgrade, carry-over transitions) byte-compared in cross-platform CI."
+  }
+]

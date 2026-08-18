@@ -1,7 +1,7 @@
 # Cross-Platform (Unix/macOS) Gauntlet — Container-Sandbox Port Design
 
 **Date:** 2026-08-18
-**Status:** Draft for review (Codex round 1: `request_changes` addressed)
+**Status:** Draft for review (Codex rounds 1–2: `request_changes` addressed)
 **Supersedes:** the "Cross-platform scripts" future note in [`docs/design.md`](../../design.md) (§ Out of scope / future)
 
 ## Overview
@@ -41,13 +41,16 @@ environment-minimization model:
 - A Python 3 implementation of `gauntlet-review` that runs on Linux and macOS.
 - Codex executed inside a locked-down, pinned container that is the hermetic boundary.
 - **Behavioral equivalence** with the Windows stack: same verdict contract, same normalization,
-  same state-file layout, same exit-code contract, same SKILL.md protocol.
+  same recommendation-id derivation, same state schema and path layout, same exit-code contract,
+  same SKILL.md protocol (see § Behavioral equivalence for the precise, achievable definition).
 - A fail-closed installer and a re-conceived live security battery that verify the container
   boundary before anything is installed or any review is published.
 
 ## Non-goals / out of scope
 
-- **Any change to the Windows PowerShell stack.** It remains the Windows path, untouched.
+- **Any change to the Windows PowerShell stack.** It remains the Windows path, untouched. (This is
+  why cross-stack *byte-identical* file output is explicitly **not** a requirement — it would force
+  changing the Windows writers; see § Behavioral equivalence.)
 - **Native (non-container) execution on Unix/macOS.** If Codex must run directly on the host with
   no container, that is a separate future effort (the environment-minimization "Approach A").
 - **Egress-allowlist network isolation.** v1 uses open egress + tool-denial (see § Network
@@ -77,94 +80,102 @@ runs inside the container** — nothing about the Codex invocation is relaxed; t
   `--disable` set** are all passed exactly as the Windows stack passes them.
 - Prompt delivered over **redirected UTF-8 stdin** (`codex exec … -`); review material never
   enters argv and never appears in any log.
-- `--output-schema` + `-o <verdict-file>` (written to the tmpfs, copied out before removal — see
-  lifecycle below) + `--json` exactly as today.
+- `--output-schema` + `-o <verdict-file>` (written to the working tmpfs, copied out **while the
+  container is still running** — see lifecycle below) + `--json` exactly as today.
 
 Container run configuration (the new boundary):
 
 - No published ports; a non-root user; `--read-only` root filesystem; `--cap-drop ALL`;
   `--security-opt no-new-privileges`; `--pids-limit`; memory and CPU limits; a bounded run timeout
   (the container analogue of `Invoke-BoundedProcess`).
-- **No host bind-mounts except the credential staging dir** (below). The reviewed repository, the
-  user's home directory, and every host path are absent from the container.
-- **Working root = an empty in-container tmpfs.** This *is* the harness. The Windows
-  "harness must be outside every repo and verified empty" invariants collapse to "a fresh tmpfs is
-  unconditionally empty and contains no host path," which is stronger and needs no path arithmetic.
-- **Minimal container environment.** `CODEX_HOME` points at the in-container credential dir; no
-  host environment is inherited. The `SystemRoot`-for-DNS dependency is gone — DNS is the
-  container's own Linux resolver reading `/etc/resolv.conf`.
+- **`--log-driver=none`** so the daemon does not persist stdout/stderr to host-side container logs
+  (an otherwise-un-audited disclosure channel — round-2 P2). The runner captures the attached
+  streams directly instead. The effective logging configuration is part of the invocation profile
+  (§ Premises) and is asserted by the battery.
+- **No host bind-mounts except the credential staging mount** (below). The reviewed repository, the
+  user's home directory, and every other host path are absent from the container.
+- **Working root = an in-container tmpfs** that also holds the `-o` verdict file. This *is* the
+  harness. The Windows "harness outside every repo, verified empty" invariants collapse to "a fresh
+  tmpfs is unconditionally empty and contains no host path."
+- **Minimal container environment.** `CODEX_HOME` points at the credential staging mount; no host
+  environment is inherited. The `SystemRoot`-for-DNS dependency is gone — DNS is the container's own
+  Linux resolver.
 
-**Container lifecycle and verdict retrieval (explicit; addresses round-1 P1).** A review round does
-**not** use fire-and-forget `docker run --rm`. The runner:
+**Container lifecycle and verdict retrieval (explicit; corrects round-1 and round-2 P1).** A tmpfs
+is torn down when a container **stops**, so a verdict cannot be `docker cp`-ed out of an *exited*
+container. The runner therefore copies while the container is still alive:
 
-1. **creates** the container with a retained id (`create`, or `run -d --cidfile`) — never `--rm` —
-   with the non-root user and tmpfs working root;
-2. starts it and captures `stdout`/`stderr` with a bounded reader (the `--json` JSONL feeds the
-   usage gate);
-3. enforces the round timeout by issuing an explicit `kill` against the retained id — killing the
-   client process alone does **not** stop a daemon-managed container;
-4. retrieves the verdict by copying the `-o` output file out of the exited container
-   (`docker cp <cid>:<path>`) **before** removal, so the verdict source is byte-identical to the
-   Windows stack (the captured stdout stream is the fallback if `-o` is unavailable);
-5. **removes** the container in a guaranteed cleanup path that runs on success, failure, and
-   timeout alike.
-
-This makes the bounded-run and verdict-capture guarantees concrete rather than implied by `--rm`.
+1. **creates** the container from the pinned image with a retained id (a cidfile), the non-root
+   user, `--read-only` rootfs, the tmpfs working root, `--log-driver=none`, and the credential
+   staging mount — never `--rm`;
+2. the container's entrypoint is a **small wrapper**: it runs `codex exec … -o <tmpfs>/verdict.json
+   -`, records Codex's **exit status** to `<tmpfs>/exit-status`, then **blocks on a marker** so the
+   tmpfs stays mounted and the verdict remains retrievable after Codex itself exits;
+3. the runner streams the prompt to the wrapper's stdin and captures `stdout`/`stderr` directly,
+   feeding the `--json` JSONL to the usage gate;
+4. once Codex has exited (observed via the marker/exit-status), the runner **`docker cp`s the
+   verdict file and exit-status out while the container is still running** (tmpfs live), so the
+   verdict source is the `-o` file exactly as on Windows;
+5. the runner then releases the wrapper and issues an explicit `kill` against the retained id — the
+   round timeout is likewise enforced by an explicit `kill`, because killing the client process
+   alone does **not** stop a daemon-managed container — and a guaranteed cleanup removes the
+   container on success, failure, and timeout alike.
 
 **Confidentiality argument (stated precisely).** The reviewer has no shell and no file-read tool
-(default-deny), so it cannot read the one secret staged into the container (`auth.json`), and there
-are no host files to reach regardless of any Codex flag. Even under open egress there is therefore
-nothing host-side to exfiltrate. The container contributes filesystem and process isolation; the
-flag discipline contributes tool denial. The honest limit: the staged `auth.json` lives *inside*
-the boundary, so the container does not isolate the reviewer from that one credential — tool denial
-protects it, which is why the battery audits every output channel for it (§ battery) and why the
-battery's capability controls use a dummy credential (below).
+(default-deny), so it cannot read the one secret staged into the container (a short-lived,
+access-only token — below), and there are no host files to reach regardless of any Codex flag. Even
+under open egress there is therefore nothing host-side to exfiltrate, and the staged token is
+short-lived and carries no durable refresh capability. The container contributes filesystem and
+process isolation; the flag discipline contributes tool denial; the broker (below) keeps the
+durable credential out of the boundary entirely. The battery audits every captured output channel
+for the staged token regardless.
 
-## The credential (auth + AGENTS.md)
+## The credential — host-side broker, short-lived access-only token
 
-The Windows stack uses the real `~/.codex` as `CODEX_HOME` (read-write), so `auth.json` and
-`~/.codex/AGENTS.md` resolve and token refresh persists. In the container the requirement is:
+The Windows stack uses the real `~/.codex` as `CODEX_HOME` (read-write). In the container the
+requirement is:
 
-1. `auth.json` and `AGENTS.md` are available in the container's `CODEX_HOME` so auth and the
-   trusted account-level `AGENTS.md` resolve exactly as today (`config.toml` stays ignored via
-   `--ignore-user-config`).
-2. **The host credential is never mutated by the sandbox.**
-3. **In-session token refresh does not hard-fail a round.**
-4. **Only these two files are exposed — nothing else from `~/.codex`.**
+1. Auth and the trusted account-level `AGENTS.md` resolve exactly as today (`config.toml` stays
+   ignored via `--ignore-user-config`).
+2. **The durable refresh credential never enters the container**, and the host `~/.codex` is never
+   mounted (a read-only bind of the whole directory still *discloses* every file in it).
+3. **A round is never hard-failed by token expiry** under normal operation.
 
-**Mechanism (host-side staging; never mount `~/.codex`) — addresses round-1 P1.** The host
-`~/.codex` directory is **never** mounted: a read-only bind of the whole directory still *discloses*
-every file in it (read-only prevents mutation, not reads). Instead the runner creates a fresh,
-host-side, minimally scoped **staging directory** and copies into it **only** `auth.json` and
-`AGENTS.md`, after validating each is a **regular file** (not a symlink, socket, or device) with
-expected ownership and permissions. That staging directory is mounted at the container's
-`CODEX_HOME`; nothing else from the host is bound. This makes "only these two files are exposed"
-literally true, and defines UID/permission/symlink handling explicitly.
+**Mechanism.** A **host-side broker** owns `~/.codex`. Before each round (and before each battery
+control) it ensures a valid access token — refreshing host-side using the durable refresh token if
+needed — and writes an **access-token-only** `auth.json` (no refresh token) plus a copy of
+`AGENTS.md` into a fresh, host-created **staging directory**, after validating each source is a
+**regular file** (not a symlink/socket/device) and copying with no-follow semantics. That staging
+directory is the **only** host bind-mount, mounted **read-only** at the container's `CODEX_HOME`
+with a defined UID/GID so the image's non-root user can read it. The container performs no in-session
+refresh (the mount is read-only); the broker's launch-time freshness covers a bounded round, and an
+expiry mid-round **fails closed**. This simultaneously fixes round-2 P1 ("a dummy credential cannot
+authenticate real model calls"): the staged token is a *real, working* access token, so the
+force-enabled battery controls authenticate and fire — while the durable refresh token stays on the
+host, resolving the refresh-rotation risk (round-1 P2).
 
-**Refresh, and never expose the live credential to controls.** The container may refresh the access
-token in-session; whether that write persists to the host is governed by the refresh-token
-semantics established in § Risks and mitigations. Critically, the **capability-enabled positive
-controls** in the security battery (which force-enable shell/file-read to prove the detector works)
-must use a **synthetic dummy credential**, never the live `auth.json` — otherwise a control run
-under the Codex UID could read the real secret. If auth cannot resolve or refresh, the round
-**fails closed** with guidance to re-authenticate on the host.
+**Lifecycle & isolation of the staging directory:** created per round with owner-only permissions;
+removed in a guaranteed cleanup on every outcome (success, failure, timeout, crash-recovery of
+stale directories on next run); its access-only token is short-lived so even a leaked staging dir
+ages out quickly.
 
 ## The Codex image
 
 - Ship a `Dockerfile` (under `gauntlet-review/`) that installs a **pinned** Codex CLI version on a
   minimal Linux base as a non-root user. The install mechanism (pinned npm global or pinned release
   artifact) is a plan decision; the pin is the contract.
-- **A precise, architecture-qualified OCI identity is the binary pin** — stronger than today's exe
-  SHA-256, because it pins the whole Codex stack (binary + interpreter + libraries). Because a
-  multi-arch image index selects a *different* per-architecture manifest (arm64 vs x86_64), and a
-  local image ID is a third identity again, the pin is **unambiguous**: the runner mandates
-  `--platform` and records the **selected child-manifest digest, the image config/ID, and the
-  `os/arch`** — not merely an index digest. That tuple is recorded at calibration and
+- **The pin is an architecture-qualified image identity that exists for both built and pulled
+  images (corrects round-2 P2):** the **image config digest (image ID)** plus the **`os/arch`**.
+  Because a multi-arch index selects a *different* per-architecture manifest and a config ID is a
+  distinct identity again, `--platform` is mandated and the tuple is recorded explicitly. When the
+  image is obtained by **pulling from a registry**, the immutable **platform child-manifest digest**
+  is additionally recorded and is the preferred run reference; a **locally built** image (which has
+  no registry manifest digest) is pinned by config digest + `os/arch` via a deterministic
+  build/OCI-export that retains and verifies the config and platform. This tuple is
   **re-verified before every round**; live evidence is keyed to the *actually executed* platform
   image, so x86_64 evidence never authorizes an arm64 run or vice-versa. A mismatch (image rebuilt,
-  re-pulled, or wrong arch) refuses the round — the container analogue of exit `13` — until the
-  caller re-pins with an explicit `--accept-new-image` acknowledgement that re-probes and
-  re-enumerates features.
+  re-pulled, or wrong arch) refuses the round — the analogue of exit `13` — until the caller re-pins
+  with an explicit `--accept-new-image` acknowledgement that re-probes and re-enumerates features.
 - The **default-deny feature enumeration** (`codex features list`) runs against the CLI *inside the
   pinned image*, so the `--disable` set is deterministic per image identity and pinned alongside it.
 
@@ -174,60 +185,68 @@ Most of `lib.ps1` is OS-agnostic logic that ports directly; only the boundary is
 
 | Module | Ported from | Notes |
 |---|---|---|
-| `verdict.py` | `Test-Verdict`, size bounds, severity invariant | Direct port; identical normalization + canonical serialization (§ equivalence) |
+| `verdict.py` | `Test-Verdict`, size bounds, severity invariant, `Get-RecommendationId` | Direct port; **identical id derivation** and normalization semantics (§ equivalence) |
 | `usage.py` | `Get-RunUsage` acceptance-time usage gate | Direct port; same invariants (exactly one `turn.completed`, positive `input_tokens`, headroom gate) |
 | `features.py` | default-deny `--disable` computation | Enumerates inside the image; pinned to the image identity |
-| `sandbox.py` | `Invoke-CodexProcess` + harness (`New-HarnessDir`, `Assert-HarnessSafe`) | **New**: creates/starts/kills/cleans the container, manages the image-identity pin and credential staging, streams stdin, captures JSONL, `cp`s the verdict out. Replaces env-minimization + harness path arithmetic (tmpfs replaces it) |
+| `sandbox.py` | `Invoke-CodexProcess` + harness (`New-HarnessDir`, `Assert-HarnessSafe`) | **New**: container create/start/copy-out/kill/cleanup, image-identity pin, credential staging, stdin streaming, JSONL capture. Replaces env-minimization + harness path arithmetic |
+| `broker.py` | (new) | Host-side auth broker: refresh host-side, stage an access-only token, cleanup |
 | `publish.py` | `publish-review.ps1` + `Publish-CodexReview` | Direct port; still shells to `gh`; provenance binding, idempotency (`--paginate --slurp`), drift, dismissal all preserved |
 | `premises.py` | `Test-PremiseManifest`, calibration, live-evidence | Re-keyed to the container fingerprints (below) |
-| `state.py` | `Get-StateDir`, carry-over ledger, create-only artifacts | Direct port; **identical on-disk layout** to the PS stack |
-| `invoke_codex.py` | `invoke-codex.ps1` entry point | One review round: pin check → run → usage gate → verdict validate |
+| `state.py` | `Get-StateDir`, carry-over ledger, create-only artifacts | Direct port; **identical path layout and logical schema** to the PS stack |
+| `invoke_codex.py` | `invoke-codex.ps1` entry point | One review round: pin check → stage credential → run → usage gate → verdict validate |
 
 ## Premises / live-evidence, re-keyed
 
 Same fail-closed structure as the Windows manifest, with container-appropriate fingerprint inputs:
 
 ```
-{ platform_manifest_digest, image_config_id, os_arch, codex_version_in_image,
+{ image_config_digest, platform_manifest_digest?, os_arch, codex_version_in_image,
   schema_sha256, agents_md_sha256, container_invocation_profile_hash,
   live_evidence { schema_gate, security_battery } }
 ```
 
-- `container_invocation_profile_hash` covers the container runtime identity **and the full `run`
-  argv** (image pinned by platform-manifest digest, `--platform`, mounts, caps, network mode, and
-  the composed codex args), so a changed runtime, architecture, or run configuration hashes
-  differently and is rejected — the analogue of the Windows invocation-profile hash. `os_arch` is
-  fingerprinted separately so evidence is never portable across architectures.
+- `container_invocation_profile_hash` is a **canonical *semantic* profile, not the literal run
+  argv (corrects round-2 P1).** Per-run paths and identifiers (the staging directory source path,
+  the cidfile, container ids) are replaced by **typed placeholders**; what is hashed is the
+  security-relevant shape: each mount's **type, destination, and options** (e.g. "credential mount:
+  type=bind, dest=`$CODEX_HOME`, ro; working root: type=tmpfs"), the capability drops, network mode,
+  **logging driver**, the runtime identity, the platform, the image identity, and the complete
+  `--disable` set. Fresh but equivalent staging paths therefore hash **equal**, while any
+  security-relevant change hashes **different** — verified by an explicit test. `os_arch` is
+  fingerprinted separately so evidence never crosses architectures.
 - The two independently-fingerprinted `live_evidence` sub-records (`schema_gate`,
   `security_battery`) and the "recalibration drops evidence, forcing a live re-run" semantics are
   preserved unchanged.
 
 ## The security battery, re-conceived
 
-The battery cannot be a 1:1 port because it verifies **container** properties, not **environment**
-properties. It asserts, each with a positive control that proves the detector can see what it rules
-out:
+The battery cannot be a 1:1 port because it verifies **container** properties. It asserts, each with
+a positive control that proves the detector can see what it rules out:
 
 1. **Tool denial holds inside the container** — the existing control-verified classes (shell, web,
    apps, MCP, plugins) are re-exercised *inside the pinned image*: each fires when isolated (one
    capability force-enabled), is absent under the real default-deny set, and does not collide with
-   another class's signature.
-2. **The mount/device/socket table matches an exact allowlist** — the runner inspects the
-   container's actual runtime configuration *and* the in-container `mountinfo`, and asserts it
-   contains **only** the expected credential staging mount and tmpfs working root. It explicitly
-   asserts **no container-runtime socket** (`docker.sock`/`podman.sock`) and no other host path,
-   device, or socket is present — a mounted runtime socket would be a full host escape. A single
-   invisible canary is *not* sufficient; a control run that deliberately adds a host bind-mount must
-   surface it, proving the detector works.
+   another class's signature. **Control reachability is a precondition:** because controls run with
+   the broker's real access token, each positive control must be confirmed to actually reach the
+   real API and fire *before* its absence under the hermetic policy is accepted as evidence — a
+   control that silently failed to authenticate proves nothing.
+2. **The mount/device/socket table matches a runtime-qualified allowlist (corrects round-2 P1).**
+   A real container legitimately has the overlay root, `proc`, `sys`, `cgroup`, `/dev`, `devpts`,
+   shm, and runtime-generated files (`/etc/hosts`, `/etc/hostname`, `/etc/resolv.conf`) — so the
+   assertion is **not** "only two mounts." The runner inspects the container's runtime config *and*
+   in-container `mountinfo` and asserts: the set matches a **runtime-qualified allowlist** of those
+   expected pseudo-filesystems/devices/generated files **plus** the single credential staging bind
+   and the tmpfs working root; **no bind-mount has a host source other than the credential staging
+   dir**; and **no container-runtime socket** (`docker.sock`/`podman.sock`), unexpected device, or
+   other host path is present. A control that deliberately adds a host bind must surface it.
 3. **Egress posture is exactly what is claimed** (§ Network egress).
-4. **A synthetic secret never appears in ANY captured output channel** — a canary placed where the
-   reviewer might reach it must not appear in the verdict, the JSONL event stream, stderr, or any
-   diagnostic output. The ported injection battery's three hard requirements are preserved:
-   non-compliance (never coerced into approving), identification of an independent planted defect,
-   and no environment/credential disclosure. Positive controls use a **synthetic dummy credential**,
-   never the live `auth.json`.
-5. **Image-pin mismatch refuses** — a round run against an image whose platform-manifest digest /
-   config ID / `os_arch` does not match the pin is rejected.
+4. **A synthetic secret never appears in ANY captured output channel** — a canary must not appear in
+   the verdict, the JSONL stream, stderr, **or any daemon-side container log** (closed by
+   `--log-driver=none`, which the battery verifies is in effect). The ported injection battery's
+   three hard requirements are preserved: non-compliance (never coerced into approving),
+   identification of an independent planted defect, and no environment/credential disclosure.
+5. **Image-pin mismatch refuses** — a round run against an image whose config digest / platform /
+   `os_arch` does not match the pin is rejected.
 
 The narrowed-class treatment from the Windows battery (computer-use, skills, subagents configured
 off but not independently control-provable on the current CLI) carries over as the same documented,
@@ -249,16 +268,17 @@ sidecar is an optional future hardening tier, explicitly out of scope for v1.
 
 ## Installer & skill dispatch
 
-- **`install.sh`** (thin bootstrap) → **`install.py`** — fail-closed. It must **generate** evidence
+- **`install.sh`** (thin bootstrap) → **`install.py`** — fail-closed. It **generates** evidence
   before it **verifies** it, so a fresh machine is never refused for lacking evidence it has had no
-  chance to produce (the Windows flow avoids this by running the gates as separate documented
-  commands *before* `install.ps1`; the Unix installer does the whole sequence transactionally in
-  one run). Ordered:
+  chance to produce. Ordered:
   1. verify a supported container runtime is present and usable (**Docker primary; Podman used if
      it is a drop-in** for the run/inspect surface the stack needs), and verify the host
      architecture is supported;
-  2. build or pull the image and **pin** it (record platform-manifest digest, config ID, `os/arch`),
-     then run the **offline pytest suite** (a failure stops before any live call);
+  2. obtain the image and **pin** it to a resolvable per-arch identity — **pull by immutable
+     platform child digest** (preferred), or a deterministic local build/OCI-export that retains and
+     verifies the config digest + `os/arch` — recording `image_config_digest`, any
+     `platform_manifest_digest`, and `os_arch`; then run the **offline pytest suite** (a failure
+     stops before any live call);
   3. **invalidate** any prior live-evidence, then run **both** live gates — the schema gate and the
      container security battery — on the host's own architecture, atomically **recording** each
      gate's fingerprinted evidence on success;
@@ -277,57 +297,62 @@ sidecar is an optional future hardening tier, explicitly out of scope for v1.
 
 ## Behavioral equivalence requirements
 
-These are hard requirements, because doc-mode review state is committed beside project docs and
-must be identical regardless of which stack produced it:
+The achievable, precisely-scoped contract (not cross-stack byte-identity, which would require
+changing the untouched Windows writers — round-2 P2):
 
-- Both stacks emit a **single defined canonical serialization** — sorted keys, UTF-8 without
-  ASCII-escaping unless required, `\n` line endings, and fixed number formatting — so "equivalent"
-  is a precise, testable byte contract rather than an accident of two serializers (PowerShell
-  `ConvertTo-Json` and Python `json.dumps` differ on Unicode escaping, key order, and spacing). For
-  the same reviewer output, both stacks produce byte-identical verdict and state files under this
-  canonical form. (Recommendation ids already derive from parsed fields via `Get-RecommendationId`,
-  not raw bytes, but the committed files must still match.)
-- The state-file layout (`round-N-verdict.json`, per-attempt records, carry-over ledger `.json` and
-  `.txt`, `state.json`, `publication.json`) is identical in path and content shape.
-- The exit-code contract is identical.
-- The PR-mode provenance fields (`base_oid`, `base_ref_name`, `base_tip_oid`, `head_sha`), the
-  marker format, idempotency, drift, and dismissal behavior are identical (a direct port of
-  `publish.py`).
+- **Identical recommendation-id derivation.** `Get-RecommendationId` (hash of round, index,
+  severity, location, issue, suggestion) is reproduced exactly in `verdict.py`, verified against a
+  corpus of **authoritative id vectors** (not against the other implementation). This is the
+  property that actually matters: it makes carry-over ledgers and recommendation identity stable
+  across stacks.
+- **Identical normalization semantics** — the severity invariant (approve-with-non-nit → downgrade),
+  the size bounds, and rendered-body bounds behave identically, verified against authoritative
+  input→output vectors.
+- **Identical state schema and path layout** — `round-N-verdict.json`, per-attempt records,
+  carry-over ledger `.json`/`.txt`, `state.json`, `publication.json`: identical paths and identical
+  *logical* JSON shape (keys, types, structure). Each stack serializes internally consistently; the
+  bytes need not match the PowerShell stack's.
+- **The Python stack's own output uses a named canonical JSON form — RFC 8785 (JCS)** — so its
+  serialization is fully specified (key ordering by UTF-16 code units, UTF-8 output, defined string
+  escaping) rather than "sorted keys, roughly." Value domains here are constrained to strings and
+  small non-negative integers (no floats), so JCS's number-formatting edge cases do not arise. The
+  trailing-newline policy is stated explicitly (files end without a trailing newline) and tested.
+- **Identical exit-code contract** and identical PR-mode provenance fields (`base_oid`,
+  `base_ref_name`, `base_tip_oid`, `head_sha`), marker format, idempotency, drift, and dismissal
+  behavior (a direct port of `publish.py`).
 
 ## Testing strategy
 
 1. **Offline pytest suite** — ports the coverage of the 602-test PowerShell suite: verdict
-   normalization and severity downgrade, the usage gate (malformed/duplicated/over-limit streams),
-   default-deny feature computation, `run`-argv composition and the invocation-profile hash,
-   premises/live-evidence gating, state paths and the carry-over ledger, and publication hardening
-   (JSON-safe bodies, `--paginate --slurp` pagination, provenance binding, drift, dismissal). No
-   container, no network, no model calls.
+   normalization and severity downgrade, id derivation against authoritative vectors, the usage gate
+   (malformed/duplicated/over-limit streams), default-deny feature computation, the **canonical
+   semantic invocation-profile hash** (fresh equivalent staging paths hash equal; security-relevant
+   changes do not), premises/live-evidence gating, state paths and the carry-over ledger, and
+   publication hardening (JSON-safe bodies, `--paginate --slurp` pagination, provenance binding,
+   drift, dismissal). No container, no network, no model calls.
 2. **Container live battery** — the re-conceived security battery above, run inside the pinned
-   image. Real model calls; consumes usage; deliberately invoked, not part of the offline suite.
+   image, including **control-reachability preconditions** and the **runtime-qualified mount
+   allowlist**. Real model calls; consumes usage; deliberately invoked.
 3. **Live schema gate** — the shipped schema is accepted by the real API through the container, with
    exactly one terminal `turn.completed` and the usage gate satisfied.
-4. **Equivalence golden corpus** — not a single fixture but a shared corpus exercising the canonical
-   serializer across edge cases: multi-byte and escape-requiring Unicode, key ordering, newline
-   conventions, size-bound and numeric boundaries, malformed/normalized values, the
-   severity-downgrade path, and carry-over-ledger transitions. Both stacks run the corpus and their
-   outputs are **byte-compared in cross-platform CI**; a divergence fails the build.
+4. **Serialization + id golden corpus** — a corpus carrying **authoritative expected bytes** for the
+   JCS serializer and **authoritative id vectors**, exercising multi-byte/escape-requiring Unicode,
+   key ordering, size-bound and numeric boundaries, malformed/normalized values, the
+   severity-downgrade path, and carry-over-ledger transitions. The Python stack is checked against
+   the authoritative expectations (not merely against PowerShell).
+5. **Credential/refresh test** — two sequential rounds via the broker assert host auth still works
+   afterward (the durable refresh token was never exposed or invalidated).
 
 ## Risks and mitigations
 
 - **Container runtime dependency.** Heavier prerequisite than Python alone; the installer verifies
   it up front and fails closed with guidance.
-- **Refresh-token rotation could invalidate the host credential.** Discarding a container-refreshed
-  `auth.json` is only safe if the provider's refresh tokens are **reusable**. If the pinned
-  CLI/provider **rotates** refresh tokens, the first in-container refresh can invalidate the
-  unchanged host credential (breaking later rounds and possibly host auth), and concurrent rounds
-  worsen the race. **Required before v1 ships:** establish the pinned CLI/provider's refresh-token
-  semantics empirically. If rotation is possible, either (a) serialize rounds and persist the
-  rotated credential back atomically through a **host-side broker** that owns `~/.codex`, or
-  (b) mint a **short-lived per-round credential** before launching the sandbox so the container
-  never holds the durable refresh token. The chosen approach is validated by a test that runs two
-  sequential rounds and asserts host auth still works.
-- **Podman divergence.** Only drop-in compatibility is promised; the invocation-profile hash pins
-  the exact runtime so a substitution is never silent.
+- **Access-token lifetime vs round length.** The broker guarantees freshness at launch; a bounded
+  round fits inside an access token's validity, and expiry mid-round fails closed. The durable
+  refresh token is refreshed host-side and never enters the container, so refresh-token rotation
+  cannot invalidate the host credential.
+- **Podman divergence.** Only drop-in compatibility is promised; the semantic invocation-profile
+  hash pins the exact runtime identity so a substitution is never silent.
 - **Image / architecture drift.** The architecture-qualified image identity is the pin, re-verified
   every round, with an explicit re-pin acknowledgement path; `os_arch` is fingerprinted so evidence
   never crosses architectures.
@@ -341,3 +366,4 @@ must be identical regardless of which stack produced it:
 - [`docs/implementation-plan.md`](../../implementation-plan.md) — the Windows implementation plan and contracts.
 - `gauntlet-review/scripts/lib.ps1` — the source of the logic being ported.
 - `gauntlet-review/scripts/invoke-codex.ps1`, `publish-review.ps1`, `calibrate-premises.ps1`.
+- RFC 8785 — JSON Canonicalization Scheme (JCS), the named canonical serialization for the Python stack.
