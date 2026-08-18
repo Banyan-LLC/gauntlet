@@ -1,7 +1,7 @@
 # Cross-Platform (Unix/macOS) Gauntlet — Container-Sandbox Port Design
 
 **Date:** 2026-08-18
-**Status:** Draft for review (Codex rounds 1–5: `request_changes` addressed)
+**Status:** Draft for review (Codex rounds 1–6: `request_changes` addressed)
 **Supersedes:** the "Cross-platform scripts" future note in [`docs/design.md`](../../design.md) (§ Out of scope / future)
 
 ## Overview
@@ -349,13 +349,17 @@ sidecar is an optional future hardening tier, explicitly out of scope for v1.
      **recording** each gate's fingerprinted evidence (bound to `host_impl_digest`) on success;
   5. **revalidate** the now-complete manifest (the same check a review round enforces) and refuse if
      anything is stale or mismatched;
-  6. **install as a versioned sibling + atomic symlink flip (corrects round-5 P1)** — POSIX
-     `rename` cannot replace a non-empty directory, so instead populate a **new immutable, versioned
-     sibling directory**, **re-hash it and confirm it equals `host_impl_digest` there, before
-     exposure**, then atomically repoint a `current` symlink (e.g. `ln -sfn`, which replaces the
-     symlink by rename) that the skill paths resolve through. Both skill trees switch **as one
-     bundle**; the previous release stays active if anything fails, so an interrupted or concurrent
-     install never exposes unverified or mixed bytes;
+  6. **install as a versioned sibling + atomic symlink flip (corrects round-5 P1, round-6 P1)** —
+     POSIX `rename` cannot replace a non-empty directory, so instead populate a **new immutable,
+     versioned sibling directory**, **re-hash it and confirm it equals `host_impl_digest` there,
+     before exposure**, then repoint the `current` symlink the skill paths resolve through by
+     **creating a uniquely-named temporary symlink in the same directory and replacing `current`
+     with a single atomic `rename`/`os.replace`** — *not* `ln -sfn`, which unlinks-then-symlinks and
+     can leave `current` missing on a crash or to a concurrent reader. Validate both paths are on the
+     same filesystem, `lstat` the existing `current`, and `fsync` the containing directory for crash
+     durability. Both skill trees switch **as one bundle**; the previous release stays active if
+     anything fails, so an interrupted or concurrent install exposes only the old or the new bundle,
+     never a missing or mixed `current`;
   7. append the activation pointer to `~/.claude/CLAUDE.md` if absent.
   Because step 3 runs the battery inside the pinned image on the host arch, installing on an
   Apple-Silicon Mac verifies the arm64 boundary on arm64 before anything is installed.
@@ -425,6 +429,9 @@ changing the untouched Windows writers — round-2 P2):
    and confirming no owned live container references it; and a **concurrent-start/reaper test**
    asserts an active runner's staging directory (created before its container) is never deleted by a
    concurrent reaper.
+7. **Install-atomicity test** — an activation interrupted between staging and the `current` flip, and
+   a concurrent reader during the flip, both observe `current` as **only the old or only the new
+   bundle** — never missing, mixed, or pointing at unverified bytes.
 
 ## Risks and mitigations
 
