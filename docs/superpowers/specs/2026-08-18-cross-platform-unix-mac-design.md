@@ -1,7 +1,7 @@
 # Cross-Platform (Unix/macOS) Gauntlet — Container-Sandbox Port Design
 
 **Date:** 2026-08-18
-**Status:** Draft for review (Codex rounds 1–8: `request_changes` addressed)
+**Status:** Draft for review (Codex rounds 1–9: `request_changes` addressed)
 **Supersedes:** the "Cross-platform scripts" future note in [`docs/design.md`](../../design.md) (§ Out of scope / future)
 
 ## Overview
@@ -74,10 +74,13 @@ Each review round is one container run of a pinned image, and **all existing fla
 runs inside the container** — nothing about the Codex invocation is relaxed; the container is added
 *around* it:
 
-- `--ignore-user-config`, `--ignore-rules`, `--ephemeral`, `-s read-only`,
+- `--ignore-user-config`, `--ignore-rules`, `--ephemeral`, **`--skip-git-repo-check`** (the tmpfs
+  working root is deliberately not a git repo, so Codex versions that require one would otherwise
+  refuse before reaching the API — corrects round-9 P1), `-s read-only`,
   `-c web_search="disabled"`, `-c shell_environment_policy.inherit="none"`, the model pin
   (`-m gpt-5.6-sol -c model_reasoning_effort="xhigh"`), and the **complete default-deny
-  `--disable` set** are all passed exactly as the Windows stack passes them.
+  `--disable` set** are all passed exactly as the Windows stack passes them, and all are part of the
+  invocation profile and the mandatory-value policy validator.
 - Prompt delivered over **redirected UTF-8 stdin** (`codex exec … -`); review material never enters
   argv and never reaches daemon-side container logs (`--log-driver=none`). It **can** legitimately
   appear in the model's own verdict/JSONL output and in bounded diagnostic retention (the model may
@@ -169,8 +172,9 @@ requirement is:
 3. **A round is never hard-failed by token expiry** under normal operation.
 
 **Mechanism.** A **host-side broker** owns `~/.codex`. Before each round (and before each battery
-control) it ensures a valid access token — refreshing host-side using the durable refresh token if
-needed — and writes an **access-token-only** `auth.json` (no refresh token) plus a copy of
+control) it ensures a valid access token — minting/exchanging one host-side, **preferring an
+exchange that does not rotate the durable refresh credential** (see § Risks and mitigations) — and
+writes an **access-token-only** `auth.json` (no refresh token) plus a copy of
 `AGENTS.md` into a fresh, host-created **staging directory**, after validating each source is a
 **regular file** (not a symlink/socket/device) and copying with no-follow semantics. Because
 `AGENTS.md` is executed by Codex as **trusted instructions**, the broker copies it from an
@@ -262,16 +266,20 @@ Same fail-closed structure as the Windows manifest, with container-appropriate f
 ```
 
 - `host_impl_digest` is the container-stack analogue of the Windows `wrapper_fingerprint`
-  (`docs/design.md`): a **canonical tree/package digest over every host-side file that enforces the
-  boundary or shapes a verdict** — `sandbox.py`, `broker.py`, `premises.py`, `verdict.py`,
-  `usage.py`, `features.py`, `publish.py`, `state.py`, `invoke_codex.py`, the battery, the
-  `SKILL.md` dispatch lines, the `Dockerfile`/entrypoint wrapper, and the verdict schema. It is
-  **verified unconditionally, every round (corrects round-4 P1)**, because the semantic
-  invocation-profile values can be unchanged while the code that applies them is edited — so a
-  change to stream/secret handling, the broker, or the battery that leaves the profile values
-  identical must still invalidate evidence. The offline suite, both live gates, and every review
-  round run against the exact bytes this digest covers, and each `live_evidence` sub-record is bound
-  to it.
+  (`docs/design.md`): a digest over a **mechanically closed file set — enumerated by an explicit
+  manifest, not "roughly the code" (corrects round-9 P1)** — covering **every immutable installed
+  file** that enforces the boundary, shapes a verdict, or governs gating/activation/retries/
+  publication: `sandbox.py`, `broker.py`, `premises.py`, `verdict.py`, `usage.py`, `features.py`,
+  `publish.py`, `state.py`, `invoke_codex.py`, the battery, **both complete `SKILL.md` files** (not
+  merely the dispatch lines), **`install.py`/`install.sh`** and their helpers, the
+  `Dockerfile`/entrypoint wrapper, the verdict schema, and any policy/fixture data. **Generated
+  manifest and evidence artifacts are explicitly *excluded* from this set** — otherwise the digest
+  would be self-referential; their integrity is bound separately by the `live_evidence` fingerprints
+  plus a release digest, and **both the closed set and that separate binding are verified before
+  activation**. `host_impl_digest` is **verified unconditionally, every round (corrects round-4
+  P1)**, because the semantic invocation-profile values can be unchanged while the code that applies
+  them is edited. The offline suite, both live gates, and every review round run against the exact
+  bytes this closed set covers.
 
 - `container_invocation_profile_hash` is a **canonical *semantic* profile, not the literal run
   argv (corrects round-2 P1).** Per-run paths and identifiers (the staging directory source path,
@@ -385,7 +393,8 @@ sidecar is an optional future hardening tier, explicitly out of scope for v1.
   6. **install as a versioned sibling + atomic symlink flip, made durable (corrects round-5 P1,
      round-6 P1, round-7 P2)** — POSIX `rename` cannot replace a non-empty directory, so instead
      populate a **new immutable, versioned sibling directory** holding **both** skill trees, and
-     **re-hash it and confirm it equals `host_impl_digest` there, before exposure**. Make it durable
+     **re-hash the closed `host_impl_digest` file set there — generated evidence excluded and
+     verified via its own release binding — and confirm it matches, before exposure**. Make it durable
      **before** exposure with a **platform-specific durability protocol (corrects round-8 P2)**:
      flush every installed regular file and evidence artifact to the storage device — `fsync` on
      Linux, **`fcntl(F_FULLFSYNC)` on macOS** (ordinary `fsync` does not flush the drive cache
@@ -472,7 +481,10 @@ changing the untouched Windows writers — round-2 P2):
    refresh token** — asserts the interprocess lock plus fsync-atomic, generation-checked persistence
    never lets two brokers clobber each other's credential. A **concurrent-rewrite test** replaces
    `AGENTS.md` between premise validation and staging and asserts the staged-byte hash check against
-   `agents_md_sha256` fails the round closed.
+   `agents_md_sha256` fails the round closed. A **concurrent-host-CLI test** and a
+   **crash-injection test** around the refresh/persistence boundary assert that the non-rotating
+   exchange keeps host auth intact, or — under a rotating provider — the run fails closed or warns
+   rather than silently invalidating host auth.
 6. **Crash-safety & concurrency test** — with the host runner killed mid-round, the in-container
    watchdog still terminates the run by its absolute deadline; a subsequent reaper reclaims a stale
    run's **container and** staging directory only after acquiring that run's per-run lease
@@ -495,8 +507,19 @@ changing the untouched Windows writers — round-2 P2):
   lifetime to exceed the maximum round/watchdog deadline plus startup and clock-skew margins before
   launch — refreshing or re-minting otherwise, and failing closed before launch if it cannot — so a
   bounded round fits inside the token's validity by construction. The durable refresh token is
-  refreshed host-side and never enters the container, so refresh-token rotation cannot invalidate
-  the host credential.
+  handled host-side and never enters the container.
+- **Refresh-token rotation is not transactional with the provider (corrects round-9 P2).** Local
+  locking and fsync-atomic persistence cannot make a *provider-side* rotation atomic: if the
+  provider invalidates `R0` and issues `R1`, a crash before `R1` is durably stored leaves only the
+  invalid `R0`; and a normal host `codex` process does not honor the broker's private lock and can
+  race the refresh. The design therefore **prefers a token exchange that mints a short-lived access
+  token WITHOUT rotating the durable refresh credential**, which removes the race entirely. Only if
+  the pinned provider offers no non-rotating exchange does the broker fall back to rotation — and
+  there the host-auth-preservation guarantee is **explicitly narrowed**: the broker coordinates the
+  writers it can, adds concurrent-host-CLI and crash-injection tests around the refresh/persistence
+  boundary, and **fails closed or warns** when recoverability cannot be guaranteed rather than
+  claiming rotation is always safe. The provider's real rotation/grace-period/recovery semantics are
+  established empirically before v1.
 - **Podman divergence.** Only drop-in compatibility is promised; the semantic invocation-profile
   hash pins the exact runtime identity so a substitution is never silent.
 - **Image / architecture drift.** The architecture-qualified image identity is the pin, re-verified
