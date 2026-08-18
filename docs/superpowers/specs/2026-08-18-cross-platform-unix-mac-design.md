@@ -1,7 +1,7 @@
 # Cross-Platform (Unix/macOS) Gauntlet — Container-Sandbox Port Design
 
 **Date:** 2026-08-18
-**Status:** Draft for review (Codex rounds 1–3: `request_changes` addressed)
+**Status:** Draft for review (Codex rounds 1–4: `request_changes` addressed)
 **Supersedes:** the "Cross-platform scripts" future note in [`docs/design.md`](../../design.md) (§ Out of scope / future)
 
 ## Overview
@@ -219,9 +219,21 @@ Same fail-closed structure as the Windows manifest, with container-appropriate f
 
 ```
 { image_config_digest, platform_manifest_digest?, os_arch, codex_version_in_image,
-  schema_sha256, agents_md_sha256, container_invocation_profile_hash,
+  schema_sha256, agents_md_sha256, host_impl_digest, container_invocation_profile_hash,
   live_evidence { schema_gate, security_battery } }
 ```
+
+- `host_impl_digest` is the container-stack analogue of the Windows `wrapper_fingerprint`
+  (`docs/design.md`): a **canonical tree/package digest over every host-side file that enforces the
+  boundary or shapes a verdict** — `sandbox.py`, `broker.py`, `premises.py`, `verdict.py`,
+  `usage.py`, `features.py`, `publish.py`, `state.py`, `invoke_codex.py`, the battery, the
+  `SKILL.md` dispatch lines, the `Dockerfile`/entrypoint wrapper, and the verdict schema. It is
+  **verified unconditionally, every round (corrects round-4 P1)**, because the semantic
+  invocation-profile values can be unchanged while the code that applies them is edited — so a
+  change to stream/secret handling, the broker, or the battery that leaves the profile values
+  identical must still invalidate evidence. The offline suite, both live gates, and every review
+  round run against the exact bytes this digest covers, and each `live_evidence` sub-record is bound
+  to it.
 
 - `container_invocation_profile_hash` is a **canonical *semantic* profile, not the literal run
   argv (corrects round-2 P1).** Per-run paths and identifiers (the staging directory source path,
@@ -303,18 +315,25 @@ sidecar is an optional future hardening tier, explicitly out of scope for v1.
   1. verify a supported container runtime is present and usable (**Docker primary; Podman used if
      it is a drop-in** for the run/inspect surface the stack needs), and verify the host
      architecture is supported;
-  2. obtain the image and **pin** it to a resolvable per-arch identity — **pull by immutable
+  2. **stage an immutable installation artifact** — a copy of exactly the `gauntlet-review` and
+     `gauntlet-dev` trees that will be installed — and compute its **`host_impl_digest`**. Every
+     subsequent check runs against *this* artifact, so what is tested and gated is byte-for-byte what
+     gets installed (corrects round-4 P1);
+  3. obtain the image and **pin** it to a resolvable per-arch identity — **pull by immutable
      platform child digest** (preferred), or a deterministic local build/OCI-export that retains and
      verifies the config digest + `os/arch` — recording `image_config_digest`, any
-     `platform_manifest_digest`, and `os_arch`; then run the **offline pytest suite** (a failure
-     stops before any live call);
-  3. **invalidate** any prior live-evidence, then run **both** live gates — the schema gate and the
-     container security battery — on the host's own architecture, atomically **recording** each
-     gate's fingerprinted evidence on success;
-  4. **revalidate** the now-complete manifest (the same check a review round enforces) and refuse if
+     `platform_manifest_digest`, and `os_arch`; then run the **offline pytest suite** from the staged
+     artifact (a failure stops before any live call);
+  4. **invalidate** any prior live-evidence, then run **both** live gates — the schema gate and the
+     container security battery — from the staged artifact on the host's own architecture, atomically
+     **recording** each gate's fingerprinted evidence (bound to `host_impl_digest`) on success;
+  5. **revalidate** the now-complete manifest (the same check a review round enforces) and refuse if
      anything is stale or mismatched;
-  5. only then copy `gauntlet-review` and `gauntlet-dev` to `~/.claude/skills/`;
-  6. append the activation pointer to `~/.claude/CLAUDE.md` if absent.
+  6. **install by atomic directory replacement** — populate a temp directory beside the target and
+     `rename` it into place (never an in-place copy into a live skill directory, which an
+     interruption or a concurrent run could leave mixed or partial), then **re-hash the installed
+     bytes and confirm they equal `host_impl_digest`** before activation;
+  7. append the activation pointer to `~/.claude/CLAUDE.md` if absent.
   Because step 3 runs the battery inside the pinned image on the host arch, installing on an
   Apple-Silicon Mac verifies the arm64 boundary on arm64 before anything is installed.
 - **`SKILL.md` platform branch.** The loop protocol is shared prose; the invocation lines branch by
