@@ -1,7 +1,7 @@
 # Cross-Platform (Unix/macOS) Gauntlet — Container-Sandbox Port Design
 
 **Date:** 2026-08-18
-**Status:** Draft for review (Codex rounds 1–6: `request_changes` addressed)
+**Status:** Draft for review (Codex rounds 1–7: `request_changes` addressed)
 **Supersedes:** the "Cross-platform scripts" future note in [`docs/design.md`](../../design.md) (§ Out of scope / future)
 
 ## Overview
@@ -78,8 +78,11 @@ runs inside the container** — nothing about the Codex invocation is relaxed; t
   `-c web_search="disabled"`, `-c shell_environment_policy.inherit="none"`, the model pin
   (`-m gpt-5.6-sol -c model_reasoning_effort="xhigh"`), and the **complete default-deny
   `--disable` set** are all passed exactly as the Windows stack passes them.
-- Prompt delivered over **redirected UTF-8 stdin** (`codex exec … -`); review material never
-  enters argv and never appears in any log.
+- Prompt delivered over **redirected UTF-8 stdin** (`codex exec … -`); review material never enters
+  argv and never reaches daemon-side container logs (`--log-driver=none`). It **can** legitimately
+  appear in the model's own verdict/JSONL output and in bounded diagnostic retention (the model may
+  quote what it reviews), so those captured channels are treated as potentially containing review
+  material and are permissioned and retention-bounded accordingly (round-7 nit).
 - `--output-schema` + `-o <verdict-file>` (written to the working tmpfs, copied out **while the
   container is still running** — see lifecycle below) + `--json` exactly as today.
 
@@ -136,10 +139,14 @@ runner is killed or loses its daemon connection, a wrapper that blocks on the ho
 forever, leaking the container and its credential bind. The wrapper therefore also runs an
 **in-container watchdog** that kills Codex and exits after an **absolute deadline, independent of
 the host**, so the run is bounded even with no host present. Every container is **labeled with a
-narrowly-scoped owner/run identifier**; on startup the runner **reaps verified-stale owned
-containers**, and a stale staging directory is reclaimed **only after confirming no owned live
-container still references it**. The bounded-run and guaranteed-cleanup guarantees thus hold across
-runner crashes, not only clean exits.
+narrowly-scoped owner/run identifier** tied to the run's file lease. On startup the reaper, for each
+candidate, **acquires that run's lease non-blockingly and re-inspects the exact run id *before*
+classifying, killing, or removing its container or reclaiming its staging directory (corrects
+round-7 P2)** — a lease it cannot acquire means the run is still live, so the container is left
+alone. "No live container references it" is therefore necessary but never sufficient on its own: the
+lease is what proves the run is not still active. The bounded-run and guaranteed-cleanup guarantees
+thus hold across runner crashes, not only clean exits, without a concurrent startup ever reaping a
+live run's container.
 
 **Confidentiality argument (stated precisely).** The reviewer has no shell and no file-read tool
 (default-deny), so it cannot read the one secret staged into the container (a short-lived,
@@ -276,6 +283,18 @@ Same fail-closed structure as the Windows manifest, with container-appropriate f
   `security_battery`) and the "recalibration drops evidence, forcing a live re-run" semantics are
   preserved unchanged.
 
+**Freshness is not compliance — a non-self-calibrating policy validator (corrects round-7 P1).** The
+profile hash proves the recorded evidence matches the configuration that ran; it does **not** prove
+that configuration meets the required security posture — a *weakened* config (an installer run as
+root yielding `--user 0:0`, or a missing `--cap-drop ALL`) would otherwise just fingerprint
+differently and self-certify. A separate **versioned security-policy validator** therefore asserts
+the *inspected* container matches every **mandatory** value — **UID/GID ≠ 0**, `--cap-drop ALL`,
+`--security-opt no-new-privileges`, `--read-only` rootfs, `--log-driver=none`, the expected network
+mode, the complete hermetic flag set, and the full default-deny `--disable` set — and **neither live
+gate may record evidence, and no round may run, unless the validator passes**. Negative live tests
+prove that removing or weakening any single mandatory control makes the gate/installer **fail**, not
+merely produce a new hash.
+
 ## The security battery, re-conceived
 
 The battery cannot be a 1:1 port because it verifies **container** properties. It asserts, each with
@@ -349,23 +368,30 @@ sidecar is an optional future hardening tier, explicitly out of scope for v1.
      **recording** each gate's fingerprinted evidence (bound to `host_impl_digest`) on success;
   5. **revalidate** the now-complete manifest (the same check a review round enforces) and refuse if
      anything is stale or mismatched;
-  6. **install as a versioned sibling + atomic symlink flip (corrects round-5 P1, round-6 P1)** —
-     POSIX `rename` cannot replace a non-empty directory, so instead populate a **new immutable,
-     versioned sibling directory**, **re-hash it and confirm it equals `host_impl_digest` there,
-     before exposure**, then repoint the `current` symlink the skill paths resolve through by
-     **creating a uniquely-named temporary symlink in the same directory and replacing `current`
-     with a single atomic `rename`/`os.replace`** — *not* `ln -sfn`, which unlinks-then-symlinks and
-     can leave `current` missing on a crash or to a concurrent reader. Validate both paths are on the
-     same filesystem, `lstat` the existing `current`, and `fsync` the containing directory for crash
-     durability. Both skill trees switch **as one bundle**; the previous release stays active if
-     anything fails, so an interrupted or concurrent install exposes only the old or the new bundle,
-     never a missing or mixed `current`;
+  6. **install as a versioned sibling + atomic symlink flip, made durable (corrects round-5 P1,
+     round-6 P1, round-7 P2)** — POSIX `rename` cannot replace a non-empty directory, so instead
+     populate a **new immutable, versioned sibling directory** holding **both** skill trees, and
+     **re-hash it and confirm it equals `host_impl_digest` there, before exposure**. Make it durable
+     **before** exposure: `fsync` every installed regular file and evidence artifact, then `fsync`
+     directories bottom-up including the version-directory's parent (re-hashing verifies page-cache
+     contents, not on-disk durability — after a power loss `current` must never survive pointing at
+     truncated or missing files). Then repoint the `current` symlink by **creating a uniquely-named
+     temporary symlink in the same directory and replacing `current` with a single atomic
+     `rename`/`os.replace`** (same-filesystem-validated, `lstat`-checked) — *not* `ln -sfn`, which
+     unlinks-then-symlinks and can leave `current` missing — and `fsync` the parent of `current`.
+     Startup validation refuses or rolls back a `current` whose complete digest no longer matches;
   7. append the activation pointer to `~/.claude/CLAUDE.md` if absent.
   Because step 3 runs the battery inside the pinned image on the host arch, installing on an
   Apple-Silicon Mac verifies the arm64 boundary on arm64 before anything is installed.
 - **`SKILL.md` platform branch.** The loop protocol is shared prose; the invocation lines branch by
   OS: Windows → `pwsh -File …/invoke-codex.ps1 …`; Linux/macOS → `python3 …/invoke_codex.py …`.
-  Both accept the same arguments and honor the **same exit-code contract** (0/10/11/12/13/14/16 for
+  **The Unix dispatch resolves `current` to its concrete versioned directory exactly once at the
+  start of an operation (`realpath`) and threads that immutable path through every skill-dispatch and
+  script invocation for the whole operation (corrects round-7 P1)** — a single atomic symlink flip
+  makes each lookup individually valid but does not, on its own, make two separate lookups
+  (`current/gauntlet-review/…` then `current/gauntlet-dev/…`) a consistent bundle snapshot; resolving
+  once and pinning the result is what delivers the "switch as one bundle" guarantee. Both entry
+  points accept the same arguments and honor the **same exit-code contract** (0/10/11/12/13/14/16 for
   rounds; 2–6 for publication), so the SKILL.md protocol, human-flag rules, and retry semantics are
   identical across stacks. Container-runtime-absent maps to the existing exit `12` (environment
   invalid); image-pin mismatch maps to exit `13` (pinned stack changed).
@@ -408,8 +434,11 @@ changing the untouched Windows writers — round-2 P2):
    publication hardening (JSON-safe bodies, `--paginate --slurp` pagination, provenance binding,
    drift, dismissal). No container, no network, no model calls.
 2. **Container live battery** — the re-conceived security battery above, run inside the pinned
-   image, including **control-reachability preconditions** and the **runtime-qualified mount
-   allowlist**. Real model calls; consumes usage; deliberately invoked.
+   image, including **control-reachability preconditions**, the **runtime-qualified mount
+   allowlist**, and the **security-policy validator's negative tests** (weakening any single
+   mandatory control — `--user 0:0`, dropped `--cap-drop ALL`, `no-new-privileges` off, a writable
+   rootfs, etc. — makes the gate **fail**, never merely re-fingerprint). Real model calls; consumes
+   usage; deliberately invoked.
 3. **Live schema gate** — the shipped schema is accepted by the real API through the container, with
    exactly one terminal `turn.completed` and the usage gate satisfied.
 4. **Serialization + id golden corpus** — a corpus carrying **authoritative expected bytes** for the
@@ -424,14 +453,17 @@ changing the untouched Windows writers — round-2 P2):
    refresh token** — asserts the interprocess lock plus fsync-atomic, generation-checked persistence
    never lets two brokers clobber each other's credential.
 6. **Crash-safety & concurrency test** — with the host runner killed mid-round, the in-container
-   watchdog still terminates the run by its absolute deadline; a subsequent run reaps the stale owned
-   container and reclaims its staging directory only after acquiring the per-run lease non-blockingly
-   and confirming no owned live container references it; and a **concurrent-start/reaper test**
-   asserts an active runner's staging directory (created before its container) is never deleted by a
+   watchdog still terminates the run by its absolute deadline; a subsequent reaper reclaims a stale
+   run's **container and** staging directory only after acquiring that run's per-run lease
+   non-blockingly and re-inspecting the exact run id; and a **concurrent-run test** asserts an active
+   run's container (and its pre-container staging directory) is never reaped or deleted by a
    concurrent reaper.
-7. **Install-atomicity test** — an activation interrupted between staging and the `current` flip, and
-   a concurrent reader during the flip, both observe `current` as **only the old or only the new
-   bundle** — never missing, mixed, or pointing at unverified bytes.
+7. **Install-atomicity & durability test** — an activation interrupted between staging and the
+   `current` flip, and a **reader paused after its first lookup while the flip occurs**, both observe
+   a **single consistent bundle** (only the old or only the new; never missing, mixed across skill
+   trees, or unverified); and a **power-loss/recovery test** asserts a surviving `current` never
+   points at truncated or missing files — startup validation refuses or rolls back a `current` whose
+   complete digest no longer matches.
 
 ## Risks and mitigations
 
