@@ -1,0 +1,63 @@
+import hashlib
+import json
+import os
+from pathlib import Path
+
+import pytest
+
+from gauntlet_review.broker import BrokerError, stage_credential
+
+AGENTS = b"# account AGENTS.md\nreview presentation rules\n"
+AGENTS_SHA = hashlib.sha256(AGENTS).hexdigest()
+
+
+def _codex_home(tmp_path) -> str:
+    home = tmp_path / "codex-home"
+    home.mkdir()
+    (home / "AGENTS.md").write_bytes(AGENTS)
+    return str(home)
+
+
+def _provider(expires_at):
+    return lambda: {"json": json.dumps({"tokens": {"access_token": "AT"}}), "expires_at": expires_at}
+
+
+def test_stages_auth_and_agents_when_hash_matches(tmp_path):
+    home = _codex_home(tmp_path)
+    stg = tmp_path / "stg"
+    stage_credential(codex_home=home, staging_dir=str(stg), agents_md_sha256=AGENTS_SHA,
+                     min_lifetime_sec=1800, token_provider=_provider(10_000), now=0.0)
+    assert (stg / "auth.json").is_file() and (stg / "AGENTS.md").read_bytes() == AGENTS
+    if os.name == "posix":  # mode bits are POSIX-specific; the offline suite also runs on Windows
+        assert (stg.stat().st_mode & 0o777) == 0o700
+
+
+def test_agents_hash_mismatch_fails_closed(tmp_path):
+    home = _codex_home(tmp_path)
+    stage = tmp_path / "stg"
+    with pytest.raises(BrokerError):
+        stage_credential(codex_home=home, staging_dir=str(stage), agents_md_sha256="0" * 64,
+                         min_lifetime_sec=1800, token_provider=_provider(10_000), now=0.0)
+
+
+def test_insufficient_token_lifetime_fails_closed(tmp_path):
+    home = _codex_home(tmp_path)
+    stage = tmp_path / "stg"
+    with pytest.raises(BrokerError):
+        stage_credential(codex_home=home, staging_dir=str(stage), agents_md_sha256=AGENTS_SHA,
+                         min_lifetime_sec=1800, token_provider=_provider(100), now=0.0)  # 100s < 1800s
+
+
+def test_symlinked_agents_md_rejected(tmp_path):
+    home = Path(_codex_home(tmp_path))
+    (home / "AGENTS.md").unlink()
+    outside = tmp_path / "evil.md"
+    outside.write_bytes(b"evil")
+    try:
+        (home / "AGENTS.md").symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not supported")
+    with pytest.raises((BrokerError, OSError)):
+        stage_credential(codex_home=str(home), staging_dir=str(tmp_path / "stg"),
+                         agents_md_sha256=AGENTS_SHA, min_lifetime_sec=1800,
+                         token_provider=_provider(10_000), now=0.0)
