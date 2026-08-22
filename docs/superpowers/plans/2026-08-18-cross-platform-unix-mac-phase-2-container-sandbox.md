@@ -1203,7 +1203,8 @@ Create `gauntlet-review/python/tests/test_entrypoint.py`:
 
 ```python
 import importlib.util
-import os
+import sys
+import time
 from pathlib import Path
 
 # Load the entrypoint module by path (it lives outside the package).
@@ -1215,12 +1216,52 @@ entry = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(entry)
 
 
+class FakeProc:
+    """Fake process handle exposing the Popen-like surface run() depends on."""
+
+    def __init__(self, exit_code):
+        self._exit_code = exit_code
+        self.killed = False
+        self.kill_calls = 0
+
+    def poll(self):
+        return self._exit_code
+
+    def kill(self):
+        self.killed = True
+        self.kill_calls += 1
+
+    def wait(self, timeout=None):
+        return self._exit_code
+
+
+class NeverExitsProc:
+    """Fake process that never exits on its own; records whether kill() was called."""
+
+    def __init__(self):
+        self.killed = False
+        self.kill_calls = 0
+        self._exit_code = None
+
+    def poll(self):
+        return None
+
+    def kill(self):
+        self.killed = True
+        self.kill_calls += 1
+        # Once killed, simulate the OS reaping it so wait() can return.
+        self._exit_code = -9
+
+    def wait(self, timeout=None):
+        return self._exit_code
+
+
 def test_records_exit_status_and_waits_for_marker(tmp_path):
     exit_path = tmp_path / "exit-status"
     marker = tmp_path / "marker"
 
     def fake_spawn(argv, stdin_fd):
-        return 3  # simulate codex exiting 3
+        return FakeProc(3)  # simulate codex exiting 3, already done when polled
 
     # Marker already present -> run() returns promptly after recording exit status.
     marker.write_text("go", encoding="utf-8")
@@ -1237,18 +1278,46 @@ def test_watchdog_deadline_is_absolute():
 
 
 def test_watchdog_kills_when_codex_overruns(tmp_path):
-    killed = {"n": 0}
+    fake_proc = NeverExitsProc()
 
     def slow_spawn(argv, stdin_fd):
         # Simulate a child that would run forever; entrypoint's watchdog must kill it.
-        raise entry.WatchdogFired()
+        return fake_proc
 
     with_marker = tmp_path / "marker"
     with_marker.write_text("go", encoding="utf-8")
+
+    started = time.monotonic()
     rc = entry.run(codex_argv=["codex"], verdict_path=str(tmp_path / "v.json"),
                    exit_status_path=str(tmp_path / "e"), marker_path=str(with_marker),
                    deadline_sec=0, spawn=slow_spawn, poll_interval=0.01)
+    elapsed = time.monotonic() - started
+
+    assert fake_proc.killed  # the watchdog must actually kill the overrunning child
     assert rc != 0  # a watchdog-fired run is a non-zero result
+    assert elapsed < 3  # must not block forever waiting on the fake proc
+
+
+def test_watchdog_kills_real_subprocess(tmp_path):
+    # Exercise the real spawn path: a genuine subprocess that sleeps far longer than the
+    # watchdog deadline must actually be killed, proving the real (non-fake) kill path fires.
+    marker = tmp_path / "marker"
+    marker.write_text("go", encoding="utf-8")
+
+    started = time.monotonic()
+    rc = entry.run(
+        codex_argv=[sys.executable, "-c", "import time; time.sleep(30)"],
+        verdict_path=str(tmp_path / "v.json"),
+        exit_status_path=str(tmp_path / "e"),
+        marker_path=str(marker),
+        deadline_sec=1,
+        spawn=entry._default_spawn,
+        poll_interval=0.05,
+    )
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 10  # well under the 30s sleep -> proves the child was actually killed
+    assert rc != 0
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1269,40 +1338,60 @@ from __future__ import annotations
 
 import json
 import os
-import signal
 import subprocess
 import sys
 import time
-
-
-class WatchdogFired(Exception):
-    pass
 
 
 def compute_watchdog_deadline(start_monotonic: float, deadline_sec: float) -> float:
     return start_monotonic + deadline_sec
 
 
-def _default_spawn(argv, stdin_fd) -> int:
-    proc = subprocess.Popen(argv, stdin=stdin_fd)
-    return proc.wait()
+def _default_spawn(argv, stdin_fd):
+    # Non-blocking: start the child and return the handle immediately. run() owns the
+    # active deadline and polls/kills it — it must never block on an unbounded wait().
+    return subprocess.Popen(argv, stdin=stdin_fd)
+
+
+def _stdin_fd():
+    # Under a real container invocation stdin has a real fd. Under test harnesses
+    # (e.g. pytest's captured stdin) fileno() is unsupported; fall back to None since
+    # fake spawns used in tests don't dereference it.
+    try:
+        return sys.stdin.fileno()
+    except (AttributeError, OSError, ValueError):
+        return None
 
 
 def run(*, codex_argv, verdict_path, exit_status_path, marker_path, deadline_sec,
         spawn=_default_spawn, poll_interval=0.5) -> int:
     start = time.monotonic()
     deadline = compute_watchdog_deadline(start, deadline_sec)
-    rc = 0
-    try:
-        if deadline_sec <= 0 and time.monotonic() >= deadline:
-            raise WatchdogFired()
-        rc = spawn(codex_argv, sys.stdin.fileno())
-    except WatchdogFired:
-        rc = 124  # timeout convention
+
+    proc = spawn(codex_argv, _stdin_fd())
+
+    # Actively enforce the absolute deadline: poll for exit rather than blocking on an
+    # unbounded wait(), so a hung Codex is killed even if the host itself has crashed.
+    while True:
+        rc = proc.poll()
+        if rc is not None:
+            break
+        if time.monotonic() >= deadline:
+            proc.kill()
+            try:
+                proc.wait(timeout=10)
+            except Exception:
+                pass
+            rc = 124  # timeout convention -- the watchdog fired
+            break
+        time.sleep(poll_interval)
+
     # Record exit status for the host to read alongside the verdict.
     with open(exit_status_path, "w", encoding="utf-8") as fh:
         fh.write(str(rc))
+
     # Block until the host signals it has copied the verdict out (or the deadline passes).
+    # Bounded wait: reuse the same absolute deadline so this loop can never block forever.
     while not os.path.exists(marker_path):
         if time.monotonic() >= deadline:
             break
@@ -1344,7 +1433,9 @@ ENTRYPOINT ["python3", "/gauntlet/entrypoint.py"]
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `python -m pytest tests/test_entrypoint.py -v`
-Expected: PASS (3 tests). (The Dockerfile is built in Task 9.)
+Expected: PASS (4 tests) — including a real-subprocess test that actually spawns and kills a
+child process to prove the watchdog's kill path fires outside of fakes. (The Dockerfile is
+built in Task 9.)
 
 - [ ] **Step 5: Commit**
 

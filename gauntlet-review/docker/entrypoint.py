@@ -6,23 +6,19 @@ from __future__ import annotations
 
 import json
 import os
-import signal
 import subprocess
 import sys
 import time
-
-
-class WatchdogFired(Exception):
-    pass
 
 
 def compute_watchdog_deadline(start_monotonic: float, deadline_sec: float) -> float:
     return start_monotonic + deadline_sec
 
 
-def _default_spawn(argv, stdin_fd) -> int:
-    proc = subprocess.Popen(argv, stdin=stdin_fd)
-    return proc.wait()
+def _default_spawn(argv, stdin_fd):
+    # Non-blocking: start the child and return the handle immediately. run() owns the
+    # active deadline and polls/kills it — it must never block on an unbounded wait().
+    return subprocess.Popen(argv, stdin=stdin_fd)
 
 
 def _stdin_fd():
@@ -39,17 +35,31 @@ def run(*, codex_argv, verdict_path, exit_status_path, marker_path, deadline_sec
         spawn=_default_spawn, poll_interval=0.5) -> int:
     start = time.monotonic()
     deadline = compute_watchdog_deadline(start, deadline_sec)
-    rc = 0
-    try:
-        if deadline_sec <= 0 and time.monotonic() >= deadline:
-            raise WatchdogFired()
-        rc = spawn(codex_argv, _stdin_fd())
-    except WatchdogFired:
-        rc = 124  # timeout convention
+
+    proc = spawn(codex_argv, _stdin_fd())
+
+    # Actively enforce the absolute deadline: poll for exit rather than blocking on an
+    # unbounded wait(), so a hung Codex is killed even if the host itself has crashed.
+    while True:
+        rc = proc.poll()
+        if rc is not None:
+            break
+        if time.monotonic() >= deadline:
+            proc.kill()
+            try:
+                proc.wait(timeout=10)
+            except Exception:
+                pass
+            rc = 124  # timeout convention -- the watchdog fired
+            break
+        time.sleep(poll_interval)
+
     # Record exit status for the host to read alongside the verdict.
     with open(exit_status_path, "w", encoding="utf-8") as fh:
         fh.write(str(rc))
+
     # Block until the host signals it has copied the verdict out (or the deadline passes).
+    # Bounded wait: reuse the same absolute deadline so this loop can never block forever.
     while not os.path.exists(marker_path):
         if time.monotonic() >= deadline:
             break
