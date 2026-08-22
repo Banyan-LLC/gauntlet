@@ -90,3 +90,9 @@ def test_nan_constant_rejected():
 def test_infinity_constant_rejected():
     r = parse_run_usage(['{"type":"turn.completed","usage":{"input_tokens":5},"y":Infinity}'])
     assert not r.ok and "not valid JSON" in r.reason
+
+
+def test_deeply_nested_line_fails_closed():
+    deep = "[" * 100000 + "]" * 100000
+    r = parse_run_usage([deep])  # must fail closed, not raise RecursionError
+    assert not r.ok

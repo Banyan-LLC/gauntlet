@@ -29,7 +29,7 @@ def parse_run_usage(event_lines: list[str]) -> UsageResult:
             continue
         try:
             parsed = json.loads(line, parse_constant=_reject_constant)
-        except ValueError as exc:  # JSONDecodeError is a ValueError; also catches _reject_constant
+        except (ValueError, RecursionError) as exc:  # ValueError=JSONDecodeError/_reject_constant/oversized-int; RecursionError=deeply nested
             return _bad(f"event stream line is not valid JSON: {exc}")
         if not isinstance(parsed, dict):
             shape = "null" if parsed is None else type(parsed).__name__

@@ -55,3 +55,9 @@ def test_lone_surrogate_verdict_returns_invalid_not_raises():
     raw = json.dumps({"verdict": "request_changes", "summary": chr(0xD800), "recommendations": []})
     r = normalize_verdict(raw, SCHEMA)
     assert not r.valid and "canonicalization failed" in r.reason
+
+
+def test_deeply_nested_json_returns_invalid_not_raises():
+    deep = "[" * 100000 + "]" * 100000
+    r = normalize_verdict(deep, SCHEMA)  # must fail closed, not raise RecursionError
+    assert not r.valid

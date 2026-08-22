@@ -179,7 +179,12 @@ def prior_recommendations(state_dir: StateDir, up_to_round: int) -> list[dict]:
         except FileNotFoundError:
             continue
         verdict = json.loads(text, parse_constant=_reject_constant)
-        for i, rec in enumerate(verdict.get("recommendations", [])):
+        if not isinstance(verdict, dict):
+            raise ValueError(f"round-{r}-verdict.json is not a JSON object")
+        recs = verdict.get("recommendations", [])
+        if not isinstance(recs, list):
+            raise ValueError(f"round-{r}-verdict.json 'recommendations' is not a list")
+        for i, rec in enumerate(recs):
             out.append(
                 {
                     "id": recommendation_id(r, i, rec),
@@ -209,7 +214,10 @@ def validate_carryover_ledger(state_dir: StateDir, round_num: int, ledger_path) 
     """Every prior recommendation must appear exactly once with a status; nothing
     invented; copied text byte-identical; a non-addressed item carries a reason.
     `ledger_path` is the caller-supplied ledger file (external to the state dir)."""
-    derived = prior_recommendations(state_dir, round_num)
+    try:
+        derived = prior_recommendations(state_dir, round_num)
+    except (ValueError, RecursionError, OSError, KeyError, TypeError) as exc:
+        return _bad(f"could not read prior verdicts: {exc}")
     ledger_path = Path(ledger_path)
     if not ledger_path.exists():
         return _bad(
@@ -218,7 +226,7 @@ def validate_carryover_ledger(state_dir: StateDir, round_num: int, ledger_path) 
         )
     try:
         ledger = json.loads(ledger_path.read_text(encoding="utf-8"), parse_constant=_reject_constant)
-    except ValueError as exc:  # JSONDecodeError is a ValueError; also catches _reject_constant (NaN/Infinity)
+    except (ValueError, RecursionError) as exc:  # ValueError=JSONDecodeError/_reject_constant/oversized-int; RecursionError=deeply nested
         return _bad(f"ledger is not valid JSON: {exc}")
     if not isinstance(ledger, dict):
         return _bad("ledger JSON must be an object")

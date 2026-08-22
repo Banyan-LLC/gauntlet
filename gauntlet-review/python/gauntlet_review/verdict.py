@@ -41,14 +41,14 @@ def normalize_verdict(json_text: str, schema_path: str | os.PathLike) -> Normali
     Behavioral port of Test-Verdict (lib.ps1)."""
     try:
         obj = json.loads(json_text)
-    except json.JSONDecodeError:
+    except (ValueError, RecursionError):  # ValueError covers JSONDecodeError + oversized-int; RecursionError = deeply nested
         return NormalizeResult(False, "structural validation failed", False, None, None)
 
     with open(schema_path, "r", encoding="utf-8") as fh:
         schema = json.load(fh)
     try:
         jsonschema.validate(instance=obj, schema=schema, cls=jsonschema.Draft7Validator)
-    except jsonschema.ValidationError:
+    except (jsonschema.ValidationError, RecursionError):
         return NormalizeResult(False, "structural validation failed", False, None, None)
 
     downgraded = False

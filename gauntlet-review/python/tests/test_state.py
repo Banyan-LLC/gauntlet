@@ -226,6 +226,22 @@ def test_ledger_surrogate_reason_rejected(tmp_path):
     assert not r.valid and "surrogate" in r.reason
 
 
+def test_ledger_deeply_nested_returns_invalid(tmp_path):
+    _write_verdict(tmp_path, 1, [REC])
+    p = tmp_path / "ledger-2.json"
+    p.write_text("[" * 100000 + "]" * 100000, encoding="utf-8")  # must fail closed, not raise
+    r = validate_carryover_ledger(_sd(tmp_path), 2, p)
+    assert not r.valid
+
+
+def test_corrupt_prior_verdict_fails_closed(tmp_path):
+    (tmp_path / "round-1-verdict.json").write_text("[1, 2, 3]", encoding="utf-8")  # not an object
+    p = tmp_path / "ledger-2.json"
+    p.write_text(json.dumps({"version": 1, "round": 2, "entries": []}), encoding="utf-8")
+    r = validate_carryover_ledger(_sd(tmp_path), 2, p)
+    assert not r.valid and "prior verdicts" in r.reason
+
+
 def test_closed_statedir_raises_not_fallback(tmp_path):
     # After close(), reads must RAISE, never silently degrade to path-based I/O.
     _write_verdict(tmp_path, 1, [REC])
