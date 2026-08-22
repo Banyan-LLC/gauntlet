@@ -4,7 +4,7 @@
 
 > **Authoritative source note.** This plan has been executed. The **authoritative
 > implementation and tests live in `gauntlet-review/python/`** and incorporate hardening
-> added during the Codex PR review beyond the snippets below — notably: handle-backed
+> added during the PR review beyond the snippets below — notably: handle-backed
 > `StateDir` no-follow I/O (replacing the `doc_state_dir` snippet in Task 6), lone-surrogate
 > and non-string-key rejection in `jcs.py` (Task 1), `normalize_verdict` failing closed on
 > canonicalization errors (Task 3), and `NaN`/`Infinity` rejection via `parse_constant` in

@@ -1,10 +1,11 @@
 # Cross-Platform (Unix/macOS) Gauntlet — Container-Sandbox Port Design
 
 **Date:** 2026-08-18
-**Status:** Draft — Codex review reached the **10-round cap** without approval. All 41 findings
-across rounds 1–10 were accepted and addressed; rounds 1–9 were re-reviewed (each round confirmed
-the prior fixes held and surfaced new, deeper issues rather than re-raising old ones), and round-10's
-four findings are incorporated but **not** re-reviewed. Awaiting a human decision on next steps.
+**Status:** Draft — the document review reached its **10-round cap** without a formal approval;
+under the "no P0/P1 to proceed" rule all blocking findings were cleared. All 41 findings across
+rounds 1–10 were accepted and addressed; rounds 1–9 were re-reviewed (each round confirmed the prior
+fixes held and surfaced new, deeper issues rather than re-raising old ones), and round-10's four
+findings are incorporated.
 **Supersedes:** the "Cross-platform scripts" future note in [`docs/design.md`](../../design.md) (§ Out of scope / future)
 
 ## Overview
@@ -70,6 +71,13 @@ environment-minimization model:
 | Windows | PowerShell 7 | Host subprocess + env-minimization (`CODEX_HOME` + `SystemRoot`) | Verified; unchanged |
 | Linux | Python 3 | Codex in a pinned, locked-down container (host arch) | New |
 | macOS | Python 3 | Codex in the same Linux container via Docker Desktop (arm64 on Apple Silicon) | New — same *mechanism*; arch-specific image, battery-verified per host |
+
+**Native Windows without Docker is a retained, first-class path (required).** Windows keeps the
+verified PowerShell env-minimization stack and **never requires Docker**; this port must not make a
+container runtime a prerequisite on Windows. Docker/Podman is required only for the new Unix/macOS
+container path. (The Python offline core is OS-agnostic and runs on Windows for development/CI, but
+that does not change the supported Windows *execution* path, which remains PowerShell + native
+subprocess.)
 
 ## Architecture: the container as the boundary
 
@@ -266,7 +274,7 @@ Most of `lib.ps1` is OS-agnostic logic that ports directly; only the boundary is
 | `broker.py` | (new) | Host-side auth broker: refresh host-side, stage an access-only token, cleanup |
 | `publish.py` | `publish-review.ps1` + `Publish-CodexReview` | Direct port; still shells to `gh`; provenance binding, idempotency (`--paginate --slurp`), drift, dismissal all preserved |
 | `premises.py` | `Test-PremiseManifest`, calibration, live-evidence | Re-keyed to the container fingerprints (below) |
-| `state.py` | `Get-StateDir`, carry-over ledger, create-only artifacts | Direct port; **identical path layout and logical schema** to the PS stack. **Handle-backed confinement:** the state directory is returned as a retained handle (`StateDir`) and all artifact I/O is performed relative to it with no-follow semantics (POSIX `dir_fd`/`O_NOFOLLOW`; per-file symlink rejection elsewhere), so a symlinked component can never redirect a read or write outside the directory and there is no TOCTOU gap between creation and use. |
+| `state.py` | `Get-StateDir`, carry-over ledger, create-only artifacts | Direct port; **identical path layout and logical schema** to the PS stack. **Handle-backed confinement:** the state directory is returned as a retained handle (`StateDir`) and all artifact I/O is performed relative to it with no-follow semantics (POSIX `dir_fd`/`O_NOFOLLOW`; per-file symlink rejection elsewhere), so a symlinked component can never redirect a read or write outside the directory and there is no TOCTOU gap between creation and use. **Scope (narrowed):** this covers symlinked components at create/open time, not a concurrent local attacker who *renames* the state dir out of the repo mid-run (a retained fd tracks the inode); portable atomic anti-rename confinement is not available, so deployments needing it must use a trusted non-renamable state root. The state dir lives in the user's own checkout / git dir, not attacker space. |
 | `invoke_codex.py` | `invoke-codex.ps1` entry point | One review round: pin check → stage credential → run → usage gate → verdict validate |
 
 ## Premises / live-evidence, re-keyed

@@ -5,7 +5,16 @@ Test-CarryOverLedger, and ConvertTo-CarryOverText (lib.ps1).
 Confinement is handle-backed: `doc_state_dir` returns a `StateDir` that retains an
 open descriptor to the final directory and performs all artifact I/O relative to it
 with no-follow semantics, so a symlink swap after creation cannot redirect reads or
-writes outside the directory. Pathnames are display-only."""
+writes outside the directory. Pathnames are display-only.
+
+Confinement scope (narrowed, explicit): this defends against symlinked path components
+at creation/open time. It does NOT defend against a concurrent local attacker who
+*renames* the state directory (or an ancestor) out of the repository mid-run — a
+retained directory fd tracks the inode, so subsequent no-follow I/O would follow it to
+its new location. Portable atomic anti-rename confinement is not available; a deployment
+that requires it must place state under a trusted, non-renamable root. This matches the
+semi-trusted nature of the working repository (the state dir lives in the user's own
+checkout / git dir, not in attacker-controlled space)."""
 from __future__ import annotations
 
 import json
@@ -47,11 +56,13 @@ class StateDir:
 
     @classmethod
     def open(cls, path) -> "StateDir":
-        """Open a handle to an EXISTING state directory (used by callers/tests that did
-        not create it via doc_state_dir)."""
+        """Open a handle to an EXISTING state directory. The final component is opened
+        with O_NOFOLLOW so a symlinked state directory is rejected. The PARENT chain is
+        assumed trusted here — for an untrusted root, obtain the handle from
+        `doc_state_dir`, which traverses every component no-follow from the repo root."""
         path = Path(path)
         if _POSIX_NOFOLLOW:
-            return cls(path, os.open(path, os.O_RDONLY | os.O_DIRECTORY))
+            return cls(path, os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW))
         return cls(path, None)
 
     def read_text(self, name: str) -> str:
