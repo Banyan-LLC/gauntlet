@@ -1842,3 +1842,19 @@ still reclaimed), makes `staging_root` mandatory, reclaims staging even with no 
 reap on confirmed container removal AND staging reclamation, and removes the lease after; the
 bounded runner includes the stdin writer in post-exit liveness so a stdin-only descendant is
 tree-killed; `parse_image_identity` enforces an expected digest exactly.
+
+**Fixed in Phase-2 from PR-review rounds 5-7 (commits `c8d4a13`, `a55cdc6`, `<workdir>`):** reaper
+acts only on exact generated run ids (`gauntlet-`+32hex) and tolerates a `list_labeled` outage
+(invalidating credentials fail-safe while retaining the lease when container state is
+unconfirmed); `bounded` uses `proc.pid` directly as the POSIX PGID and clamps aggregate retention
+to the chunk size (fixing a false-overflow regression); `broker.discard_staging` distinguishes
+ENOENT, refuses a symlinked staging entry, and preserves unlink/rmtree errors; `runtime` raises a
+typed `ImageIdentityMismatch`; the container `--workdir` is the tmpfs root.
+
+**PR-review terminal state (rounds reached the no-P0/P1 bar at round 5 and again at round 7):**
+Two P2 hardening items are deliberately deferred as non-blocking follow-ups: (a) `discard_staging`
+should operate through no-follow directory handles (openat/dir-fd) and return a TYPED cleanup
+result rather than `str | None`, closing the residual intermediate-symlinked-parent TOCTOU on
+POSIX; (b) `reap_stale` should return a STRUCTURED partial-cleanup result (successful reaps +
+per-source errors) instead of `list[str]`. Both are correctness/robustness refinements beyond the
+no-P1 bar and are good first tasks alongside the Phase-3 `invoke_codex` wiring.
