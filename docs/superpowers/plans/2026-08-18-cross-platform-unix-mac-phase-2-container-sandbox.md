@@ -1801,6 +1801,13 @@ fix-later Minors. They are recorded here so Phase-3 planning picks them up:
 - **Online secret-scanning of streamed stdout/stderr (spec line 146):** the spec calls for
   secret-scanning as the runner reads; the bounded runner currently bounds/retains bytes but does
   not scan. Belongs with the Phase-4 publish/diagnostic-retention path.
+- **Windows-only bounded-runner residuals (non-production; this Python container path executes on
+  Unix/macOS, Windows uses the PowerShell stack):** (a) a fully reparse-point-resistant credential
+  open would close the residual check-then-open TOCTOU that remains after the `islink` fail-closed
+  guard; (b) a Windows Job Object would reap a descendant that inherits the pipes and outlives the
+  direct child (POSIX handles this via the captured process group). Guarded stream closes already
+  prevent any hang on Windows; only the descendant-reap and TOCTOU residuals remain, both on the
+  non-production platform.
 
 **Already fixed in Phase-2 (commit `dddae2a`):** partial-file cleanup in
 `extract_single_file_from_tar` (M-1); staging-dir rollback on a post-makedirs write failure in
@@ -1813,3 +1820,11 @@ copy-out and surfaces `rm` failures; post-kill cleanup bounded to one grace; Win
 kill; `parse_userns_mapping` detects rootful `--userns-remap` (M-4); broker Windows `islink`
 fail-closed no-follow and `OSError`→`BrokerError` mapping (T5b); `reap_stale` reports reaped only
 after confirmed removal.
+
+**Fixed in Phase-2 from PR-review round 2 (commit `cffc18b`):** bounded runner tracks full
+write+flush completion and surfaces INCOMPLETE prompt delivery even when the child exits cleanly;
+a unified event loop observes overflow/stdin-fault/deadline/exit concurrently (immediate kill on a
+flood during a stalled stdin); the process group is captured up front for a POSIX tree-kill that
+survives direct-child exit and reaps lingering pipe-holding descendants; stream closes are guarded
+behind thread liveness (no blocking close); the aggregate cap now bounds RETAINED bytes; broker
+rollback invalidates `auth.json` first and reports residual credential material.
