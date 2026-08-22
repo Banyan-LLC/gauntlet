@@ -17,17 +17,26 @@ def discard_staging(staging_dir: str) -> str | None:
     partial/failed rmtree. Idempotent (a missing dir is fine). Returns a description of any
     residual that could NOT be removed (so the caller can surface it), or None when it is gone.
     Used both for rollback of a half-staged credential and for end-of-round reclamation."""
-    if not os.path.exists(staging_dir):
-        return None
+    try:
+        os.lstat(staging_dir)  # no-follow existence check
+    except FileNotFoundError:
+        return None            # ENOENT: genuinely nothing to reclaim
+    except OSError as exc:     # a permission/other stat error is NOT "absent" -> a real failure
+        return f"{staging_dir}: cannot stat staging dir: {exc}"
     auth = os.path.join(staging_dir, "auth.json")
+    errors = []
     try:
         if os.path.lexists(auth):
-            os.unlink(auth)  # invalidate the token before removing anything else
-    except OSError:
-        pass
-    shutil.rmtree(staging_dir, ignore_errors=True)
-    if os.path.exists(staging_dir):
-        return f"{staging_dir} (auth.json still present: {os.path.lexists(auth)})"
+            os.unlink(auth)  # invalidate the token before removing the directory
+    except OSError as exc:
+        errors.append(f"unlink auth.json: {exc}")
+    try:
+        shutil.rmtree(staging_dir)  # NOT ignore_errors: a removal failure must be observed
+    except OSError as exc:
+        errors.append(f"rmtree: {exc}")
+    still_here = os.path.lexists(staging_dir)  # verify removal without following symlinks
+    if still_here or errors:
+        return f"{staging_dir} residual (auth.json present={os.path.lexists(auth)}; errors={errors})"
     return None
 
 

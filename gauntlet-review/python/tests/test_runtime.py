@@ -3,6 +3,7 @@ import json
 import pytest
 
 from gauntlet_review.runtime import (
+    ImageIdentityMismatch,
     RuntimeUnavailable,
     detect_runtime,
     parse_image_identity,
@@ -105,6 +106,17 @@ def test_parse_image_identity_expected_digest_with_no_repo_digests_raises():
     doc = json.dumps({"Id": "sha256:aaaa", "Os": "linux", "Architecture": "amd64", "RepoDigests": []})
     with pytest.raises(ValueError):
         parse_image_identity(doc, expected_digest="sha256:bbbb")
+
+
+def test_parse_image_identity_mismatch_is_typed():
+    # Identity failures raise the typed ImageIdentityMismatch (a ValueError subclass) so Phase 3
+    # can map them to exit 13, distinct from malformed-inspect parse errors.
+    doc = json.dumps({
+        "Id": "sha256:aaaa", "Os": "linux", "Architecture": "amd64",
+        "RepoDigests": ["ghcr.io/x/codex@sha256:cccc"],
+    })
+    with pytest.raises(ImageIdentityMismatch):
+        parse_image_identity(doc, expected_repo="ghcr.io/x/codex", expected_digest="sha256:bbbb")
 
 
 def test_parse_image_identity_expected_digest_match_ok():

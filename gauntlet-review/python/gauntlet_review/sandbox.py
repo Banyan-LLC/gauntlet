@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass
 
 from gauntlet_review.broker import discard_staging
-from gauntlet_review.lease import RunLease
+from gauntlet_review.lease import RunLease, is_valid_run_id
 from gauntlet_review.runconfig import RunConfig, build_create_argv
 
 
@@ -91,7 +91,12 @@ def reap_stale(runtime, *, lease_dir: str, label_prefix: str, staging_root: str)
     (auth.json invalidated first). A run is reported reaped ONLY when its container is gone (or
     never existed) AND its staging is confirmed reclaimed; a residual leaves it for the next sweep.
     The lease file is removed after a confirmed reap."""
-    labeled = set(runtime.list_labeled(label_prefix))
+    try:
+        labeled = set(runtime.list_labeled(label_prefix))
+    except Exception:
+        # A daemon outage / listing error must NOT abort the sweep: credential reclamation from
+        # local lease + staging records is independent of container discovery and still runs.
+        labeled = set()
     run_ids = set(labeled)
     for name in _safe_listdir(lease_dir):
         if name.endswith(".lease"):
@@ -101,6 +106,8 @@ def reap_stale(runtime, *, lease_dir: str, label_prefix: str, staging_root: str)
 
     reaped = []
     for run_id in sorted(run_ids):
+        if not is_valid_run_id(run_id):
+            continue  # only exact generated run ids -- never lease/rmtree an unrelated entry
         lease_path = os.path.join(lease_dir, f"{run_id}.lease")
         lease = RunLease.try_acquire(lease_path)
         if lease is None:

@@ -76,17 +76,16 @@ def _make_killer(proc):
     """Return a callable that terminates the whole process TREE. On POSIX the group id is
     captured now so the group can be killed even after the direct child exits (a descendant
     that inherited the pipes keeps the group alive). On Windows termination is best-effort."""
-    pgid = None
-    if os.name == "posix":
-        try:
-            pgid = os.getpgid(proc.pid)
-        except OSError:
-            pgid = None
+    # start_new_session=True makes the child its own process-group leader, so the PGID EQUALS the
+    # child pid. Use proc.pid directly rather than querying os.getpgid(proc.pid): the query can
+    # race a child that spawns a descendant and exits immediately (pgid then unknown), whereas the
+    # pid is known unconditionally and the group persists while the descendant lives.
+    pgid = proc.pid if os.name == "posix" else None
 
     def kill():
         try:
             if os.name == "posix":
-                os.killpg(pgid if pgid is not None else os.getpgid(proc.pid), signal.SIGKILL)
+                os.killpg(pgid, signal.SIGKILL)
                 return
             # Windows: kill the whole tree by PID; leaves a descendant that outlives the direct
             # child un-reaped (documented non-production limitation -- Windows uses the PS stack).

@@ -3,7 +3,17 @@ the reaper must non-blockingly acquire it before reclaiming a run's container/st
 from __future__ import annotations
 
 import os
+import re
 import secrets
+
+# Generated run ids are exactly this shape. The reaper validates against it before touching any
+# container/lease/staging entry, so a stray or hostile path under a misconfigured staging root
+# can never be acquired as a lease or recursively deleted.
+RUN_ID_RE = re.compile(r"^gauntlet-[0-9a-f]{32}$")
+
+
+def is_valid_run_id(candidate: str) -> bool:
+    return bool(RUN_ID_RE.match(candidate))
 
 if os.name == "posix":
     import fcntl

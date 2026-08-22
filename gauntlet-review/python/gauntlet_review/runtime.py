@@ -15,6 +15,13 @@ class RuntimeUnavailable(Exception):
     """No usable container runtime (maps to exit 12 in Phase 3)."""
 
 
+class ImageIdentityMismatch(ValueError):
+    """The inspected image does not match the requested/pinned identity (repo or digest).
+    Distinct from a plain ValueError for malformed inspect data so Phase 3 can map an identity
+    mismatch to exit 13 (image pin) rather than an environment/parse error. Subclasses ValueError
+    so existing `pytest.raises(ValueError)` callers still match."""
+
+
 @dataclass
 class ImageIdentity:
     config_digest: str
@@ -58,13 +65,13 @@ def parse_image_identity(inspect_json: str, expected_repo: str | None = None,
     if expected_repo is not None:
         matches = {rd.split("@", 1)[1] for rd in repo_digests if rd.split("@", 1)[0] == expected_repo}
         if len(matches) > 1:
-            raise ValueError(f"ambiguous manifest digests for repo {expected_repo}: {sorted(matches)}")
+            raise ImageIdentityMismatch(f"ambiguous manifest digests for repo {expected_repo}: {sorted(matches)}")
         if not matches and repo_digests:
             # Repo digests exist but none is the requested repo: a pulled image whose identity
             # does NOT match what was requested. Fail rather than silently look like a local build
             # (which is the only legitimate no-digest case).
             have = sorted({rd.split("@", 1)[0] for rd in repo_digests})
-            raise ValueError(f"no manifest digest for requested repo {expected_repo}; image carries {have}")
+            raise ImageIdentityMismatch(f"no manifest digest for requested repo {expected_repo}; image carries {have}")
         manifest = next(iter(matches)) if matches else None
     else:
         digests = {rd.split("@", 1)[1] for rd in repo_digests}
@@ -74,9 +81,9 @@ def parse_image_identity(inspect_json: str, expected_repo: str | None = None,
         # Enforce the pinned reference exactly: a missing or differing manifest digest is a
         # hard identity failure, not something to accept silently.
         if manifest is None:
-            raise ValueError(f"expected manifest digest {expected_digest} but image carries none matching")
+            raise ImageIdentityMismatch(f"expected manifest digest {expected_digest} but image carries none matching")
         if manifest != expected_digest:
-            raise ValueError(f"image manifest digest {manifest} does not match expected {expected_digest}")
+            raise ImageIdentityMismatch(f"image manifest digest {manifest} does not match expected {expected_digest}")
     return ImageIdentity(
         config_digest=doc["Id"],
         os=doc["Os"],
