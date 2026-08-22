@@ -209,6 +209,15 @@ def test_read_text_rejects_symlinked_state_file(tmp_path):
         prior_recommendations(_sd(sd_path), up_to_round=2)
 
 
+def test_closed_statedir_raises_not_fallback(tmp_path):
+    # After close(), reads must RAISE, never silently degrade to path-based I/O.
+    _write_verdict(tmp_path, 1, [REC])
+    sd = StateDir.open(tmp_path)
+    sd.close()
+    with pytest.raises(ValueError):
+        sd.read_text("round-1-verdict.json")
+
+
 def test_render_carryover_text_sorted_and_labeled(tmp_path):
     entries = [
         {"id": "r1-bbb", "severity": "nit", "location": "L2", "issue": "i2", "suggestion": "s2", "status": "addressed", "reason": None},

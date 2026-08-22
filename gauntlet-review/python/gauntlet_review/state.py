@@ -49,6 +49,8 @@ class StateDir:
     def __init__(self, path, dir_fd):
         self._path = Path(path)
         self._dir_fd = dir_fd  # int on POSIX; None on the fallback
+        self._posix = dir_fd is not None  # backend selector, FIXED at construction (not `_dir_fd is None`)
+        self._closed = False
 
     @property
     def path(self) -> Path:
@@ -68,9 +70,11 @@ class StateDir:
     def read_text(self, name: str) -> str:
         """Read a file directly inside this directory (single path component), never
         following a symlink. Raises FileNotFoundError if absent."""
+        if self._closed:
+            raise ValueError("StateDir is closed")
         if "/" in name or "\\" in name or name in ("", ".", ".."):
             raise ValueError(f"state file name must be a single component: {name!r}")
-        if self._dir_fd is not None:
+        if self._posix:
             fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=self._dir_fd)
             with os.fdopen(fd, "r", encoding="utf-8") as fh:
                 return fh.read()
@@ -80,12 +84,13 @@ class StateDir:
         return p.read_text(encoding="utf-8")
 
     def close(self) -> None:
-        if self._dir_fd is not None:
+        if self._posix and self._dir_fd is not None:
             try:
                 os.close(self._dir_fd)
             except OSError:
                 pass
-            self._dir_fd = None
+        self._dir_fd = None
+        self._closed = True  # subsequent operations RAISE — never silently fall back to path I/O
 
     def __enter__(self) -> "StateDir":
         return self
