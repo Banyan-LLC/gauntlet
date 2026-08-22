@@ -13,10 +13,10 @@ author `geoffroth` · reviewer `BanyanLLC` · round cap 10/phase · CI-fix cap 3
 ## Pipeline
 
 1. **Spec**: superpowers brainstorming → spec committed →
-   **INSERTION POINT A**: gauntlet-review skill, doc mode, phase `spec` → approval or human flag →
+   **INSERTION POINT A**: pre-review hardening (below), then gauntlet-review skill, doc mode, phase `spec` → approval or human flag →
    user reviews the Codex-approved spec (brainstorming's gate).
 2. **Plan**: superpowers writing-plans → plan committed →
-   **INSERTION POINT B**: gauntlet-review, doc mode, phase `plan` (approved spec as TRUSTED CONTEXT — the only trusted context) →
+   **INSERTION POINT B**: pre-review hardening (below), then gauntlet-review, doc mode, phase `plan` (approved spec as TRUSTED CONTEXT — the only trusted context) →
    user plan-review gate. NEVER start implementation before it.
 3. **Build**: subagent-driven development per existing conventions. No Codex involvement.
 4. **PR**:
@@ -24,7 +24,7 @@ author `geoffroth` · reviewer `BanyanLLC` · round cap 10/phase · CI-fix cap 3
       (`GH_TOKEN=$(gh auth token -u geoffroth) gh pr create …` from Git Bash).
    b. CI gate (author-owned): `GH_TOKEN=$(gh auth token -u geoffroth) gh pr checks <n> --watch`;
       fix+re-push; 3 consecutive failures → human flag. Only green builds reach review.
-   c. gauntlet-review pr mode: record `(baseOid, headSha, baseRefName, baseTipOid)` — the latter two
+   c. Pre-review hardening (below), THEN gauntlet-review pr mode: record `(baseOid, headSha, baseRefName, baseTipOid)` — the latter two
       are the base branch's live tip (a SEPARATE endpoint from the PR's static `baseRefOid`; see
       gauntlet-review/SKILL.md's pr-mode-inputs section and docs/build-log/task-14-report.md).
       **Before composing the prompt, confirm the pushed head is actually live**:
@@ -42,6 +42,27 @@ author `geoffroth` · reviewer `BanyanLLC` · round cap 10/phase · CI-fix cap 3
       wasted round happened on), then a FRESH round whose ledger records each prior finding as
       addressed/disputed/outstanding; re-review the new `(baseOid, headSha, baseRefName, baseTipOid)`.
 5. **Handoff**: `Test-HandoffFresh` (lib.ps1) must return Fresh — APPROVED state, commit match, head oid unchanged, AND the base ref's name/live tip unchanged (a separate, independently-checked endpoint from the PR's static base oid — see docs/build-log/task-14-report.md). Stale → re-sync, re-enter review; if the reason is specifically head or base drift, first call `Revoke-SupersededReview` (lib.ps1) to retire the stale tool-owned approval — see gauntlet-review/SKILL.md's Handoff section for the exact contract and its three safety preconditions. `Test-HandoffFresh` itself never mutates. Then notify the user (message + push notification). **The user merges. Never merge.**
+
+## Pre-review hardening (before EVERY Codex gate — points A, B, and 4c)
+
+Codex rounds are live and paid; local subagents are cheap. Before spending a round, pre-harden the
+artifact with the SAME lenses the reviewer applies, so the FIRST submission already clears most of
+them. WHY: PR #2 took **7 rounds** mostly because instance-level fixes revealed a defect *class* a
+layer at a time (one class unfolded over eight rounds) — the reviewer was not withholding, the
+depth was emergent. Full rationale, evidence, and the lens list: `gauntlet-review/references/review-lenses.md`.
+
+- Dispatch **one subagent per lens** (fail-closed; resource bounds & lifecycle; path/filesystem
+  safety; cross-platform parity; typed/structured errors; spec conformance) over the changed files
+  (pr) or the artifact (doc), each given the controlling spec.
+- Aggregate; **fix by CLASS, not instance** — every sibling occurrence, every call site, every
+  platform, in one pass; then re-run tests + a regression scan (a fix you have not exercised can
+  itself cost a round, as PR #2's round-6 regression did).
+- THEN invoke gauntlet-review. Compose its prompt from the current template — the THOROUGHNESS
+  MANDATE is REQUIRED — and put the security invariants, the production platform, and any
+  explicitly-accepted/deferred limitations into TRUSTED CONTEXT (a stated deferral is one the
+  reviewer will not re-raise).
+- This does NOT replace or soften the Codex gate; it raises the floor so the gate converges in
+  ~2–3 rounds. Skip only for a genuinely trivial diff.
 
 ## Identity
 
