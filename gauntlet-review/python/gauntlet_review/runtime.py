@@ -40,12 +40,16 @@ def detect_runtime(candidates=("docker", "podman"), *, _which=None, _probe=None)
     )
 
 
-def parse_image_identity(inspect_json: str, expected_repo: str | None = None) -> ImageIdentity:
+def parse_image_identity(inspect_json: str, expected_repo: str | None = None,
+                         expected_digest: str | None = None) -> ImageIdentity:
     """Parse `image inspect` output into the pinned identity. The manifest digest is tied to
     the requested repository rather than blindly taking the first RepoDigests entry: with
     multiple repo digests (or a multi-platform index) the first entry can be the wrong image.
     Pass `expected_repo` (e.g. "ghcr.io/x/codex") to select its digest and reject ambiguity;
-    without it, a digest is recorded only when every RepoDigests entry agrees."""
+    without it, a digest is recorded only when every RepoDigests entry agrees. Pass
+    `expected_digest` (e.g. "sha256:...") to REQUIRE that the selected manifest digest matches
+    exactly -- a mismatch or absence raises, so a pinned reference is genuinely enforced rather
+    than accepted with a different or empty digest."""
     doc = json.loads(inspect_json)
     if isinstance(doc, list):  # `image inspect` returns a JSON array
         doc = doc[0]
@@ -66,6 +70,13 @@ def parse_image_identity(inspect_json: str, expected_repo: str | None = None) ->
         digests = {rd.split("@", 1)[1] for rd in repo_digests}
         # Only pin a digest when it is unambiguous; never guess by taking the first of several.
         manifest = next(iter(digests)) if len(digests) == 1 else None
+    if expected_digest is not None:
+        # Enforce the pinned reference exactly: a missing or differing manifest digest is a
+        # hard identity failure, not something to accept silently.
+        if manifest is None:
+            raise ValueError(f"expected manifest digest {expected_digest} but image carries none matching")
+        if manifest != expected_digest:
+            raise ValueError(f"image manifest digest {manifest} does not match expected {expected_digest}")
     return ImageIdentity(
         config_digest=doc["Id"],
         os=doc["Os"],

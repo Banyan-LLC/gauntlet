@@ -91,6 +91,31 @@ def test_parse_image_identity_local_build_with_expected_repo_is_none():
     assert parse_image_identity(doc, expected_repo="ghcr.io/x/codex").manifest_digest is None
 
 
+def test_parse_image_identity_expected_digest_mismatch_raises():
+    doc = json.dumps({
+        "Id": "sha256:aaaa", "Os": "linux", "Architecture": "amd64",
+        "RepoDigests": ["ghcr.io/x/codex@sha256:cccc"],
+    })
+    with pytest.raises(ValueError):
+        parse_image_identity(doc, expected_repo="ghcr.io/x/codex", expected_digest="sha256:bbbb")
+
+
+def test_parse_image_identity_expected_digest_with_no_repo_digests_raises():
+    # A digest-pinned reference must not be satisfied by an image that carries no digest at all.
+    doc = json.dumps({"Id": "sha256:aaaa", "Os": "linux", "Architecture": "amd64", "RepoDigests": []})
+    with pytest.raises(ValueError):
+        parse_image_identity(doc, expected_digest="sha256:bbbb")
+
+
+def test_parse_image_identity_expected_digest_match_ok():
+    doc = json.dumps({
+        "Id": "sha256:aaaa", "Os": "linux", "Architecture": "amd64",
+        "RepoDigests": ["ghcr.io/x/codex@sha256:bbbb"],
+    })
+    idn = parse_image_identity(doc, expected_repo="ghcr.io/x/codex", expected_digest="sha256:bbbb")
+    assert idn.manifest_digest == "sha256:bbbb"
+
+
 def test_parse_userns_mapping_rootless():
     doc = json.dumps({"host": {"security": {"rootless": True}}})
     assert parse_userns_mapping(doc)["rootless"] is True

@@ -157,38 +157,80 @@ def test_rm_failure_is_surfaced(tmp_path):
 
 
 def test_reaper_does_not_report_run_when_rm_fails(tmp_path):
-    lease_dir = tmp_path / "leases"
-    lease_dir.mkdir()
+    lease_dir = tmp_path / "leases"; lease_dir.mkdir()
+    staging_root = tmp_path / "staging"; staging_root.mkdir()
     (lease_dir / "gauntlet-stuck.lease").write_text("", encoding="utf-8")
 
     class RT(FakeRuntime):
         def list_labeled(self, prefix):
             return ["gauntlet-stuck"]
-    reaped = reap_stale(RT(rm_raises=True), lease_dir=str(lease_dir), label_prefix="gauntlet-")
+    reaped = reap_stale(RT(rm_raises=True), lease_dir=str(lease_dir), label_prefix="gauntlet-",
+                        staging_root=str(staging_root))
     assert reaped == []  # rm failed -> not reported reaped (container still present)
+    assert (lease_dir / "gauntlet-stuck.lease").exists()  # lease kept for the next sweep
 
 
 def test_reaper_skips_a_live_run(tmp_path):
-    lease_dir = tmp_path / "leases"
-    lease_dir.mkdir()
+    lease_dir = tmp_path / "leases"; lease_dir.mkdir()
+    staging_root = tmp_path / "staging"; staging_root.mkdir()
     live = RunLease.acquire(str(lease_dir / "gauntlet-live.lease"))  # a live run holds its lease
     try:
         class RT(FakeRuntime):
             def list_labeled(self, prefix):
                 return ["gauntlet-live"]
-        reaped = reap_stale(RT(), lease_dir=str(lease_dir), label_prefix="gauntlet-")
+        reaped = reap_stale(RT(), lease_dir=str(lease_dir), label_prefix="gauntlet-",
+                            staging_root=str(staging_root))
         assert "gauntlet-live" not in reaped  # live run must not be reaped
     finally:
         live.release()
 
 
 def test_reaper_reclaims_a_dead_run(tmp_path):
-    lease_dir = tmp_path / "leases"
-    lease_dir.mkdir()
+    lease_dir = tmp_path / "leases"; lease_dir.mkdir()
+    staging_root = tmp_path / "staging"; staging_root.mkdir()
     (lease_dir / "gauntlet-dead.lease").write_text("", encoding="utf-8")  # no one holds it
 
     class RT(FakeRuntime):
         def list_labeled(self, prefix):
             return ["gauntlet-dead"]
-    reaped = reap_stale(RT(), lease_dir=str(lease_dir), label_prefix="gauntlet-")
+    reaped = reap_stale(RT(), lease_dir=str(lease_dir), label_prefix="gauntlet-",
+                        staging_root=str(staging_root))
     assert reaped == ["gauntlet-dead"]
+    assert not (lease_dir / "gauntlet-dead.lease").exists()  # lease removed after a confirmed reap
+
+
+def test_reaper_reclaims_staging_when_no_container_exists(tmp_path):
+    # Crash BETWEEN staging the credential and creating the container: a staging dir + lease
+    # exist but no labeled container. The reaper must still discover and reclaim the credential.
+    lease_dir = tmp_path / "leases"; lease_dir.mkdir()
+    staging_root = tmp_path / "staging"; staging_root.mkdir()
+    (staging_root / "gauntlet-orphan").mkdir()
+    (staging_root / "gauntlet-orphan" / "auth.json").write_text("{}", encoding="utf-8")
+    (lease_dir / "gauntlet-orphan.lease").write_text("", encoding="utf-8")
+
+    class RT(FakeRuntime):
+        def list_labeled(self, prefix):
+            return []  # NO container was ever created
+    reaped = reap_stale(RT(), lease_dir=str(lease_dir), label_prefix="gauntlet-",
+                        staging_root=str(staging_root))
+    assert reaped == ["gauntlet-orphan"]
+    assert not (staging_root / "gauntlet-orphan").exists()  # credential reclaimed anyway
+
+
+def test_reaper_does_not_report_when_staging_cleanup_fails(tmp_path, monkeypatch):
+    # A forced staging-cleanup failure must NOT be reported as a successful reap (a live token
+    # could remain on disk); the run is left for the next sweep.
+    import gauntlet_review.sandbox as sb
+    lease_dir = tmp_path / "leases"; lease_dir.mkdir()
+    staging_root = tmp_path / "staging"; staging_root.mkdir()
+    (staging_root / "gauntlet-dead").mkdir()
+    (lease_dir / "gauntlet-dead.lease").write_text("", encoding="utf-8")
+    monkeypatch.setattr(sb, "discard_staging", lambda p: "residual: auth.json still present")
+
+    class RT(FakeRuntime):
+        def list_labeled(self, prefix):
+            return ["gauntlet-dead"]
+    reaped = reap_stale(RT(), lease_dir=str(lease_dir), label_prefix="gauntlet-",
+                        staging_root=str(staging_root))
+    assert reaped == []  # staging residual -> not reaped
+    assert (lease_dir / "gauntlet-dead.lease").exists()  # lease kept for retry

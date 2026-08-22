@@ -74,30 +74,59 @@ def run_round(runtime, cfg: RunConfig, *, prompt_bytes: bytes, timeout_sec: floa
     return result
 
 
-def reap_stale(runtime, *, lease_dir: str, label_prefix: str, staging_root: str | None = None) -> list[str]:
-    """Reap crashed runs: for each labeled container whose lease is free (i.e. not live), kill +
-    remove it, and — when `staging_root` is given — reclaim its credential-bearing staging dir at
-    the convention path `{staging_root}/{run_id}` (invalidating auth.json first). This is the
-    run->staging mapping the reaper needs; the caller (invoke_codex) must stage each run under
-    `{staging_root}/{run_id}` for it to hold."""
+def _safe_listdir(path: str) -> list[str]:
+    try:
+        return os.listdir(path)
+    except OSError:
+        return []
+
+
+def reap_stale(runtime, *, lease_dir: str, label_prefix: str, staging_root: str) -> list[str]:
+    """Reap crashed runs. Run ids are enumerated from THREE independent sources — labeled
+    containers, `.lease` files, and staging dirs — so a crash BETWEEN staging the credential and
+    creating the container (no labeled container yet) is still discovered and its credential
+    reclaimed. `staging_root` is mandatory: the reaper's whole point is credential lifecycle, so
+    every run stages under the convention path `{staging_root}/{run_id}`. For each run whose lease
+    is free (i.e. not live): kill+remove its container IF one exists, then reclaim its staging dir
+    (auth.json invalidated first). A run is reported reaped ONLY when its container is gone (or
+    never existed) AND its staging is confirmed reclaimed; a residual leaves it for the next sweep.
+    The lease file is removed after a confirmed reap."""
+    labeled = set(runtime.list_labeled(label_prefix))
+    run_ids = set(labeled)
+    for name in _safe_listdir(lease_dir):
+        if name.endswith(".lease"):
+            run_ids.add(name[: -len(".lease")])
+    for name in _safe_listdir(staging_root):
+        run_ids.add(name)
+
     reaped = []
-    for run_id in runtime.list_labeled(label_prefix):
+    for run_id in sorted(run_ids):
         lease_path = os.path.join(lease_dir, f"{run_id}.lease")
         lease = RunLease.try_acquire(lease_path)
         if lease is None:
             continue  # lease held -> run is live -> never reap
         try:
-            try:
-                runtime.kill(run_id)
-            except Exception:
-                pass  # a stale run may already be dead; kill is best-effort
-            try:
-                runtime.rm(run_id)
-                reaped.append(run_id)  # report reaped ONLY after confirmed removal
-            except Exception:
-                pass  # rm failed -> container remains -> retried on the next sweep
-            if staging_root is not None:
-                discard_staging(os.path.join(staging_root, run_id))  # reclaim the crashed run's token
+            ok = True
+            if run_id in labeled:  # a container exists -> it MUST be removed to count as reaped
+                try:
+                    runtime.kill(run_id)
+                except Exception:
+                    pass  # best-effort; a stale container may already be dead
+                try:
+                    runtime.rm(run_id)
+                except Exception:
+                    ok = False  # rm failed -> container remains -> retry next sweep
+            # Reclaim the credential-bearing staging dir even when no container was created.
+            residual = discard_staging(os.path.join(staging_root, run_id))
+            if residual is not None:
+                ok = False  # staging cleanup failed -> a live token may remain -> not reaped
+            if ok:
+                reaped.append(run_id)
         finally:
             lease.release()
+        if ok:  # remove the lease file only after a fully confirmed reap
+            try:
+                os.unlink(lease_path)
+            except OSError:
+                pass
     return reaped

@@ -103,6 +103,27 @@ def test_descendant_inheriting_pipes_is_terminated(tmp_path):
     assert not sentinel.exists()  # the descendant was terminated by the tree-kill
 
 
+@pytest.mark.skipif(os.name != "posix",
+                    reason="descendant process-group kill is the POSIX production path; Windows is best-effort")
+def test_descendant_inheriting_only_stdin_is_terminated(tmp_path):
+    # A descendant inherits ONLY stdin (redirecting its own stdout/stderr away) and outlives the
+    # parent. The stdout/stderr drains reach EOF, but the stdin writer stays blocked -> the
+    # liveness check must include the writer so the group is still tree-killed.
+    sentinel = tmp_path / "alive_stdin.txt"
+    parent = (
+        "import subprocess,sys,time\n"
+        "subprocess.Popen([sys.executable,'-c','import time; time.sleep(6); "
+        f"open(r\"{sentinel}\",\"w\").write(\"x\")'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n"
+        "time.sleep(0.5)\n"   # give run_bounded time to capture the process group
+        "sys.exit(0)\n"       # parent exits WITHOUT reading our large stdin
+    )
+    start = time.monotonic()
+    run_bounded([PY, "-c", parent], stdin_bytes=b"y" * 5_000_000, timeout_sec=30)
+    assert (time.monotonic() - start) < _CLEANUP_GRACE_SEC + 5  # bounded; did not hang
+    time.sleep(7)
+    assert not sentinel.exists()  # descendant holding only stdin was still reaped
+
+
 def test_huge_stdin_does_not_deadlock_against_slow_reader():
     # Child reads a little then exits; we still must not block writing a large stdin.
     r = run_bounded([PY, "-c", "import sys; sys.stdin.read(10); print('ok')"],

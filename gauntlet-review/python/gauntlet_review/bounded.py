@@ -192,9 +192,13 @@ def run_bounded(argv, *, stdin_bytes=b"", timeout_sec=1800, env=None, clear_env=
     # a descendant inherited the pipes, so tree-kill to release them (covers the normal-exit
     # path too), then bound the reap AND remaining joins by ONE grace.
     cleanup_deadline = time.monotonic() + _CLEANUP_GRACE_SEC
+    t_in.join(timeout=0.2)
     t_out.join(timeout=0.2)
     t_err.join(timeout=0.2)
-    if t_out.is_alive() or t_err.is_alive():
+    # If ANY pipe worker is still live after the direct child exited, a descendant inherited that
+    # pipe (stdin, stdout, or stderr) and outlived the child -- tree-kill to reap it. Checking
+    # only stdout/stderr would miss a descendant that inherits just stdin and redirects its output.
+    if t_in.is_alive() or t_out.is_alive() or t_err.is_alive():
         kill()
     if proc.poll() is None:
         try:
