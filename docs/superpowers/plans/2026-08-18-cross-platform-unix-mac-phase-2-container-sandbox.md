@@ -58,8 +58,11 @@ Python analogue of `Invoke-BoundedProcess` (lib.ps1): every external command (ru
 Create `gauntlet-review/python/tests/test_bounded.py`:
 
 ```python
+import os
 import sys
 import time
+
+import pytest
 
 from gauntlet_review.bounded import run_bounded
 
@@ -122,6 +125,17 @@ def test_error_surfaced_when_child_stops_reading_stdin_while_alive():
     elapsed = time.monotonic() - start
     assert elapsed < 30
     assert r.timed_out or r.error
+
+
+@pytest.mark.skipif(os.name != "posix", reason="broken-pipe-while-alive is only reliably reproducible on POSIX EPIPE semantics")
+def test_error_surfaced_on_write_failure_while_child_alive():
+    # Child closes its stdin read end but stays alive; a large write then hits EPIPE
+    # while the process is still running -> fast-fail with error, not a full-timeout wait.
+    import time
+    r = run_bounded([PY, "-c", "import sys,time; sys.stdin.close(); time.sleep(30)"],
+                    stdin_bytes=b"x" * 5_000_000, timeout_sec=5)
+    assert r.error and "stdin write failed" in r.error
+    assert not r.timed_out  # it was a detected fault, not a timeout
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -164,7 +178,13 @@ def _drain(stream, cap: int, out: dict, key: str):
     buf = bytearray()
     truncated = False
     while True:
-        chunk = stream.read(65536)
+        try:
+            chunk = stream.read(65536)
+        except (OSError, ValueError):
+            # Best-effort: the main thread may close this pipe out from under us
+            # while we're still blocked reading from an already-timed-out/killed
+            # child. Exit quietly instead of surfacing via threading.excepthook.
+            break
         if not chunk:
             break
         if len(buf) < cap:
@@ -249,11 +269,9 @@ def run_bounded(argv, *, stdin_bytes=b"", timeout_sec=1800, env=None, clear_env=
         except subprocess.TimeoutExpired:
             timed_out = True
             _kill(proc)
-            try:
-                proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                pass
 
+    # Single generic reap for every kill path above (timeout, stalled-stdin
+    # write, or fault-while-alive): avoids a redundant double-wait.
     if (timed_out or error is not None) and proc.poll() is None:
         try:
             proc.wait(timeout=10)
@@ -295,7 +313,7 @@ def run_bounded(argv, *, stdin_bytes=b"", timeout_sec=1800, env=None, clear_env=
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `python -m pytest tests/test_bounded.py -v`
-Expected: PASS (8 tests).
+Expected: PASS (9 tests; the POSIX-only fault-while-alive test skips on Windows, so 8 pass + 1 skipped there and 9 pass on Linux/macOS).
 
 - [ ] **Step 5: Commit**
 

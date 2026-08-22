@@ -28,7 +28,13 @@ def _drain(stream, cap: int, out: dict, key: str):
     buf = bytearray()
     truncated = False
     while True:
-        chunk = stream.read(65536)
+        try:
+            chunk = stream.read(65536)
+        except (OSError, ValueError):
+            # Best-effort: the main thread may close this pipe out from under us
+            # while we're still blocked reading from an already-timed-out/killed
+            # child. Exit quietly instead of surfacing via threading.excepthook.
+            break
         if not chunk:
             break
         if len(buf) < cap:
@@ -113,11 +119,9 @@ def run_bounded(argv, *, stdin_bytes=b"", timeout_sec=1800, env=None, clear_env=
         except subprocess.TimeoutExpired:
             timed_out = True
             _kill(proc)
-            try:
-                proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                pass
 
+    # Single generic reap for every kill path above (timeout, stalled-stdin
+    # write, or fault-while-alive): avoids a redundant double-wait.
     if (timed_out or error is not None) and proc.poll() is None:
         try:
             proc.wait(timeout=10)

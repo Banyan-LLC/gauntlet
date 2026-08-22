@@ -1,5 +1,8 @@
+import os
 import sys
 import time
+
+import pytest
 
 from gauntlet_review.bounded import run_bounded
 
@@ -62,3 +65,14 @@ def test_error_surfaced_when_child_stops_reading_stdin_while_alive():
     elapsed = time.monotonic() - start
     assert elapsed < 30
     assert r.timed_out or r.error
+
+
+@pytest.mark.skipif(os.name != "posix", reason="broken-pipe-while-alive is only reliably reproducible on POSIX EPIPE semantics")
+def test_error_surfaced_on_write_failure_while_child_alive():
+    # Child closes its stdin read end but stays alive; a large write then hits EPIPE
+    # while the process is still running -> fast-fail with error, not a full-timeout wait.
+    import time
+    r = run_bounded([PY, "-c", "import sys,time; sys.stdin.close(); time.sleep(30)"],
+                    stdin_bytes=b"x" * 5_000_000, timeout_sec=5)
+    assert r.error and "stdin write failed" in r.error
+    assert not r.timed_out  # it was a detected fault, not a timeout
