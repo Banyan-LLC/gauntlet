@@ -283,10 +283,13 @@ Same fail-closed structure as the Windows manifest, with container-appropriate f
   (`docs/design.md`): a digest over a **mechanically closed file set — enumerated by an explicit
   manifest, not "roughly the code" (corrects round-9 P1)** — covering **every immutable installed
   file** that enforces the boundary, shapes a verdict, or governs gating/activation/retries/
-  publication: `sandbox.py`, `broker.py`, `premises.py`, `verdict.py`, `usage.py`, `features.py`,
-  `publish.py`, `state.py`, `invoke_codex.py`, the battery, **both complete `SKILL.md` files** (not
-  merely the dispatch lines), **`install.py`/`install.sh`** and their helpers, the
-  `Dockerfile`/entrypoint wrapper, the verdict schema, and any policy/fixture data. **Generated
+  publication: `jcs.py`, `sandbox.py`, `broker.py`, `premises.py`, `verdict.py`, `usage.py`,
+  `features.py`, `publish.py`, `state.py`, `invoke_codex.py`, the battery, **both complete
+  `SKILL.md` files** (not merely the dispatch lines), **`install.py`/`install.sh`** and their
+  helpers, the `Dockerfile`/entrypoint wrapper, the verdict schema, and any policy/fixture data.
+  The set is **not** hand-maintained: a **closure test** walks the imports of every
+  enforcement/output module and fails if any reachable installed local module (such as `jcs.py`,
+  which `verdict.py` imports to shape every normalized verdict) is missing from the digest manifest. **Generated
   manifest and evidence artifacts are explicitly *excluded* from this set** — otherwise the digest
   would be self-referential; their integrity is bound separately by the `live_evidence` fingerprints
   plus a release digest, and **both the closed set and that separate binding are verified before
@@ -439,7 +442,10 @@ sidecar is an optional future hardening tier, explicitly out of scope for v1.
   Because step 3 runs the battery inside the pinned image on the host arch, installing on an
   Apple-Silicon Mac verifies the arm64 boundary on arm64 before anything is installed.
 - **`SKILL.md` platform branch.** The loop protocol is shared prose; the invocation lines branch by
-  OS: Windows → `pwsh -File …/invoke-codex.ps1 …`; Linux/macOS → `python3 …/invoke_codex.py …`.
+  OS: Windows → `pwsh -File …/invoke-codex.ps1 …`; Linux/macOS → **the installed bundle's pinned,
+  fingerprinted interpreter** running `…/invoke_codex.py` (i.e. `<current>/…/venv/bin/python
+  …/invoke_codex.py`), **never a bare `python3`** — consistent with `python_runtime_fingerprint`
+  above, so PATH interpreter drift cannot select a runtime other than the one evidence is bound to.
   **The Unix dispatch resolves `current` to its concrete versioned directory exactly once at the
   start of an operation (`realpath`) and threads that immutable path through every skill-dispatch and
   script invocation for the whole operation (corrects round-7 P1)** — a single atomic symlink flip

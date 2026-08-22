@@ -18,19 +18,30 @@ _MATCH_FIELDS = ("severity", "location", "issue", "suggestion")
 
 
 def doc_state_dir(repo_root, topic: str, phase: str, date: str) -> Path:
-    """docs/superpowers/reviews/{date}-{topic}/{phase}, validated and created."""
+    """docs/superpowers/reviews/{date}-{topic}/{phase}, validated and created.
+    Confinement is anchored to the resolved repository ROOT (not the reviews dir),
+    and rechecked after creation so a symlinked path component cannot redirect writes
+    outside the repository (a plain .resolve() on the reviews dir would follow such a
+    symlink and defeat the check)."""
     if not _TOPIC_RE.match(topic):
         raise ValueError(f"invalid topic '{topic}'")
     if not _DATE_RE.match(date):
         raise ValueError(f"invalid date '{date}'")
     if phase not in ("spec", "plan"):
         raise ValueError(f"invalid phase '{phase}'")
-    root = Path(repo_root) / "docs" / "superpowers" / "reviews"
-    d = (root / f"{date}-{topic}" / phase).resolve()
-    if os.path.commonpath([str(d), str(root.resolve())]) != str(root.resolve()):
-        raise ValueError("state path escapes its root")
+    repo_root = Path(repo_root)
+    d = repo_root / "docs" / "superpowers" / "reviews" / f"{date}-{topic}" / phase
+    # Lexical pre-check (no symlink follow): the path must stay under repo_root.
+    repo_abs = os.path.abspath(repo_root)
+    if os.path.commonpath([os.path.abspath(d), repo_abs]) != repo_abs:
+        raise ValueError("state path escapes the repository root")
     d.mkdir(parents=True, exist_ok=True)
-    return d
+    # Real post-check (resolves symlinks): a symlinked component must not have redirected
+    # the real location outside the repository.
+    repo_real = str(repo_root.resolve())
+    if os.path.commonpath([str(d.resolve()), repo_real]) != repo_real:
+        raise ValueError("state path escapes the repository root (symlink redirection)")
+    return d.resolve()
 
 
 def prior_recommendations(state_dir, up_to_round: int) -> list[dict]:
@@ -96,10 +107,8 @@ def validate_carryover_ledger(state_dir, round_num: int, ledger_path) -> LedgerR
         return _bad(f"ledger is for round {round_val}, invoked for round {round_num}")
 
     entries = ledger.get("entries")
-    if entries is None:
-        entries = []
-    if not isinstance(entries, list):
-        return _bad("ledger 'entries' must be an array")
+    if not isinstance(entries, list):  # missing, null, or non-list all fail closed
+        return _bad("ledger 'entries' must be a present array")
     for e in entries:
         if not isinstance(e, dict):
             return _bad("ledger entry is not an object")

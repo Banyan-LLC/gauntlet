@@ -18,6 +18,10 @@ def _escape_string(s: str) -> str:
     out = []
     for ch in s:
         cp = ord(ch)
+        if 0xD800 <= cp <= 0xDFFF:
+            # RFC 8785 requires valid Unicode; a lone surrogate would make the result
+            # non-UTF-8-encodable. Reject deterministically (applies to values and keys).
+            raise ValueError(f"JCS: lone surrogate U+{cp:04X} is not valid Unicode")
         short = _SHORT_ESCAPES.get(cp)
         if short is not None:
             out.append(short)
@@ -49,6 +53,9 @@ def _serialize(value) -> str:
     if isinstance(value, list):
         return "[" + ",".join(_serialize(v) for v in value) + "]"
     if isinstance(value, dict):
+        for k in value:
+            if not isinstance(k, str):
+                raise TypeError(f"JCS: object keys must be strings, got {type(k).__name__}")
         items = sorted(value.items(), key=lambda kv: _utf16_key(kv[0]))
         return "{" + ",".join(_escape_string(k) + ":" + _serialize(v) for k, v in items) + "}"
     raise TypeError(f"JCS: unsupported type {type(value).__name__}")

@@ -157,6 +157,28 @@ def test_ledger_non_string_status_rejected(tmp_path):
     assert not r.valid and "status" in r.reason
 
 
+def test_ledger_entries_missing_rejected(tmp_path):
+    _write_verdict(tmp_path, 1, [REC])
+    p = tmp_path / "ledger-2.json"
+    p.write_text(json.dumps({"version": 1, "round": 2}), encoding="utf-8")  # no 'entries' key
+    r = validate_carryover_ledger(tmp_path, 2, p)
+    assert not r.valid and "entries" in r.reason
+
+
+def test_doc_state_dir_rejects_symlinked_reviews_escape(tmp_path):
+    # A symlinked reviews dir pointing outside the repo must not let writes escape.
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    repo = tmp_path / "repo"
+    (repo / "docs" / "superpowers").mkdir(parents=True)
+    try:
+        (repo / "docs" / "superpowers" / "reviews").symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not supported on this platform/privilege")
+    with pytest.raises(ValueError):
+        doc_state_dir(repo, topic="t", phase="spec", date="2026-08-18")
+
+
 def test_render_carryover_text_sorted_and_labeled(tmp_path):
     entries = [
         {"id": "r1-bbb", "severity": "nit", "location": "L2", "issue": "i2", "suggestion": "s2", "status": "addressed", "reason": None},

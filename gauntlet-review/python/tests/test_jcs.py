@@ -37,3 +37,20 @@ def test_int_at_exact_boundary_ok_and_beyond_rejected():
     assert canonical(2 ** 53 - 1) == str(2 ** 53 - 1)
     with pytest.raises(ValueError):
         canonical(2 ** 53)
+
+
+def test_lone_surrogate_value_rejected():
+    with pytest.raises(ValueError):
+        canonical(chr(0xD800))
+    with pytest.raises(ValueError):
+        canonical_bytes({"k": chr(0xDC00)})
+
+
+def test_lone_surrogate_key_rejected():
+    with pytest.raises(ValueError):
+        canonical({chr(0xD800): 1})
+
+
+def test_non_string_key_rejected():
+    with pytest.raises(TypeError):
+        canonical({1: "x"})
