@@ -1785,10 +1785,10 @@ fix-later Minors. They are recorded here so Phase-3 planning picks them up:
   deadline.
 
 **Fix-later Minors (fold into the relevant Phase-3 wiring):**
-- **Lease-file removal (remainder of M-3):** `reap_stale` now reclaims the credential-bearing
-  staging dir (`{staging_root}/{run_id}`) and `run_round` reclaims its own `cfg.staging_dir`; the
-  only remainder is deleting the `.lease` file itself after a confirmed reap. `invoke_codex` must
-  stage each run under `{staging_root}/{run_id}` for the reaper's mapping to hold.
+- **Reaper convention (M-3 resolved):** `run_round` reclaims its own `cfg.staging_dir` and
+  `reap_stale` reclaims a crashed run's dir and removes the `.lease` file after a confirmed reap,
+  discovering runs from containers, leases, AND staging dirs. `invoke_codex` (Phase 3) must stage
+  each run under `{staging_root}/{run_id}` and hold `{run_id}.lease` for this mapping to hold.
 - **`_lock_nb` errno breadth (M-5):** treats every `OSError` as "held"; distinguish
   `EWOULDBLOCK`/`EACCES` from genuine lock errors so `acquire()` doesn't report a misleading
   "already held."
@@ -1835,3 +1835,10 @@ credential-bearing `cfg.staging_dir` on every path (auth.json invalidated first)
 `create()` inside the lifecycle guard; `reap_stale` reclaims a crashed run's staging dir via the
 `{staging_root}/{run_id}` convention; `parse_image_identity` raises on a requested-repo mismatch;
 the Windows `taskkill` fallback is time-bounded.
+
+**Fixed in Phase-2 from PR-review round 4 (commit `5fad5ee`):** `reap_stale` enumerates runs from
+containers, `.lease` files, AND staging dirs (so a crash between staging and container creation is
+still reclaimed), makes `staging_root` mandatory, reclaims staging even with no container, gates a
+reap on confirmed container removal AND staging reclamation, and removes the lease after; the
+bounded runner includes the stdin writer in post-exit liveness so a stdin-only descendant is
+tree-killed; `parse_image_identity` enforces an expected digest exactly.
