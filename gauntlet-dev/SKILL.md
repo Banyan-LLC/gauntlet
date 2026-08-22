@@ -66,9 +66,10 @@ withholding, the depth was emergent. Full rationale, evidence, and the lens list
   platform, in one pass; then re-run tests + a regression scan (a fix you have not exercised can
   itself cost a round, as PR #2's round-6 regression did).
 - THEN invoke gauntlet-review. Compose its prompt from the current template — the THOROUGHNESS
-  MANDATE is REQUIRED — and put the security invariants, the production platform, and any
-  explicitly-accepted/deferred limitations into TRUSTED CONTEXT (a stated deferral is one the
-  reviewer will not re-raise).
+  MANDATE is REQUIRED. TRUSTED CONTEXT stays approved-controlling-documents-only (invariant 5):
+  the security invariants and production platform must be declared IN the approved spec, never
+  asserted free-form in the prompt; record any accepted/deferred limitation ONLY as a `disputed`
+  entry with a `reason` in the validated carry-over ledger — never as trusted context.
 - This does NOT replace or soften the Codex gate; it raises the floor so the gate converges in
   ~2–3 rounds. Skip only for a genuinely trivial diff.
 
