@@ -6,12 +6,17 @@ from gauntlet_review.lease import RunLease
 
 
 class FakeRuntime:
-    def __init__(self, *, exit_status=0, verdict=b'{"verdict":"approve"}', timed_out=False, over_limit=False):
+    def __init__(self, *, exit_status=0, verdict=b'{"verdict":"approve"}', timed_out=False,
+                 over_limit=False, start_failed=False, proc_error=None, cp_ok=True, rm_raises=False):
         self.calls = []
         self._exit_status = exit_status
         self._verdict = verdict
         self._timed_out = timed_out
         self._over_limit = over_limit
+        self._start_failed = start_failed
+        self._proc_error = proc_error
+        self._cp_ok = cp_ok
+        self._rm_raises = rm_raises
 
     def create(self, argv):
         self.calls.append("create")
@@ -21,14 +26,17 @@ class FakeRuntime:
         self.calls.append("start")
         from gauntlet_review.bounded import ProcResult
         return ProcResult(exit_code=(None if self._timed_out else 0), stdout=b"", stderr=b"",
-                          timed_out=self._timed_out, start_failed=False, error=None,
-                          stdout_truncated=self._over_limit, stderr_truncated=False)
+                          timed_out=self._timed_out, start_failed=self._start_failed,
+                          error=self._proc_error, stdout_truncated=self._over_limit,
+                          stderr_truncated=False, over_limit=self._over_limit)
 
     def read_exit_status(self, cid):
         return self._exit_status
 
     def cp_out_bounded(self, cid, src, dest, max_bytes):
         self.calls.append("cp")
+        if not self._cp_ok:
+            return False
         with open(dest, "wb") as fh:
             fh.write(self._verdict)
         return True
@@ -38,6 +46,8 @@ class FakeRuntime:
 
     def rm(self, cid):
         self.calls.append("rm")
+        if self._rm_raises:
+            raise RuntimeError("rm boom")
 
 
 def _cfg(tmp_path):
@@ -68,6 +78,50 @@ def test_over_limit_stream_terminates_and_flags(tmp_path):
     res = run_round(rt, _cfg(tmp_path), prompt_bytes=b"p", timeout_sec=30,
                     marker_path=str(tmp_path / "marker"))
     assert res.over_limit and "kill" in rt.calls and "rm" in rt.calls
+
+
+def test_fail_closed_on_start_failure(tmp_path):
+    # A container that fails to start must not proceed to read a verdict from partial input.
+    rt = FakeRuntime(start_failed=True)
+    res = run_round(rt, _cfg(tmp_path), prompt_bytes=b"p", timeout_sec=30,
+                    marker_path=str(tmp_path / "marker"))
+    assert res.verdict_path is None and res.error
+    assert "cp" not in rt.calls and "kill" in rt.calls and "rm" in rt.calls
+
+
+def test_fail_closed_on_stdin_fault(tmp_path):
+    # A stdin-delivery fault (prompt only partially delivered) must fail closed, no verdict.
+    rt = FakeRuntime(proc_error="stdin write failed: EPIPE")
+    res = run_round(rt, _cfg(tmp_path), prompt_bytes=b"p", timeout_sec=30,
+                    marker_path=str(tmp_path / "marker"))
+    assert res.verdict_path is None and "stdin write failed" in (res.error or "")
+    assert "cp" not in rt.calls
+
+
+def test_failed_copy_out_sets_error(tmp_path):
+    rt = FakeRuntime(cp_ok=False)
+    res = run_round(rt, _cfg(tmp_path), prompt_bytes=b"p", timeout_sec=30,
+                    marker_path=str(tmp_path / "marker"))
+    assert res.verdict_path is None and "copy-out" in (res.error or "")
+
+
+def test_rm_failure_is_surfaced(tmp_path):
+    rt = FakeRuntime(rm_raises=True)
+    res = run_round(rt, _cfg(tmp_path), prompt_bytes=b"p", timeout_sec=30,
+                    marker_path=str(tmp_path / "marker"))
+    assert "container rm failed" in (res.error or "")
+
+
+def test_reaper_does_not_report_run_when_rm_fails(tmp_path):
+    lease_dir = tmp_path / "leases"
+    lease_dir.mkdir()
+    (lease_dir / "gauntlet-stuck.lease").write_text("", encoding="utf-8")
+
+    class RT(FakeRuntime):
+        def list_labeled(self, prefix):
+            return ["gauntlet-stuck"]
+    reaped = reap_stale(RT(rm_raises=True), lease_dir=str(lease_dir), label_prefix="gauntlet-")
+    assert reaped == []  # rm failed -> not reported reaped (container still present)
 
 
 def test_reaper_skips_a_live_run(tmp_path):

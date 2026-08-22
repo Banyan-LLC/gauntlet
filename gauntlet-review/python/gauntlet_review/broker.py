@@ -13,8 +13,17 @@ class BrokerError(Exception):
 
 
 def _read_regular_nofollow(path: str) -> bytes:
-    # O_NOFOLLOW: a symlinked source is rejected (ELOOP). Confirm it is a regular file.
-    fd = os.open(path, os.O_RDONLY | (os.O_NOFOLLOW if hasattr(os, "O_NOFOLLOW") else 0))
+    have_nofollow = hasattr(os, "O_NOFOLLOW")
+    # On POSIX, O_NOFOLLOW rejects a symlinked source at open (ELOOP). On platforms without
+    # O_NOFOLLOW (Windows), that protection is absent, so fail closed if the path is a symlink
+    # / reparse point -- otherwise a symlink whose target happens to carry the approved hash
+    # would be silently followed and staged.
+    if not have_nofollow and os.path.islink(path):
+        raise BrokerError(f"credential source is a symlink; refusing to follow: {path}")
+    try:
+        fd = os.open(path, os.O_RDONLY | (os.O_NOFOLLOW if have_nofollow else 0))
+    except OSError as exc:  # ELOOP on a symlink, or any open failure -> fail closed as a broker error
+        raise BrokerError(f"cannot open credential source {path}: {exc}") from exc
     try:
         st = os.fstat(fd)
         import stat as _stat

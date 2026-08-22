@@ -40,15 +40,26 @@ def detect_runtime(candidates=("docker", "podman"), *, _which=None, _probe=None)
     )
 
 
-def parse_image_identity(inspect_json: str) -> ImageIdentity:
+def parse_image_identity(inspect_json: str, expected_repo: str | None = None) -> ImageIdentity:
+    """Parse `image inspect` output into the pinned identity. The manifest digest is tied to
+    the requested repository rather than blindly taking the first RepoDigests entry: with
+    multiple repo digests (or a multi-platform index) the first entry can be the wrong image.
+    Pass `expected_repo` (e.g. "ghcr.io/x/codex") to select its digest and reject ambiguity;
+    without it, a digest is recorded only when every RepoDigests entry agrees."""
     doc = json.loads(inspect_json)
     if isinstance(doc, list):  # `image inspect` returns a JSON array
         doc = doc[0]
+    repo_digests = [rd for rd in (doc.get("RepoDigests") or []) if "@" in rd]
     manifest = None
-    for rd in doc.get("RepoDigests") or []:
-        if "@" in rd:
-            manifest = rd.split("@", 1)[1]
-            break
+    if expected_repo is not None:
+        matches = {rd.split("@", 1)[1] for rd in repo_digests if rd.split("@", 1)[0] == expected_repo}
+        if len(matches) > 1:
+            raise ValueError(f"ambiguous manifest digests for repo {expected_repo}: {sorted(matches)}")
+        manifest = next(iter(matches)) if matches else None
+    else:
+        digests = {rd.split("@", 1)[1] for rd in repo_digests}
+        # Only pin a digest when it is unambiguous; never guess by taking the first of several.
+        manifest = next(iter(digests)) if len(digests) == 1 else None
     return ImageIdentity(
         config_digest=doc["Id"],
         os=doc["Os"],
@@ -60,13 +71,19 @@ def parse_image_identity(inspect_json: str) -> ImageIdentity:
 def parse_userns_mapping(info_json: str) -> dict:
     doc = json.loads(info_json)
     rootless = False
+    userns_remap = False
     host = doc.get("host")
     if isinstance(host, dict):  # podman shape
         rootless = bool(host.get("security", {}).get("rootless", False))
-    for opt in doc.get("SecurityOptions", []) or []:  # docker shape: "name=rootless"
+    for opt in doc.get("SecurityOptions", []) or []:  # docker shape: "name=rootless" / "name=userns"
         if "rootless" in opt:
             rootless = True
-    return {"rootless": rootless, "uid_map_present": rootless}
+        if "name=userns" in opt or opt.strip() == "userns":
+            userns_remap = True  # rootful daemon with --userns-remap still remaps uids
+    # A UID mapping exists under rootless mode OR rootful userns-remap; conflating it with
+    # rootless alone misses a rootful-remap daemon.
+    return {"rootless": rootless, "userns_remap": userns_remap,
+            "uid_map_present": rootless or userns_remap}
 
 
 import io

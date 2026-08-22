@@ -23,40 +23,46 @@ class RoundResult:
 def run_round(runtime, cfg: RunConfig, *, prompt_bytes: bytes, timeout_sec: float,
               marker_path: str, max_verdict_bytes: int = 200_000) -> RoundResult:
     cid = runtime.create(build_create_argv(getattr(runtime, "name", "docker"), cfg))
-    verdict_path = None
-    exit_status = None
-    timed_out = False
-    over_limit = False
-    error = None
+    result = RoundResult(None, None, b"", b"", False, False, None)
     try:
         proc = runtime.start(cid, prompt_bytes, timeout_sec)
-        timed_out = proc.timed_out
-        over_limit = proc.stdout_truncated or proc.stderr_truncated
-        if timed_out or over_limit:
+        result.stdout = proc.stdout
+        result.stderr = proc.stderr
+        result.timed_out = proc.timed_out
+        result.over_limit = getattr(proc, "over_limit", False) or proc.stdout_truncated or proc.stderr_truncated
+        if proc.start_failed or proc.error:
+            # Fail closed: a failed start or a stdin-delivery fault means the prompt was not
+            # fully delivered, so any verdict would be produced from partial input. Never
+            # accept it -- kill the container and return no verdict.
+            result.error = proc.error or "container process failed to start"
+            runtime.kill(cid)
+        elif result.timed_out or result.over_limit:
             runtime.kill(cid)
         else:
-            exit_status = runtime.read_exit_status(cid)
+            result.exit_status = runtime.read_exit_status(cid)
             dest = cfg.cidfile + ".verdict.json"  # owner-only host temp beside the cidfile
             if runtime.cp_out_bounded(cid, cfg.verdict_path, dest, max_verdict_bytes):
-                verdict_path = dest
+                result.verdict_path = dest
+            else:
+                # A failed/over-limit copy-out must not masquerade as a successful round.
+                result.error = "verdict copy-out failed or exceeded the size bound"
             # Signal the wrapper it may exit, then stop the container.
             with open(marker_path, "w", encoding="utf-8") as fh:
                 fh.write("go")
             runtime.kill(cid)
-        return RoundResult(verdict_path, exit_status, proc.stdout, proc.stderr,
-                           timed_out, over_limit, error)
     except Exception as exc:  # never leak a container on an unexpected error
-        error = str(exc)
+        result.error = str(exc)
         try:
             runtime.kill(cid)
         except Exception:
             pass
-        return RoundResult(verdict_path, exit_status, b"", b"", timed_out, over_limit, error)
     finally:
         try:
             runtime.rm(cid)  # guaranteed cleanup on success, failure, and timeout alike
-        except Exception:
-            pass
+        except Exception as rmexc:
+            # Cleanup failure must be surfaced, not silently reported as success.
+            result.error = (result.error + "; " if result.error else "") + f"container rm failed: {rmexc}"
+    return result
 
 
 def reap_stale(runtime, *, lease_dir: str, label_prefix: str) -> list[str]:
@@ -70,12 +76,12 @@ def reap_stale(runtime, *, lease_dir: str, label_prefix: str) -> list[str]:
             try:
                 runtime.kill(run_id)
             except Exception:
-                pass
+                pass  # a stale run may already be dead; kill is best-effort
             try:
                 runtime.rm(run_id)
+                reaped.append(run_id)  # report reaped ONLY after confirmed removal
             except Exception:
-                pass
-            reaped.append(run_id)
+                pass  # rm failed -> container remains -> retried on the next sweep
         finally:
             lease.release()
     return reaped

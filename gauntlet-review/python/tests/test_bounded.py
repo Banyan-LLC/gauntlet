@@ -44,6 +44,24 @@ def test_stdout_is_bounded_and_flagged():
     assert r.stdout_truncated and len(r.stdout) <= 1024
 
 
+def test_over_limit_terminates_immediately_not_at_timeout():
+    # Child floods stdout past the cap, then sleeps well beyond the deadline. The runner must
+    # kill it the moment the cap is crossed -- not wait out the sleep or the timeout.
+    start = time.monotonic()
+    r = run_bounded([PY, "-c", "import sys,time; sys.stdout.write('a'*200000); sys.stdout.flush(); time.sleep(30)"],
+                    timeout_sec=10, max_stdout=1024)
+    elapsed = time.monotonic() - start
+    assert r.over_limit and r.stdout_truncated and len(r.stdout) <= 1024
+    assert not r.timed_out and elapsed < 9  # terminated on overflow, not by the 10s deadline
+
+
+def test_aggregate_cap_terminates_when_per_channel_caps_not_hit():
+    # Neither per-channel cap is exceeded, but the combined total crosses the aggregate cap.
+    r = run_bounded([PY, "-c", "import sys,time; sys.stdout.write('a'*2000); sys.stdout.flush(); time.sleep(30)"],
+                    timeout_sec=10, max_stdout=100000, max_stderr=100000, max_total=1000)
+    assert r.over_limit and not r.timed_out
+
+
 def test_huge_stdin_does_not_deadlock_against_slow_reader():
     # Child reads a little then exits; we still must not block writing a large stdin.
     r = run_bounded([PY, "-c", "import sys; sys.stdin.read(10); print('ok')"],

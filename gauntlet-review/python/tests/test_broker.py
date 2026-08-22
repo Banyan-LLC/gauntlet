@@ -75,3 +75,20 @@ def test_symlinked_agents_md_rejected(tmp_path):
         stage_credential(codex_home=str(home), staging_dir=str(tmp_path / "stg"),
                          agents_md_sha256=AGENTS_SHA, min_lifetime_sec=1800,
                          token_provider=_provider(10_000), now=0.0)
+
+
+def test_symlinked_agents_md_with_matching_hash_still_rejected(tmp_path):
+    # No-follow must hold INDEPENDENT of the hash check: a symlink whose target carries the
+    # approved bytes must still be rejected (POSIX: O_NOFOLLOW; Windows: islink fail-closed).
+    home = Path(_codex_home(tmp_path))
+    (home / "AGENTS.md").unlink()
+    real = tmp_path / "real-agents.md"
+    real.write_bytes(AGENTS)  # target has the EXACT approved bytes -> hash would match
+    try:
+        (home / "AGENTS.md").symlink_to(real)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not supported")
+    with pytest.raises((BrokerError, OSError)):
+        stage_credential(codex_home=str(home), staging_dir=str(tmp_path / "stg2"),
+                         agents_md_sha256=AGENTS_SHA, min_lifetime_sec=1800,
+                         token_provider=_provider(10_000), now=0.0)
