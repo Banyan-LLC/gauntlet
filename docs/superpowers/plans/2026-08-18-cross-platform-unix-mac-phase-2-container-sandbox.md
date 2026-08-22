@@ -1788,18 +1788,28 @@ fix-later Minors. They are recorded here so Phase-3 planning picks them up:
 - **Staging-dir + lease reclamation (M-3, ledger Task 8):** `reap_stale` does not remove the
   `.lease` file or the crashed run's credential-bearing staging dir; wire reclamation once
   `run_id`/`run_label`/`staging_dir`/lease are correlated in `invoke_codex.py`.
-- **`parse_userns_mapping` misses Docker `--userns-remap` (M-4):** `uid_map_present` is tied to
-  `rootless`; a root daemon with userns-remap (`SecurityOptions: ["name=userns"]`) reports
-  `False`. Extend before the Phase-3/5 userns preflight relies on it.
-- **broker `OSError` → `BrokerError` mapping (T5b):** a symlinked credential source raises raw
-  `OSError` from `os.open` (before makedirs); the Phase-3 exit-12 mapping must catch `OSError`
-  or the broker should wrap that open.
 - **`_lock_nb` errno breadth (M-5):** treats every `OSError` as "held"; distinguish
   `EWOULDBLOCK`/`EACCES` from genuine lock errors so `acquire()` doesn't report a misleading
   "already held."
-- **Grandchild-kill confirmation (T7):** the watchdog kills a single process; confirm on a real
-  Docker host that container teardown + `--pids-limit` reap any Codex grandchildren.
+- **Grandchild-kill confirmation (T7):** `bounded._kill` now kills the process TREE (POSIX
+  `killpg`; Windows `taskkill /T`); still confirm on a real Docker host that container teardown
+  + `--pids-limit` reap any Codex grandchildren inside the container.
+- **Platform-specific manifest digest (PR-review R1 #4, remainder):** `parse_image_identity` now
+  refuses to guess among ambiguous repo digests and selects by requested repo, but resolving the
+  platform-specific digest of a multi-arch index needs the real `inspect`/`manifest` wiring in the
+  Phase-3 `ContainerRuntime`.
+- **Online secret-scanning of streamed stdout/stderr (spec line 146):** the spec calls for
+  secret-scanning as the runner reads; the bounded runner currently bounds/retains bytes but does
+  not scan. Belongs with the Phase-4 publish/diagnostic-retention path.
 
 **Already fixed in Phase-2 (commit `dddae2a`):** partial-file cleanup in
 `extract_single_file_from_tar` (M-1); staging-dir rollback on a post-makedirs write failure in
 `stage_credential` (M-2); `auth.json`/`AGENTS.md` 0600 assertions (T5d); dead imports removed.
+
+**Fixed in Phase-2 from PR-review round 1 (commit `d3569d1`):** bounded runner now enforces a
+per-channel AND aggregate byte cap with IMMEDIATE over-limit termination (spec line 144-148) and
+`read1()` prompt detection; `run_round` fails closed on start-failure / stdin fault / failed
+copy-out and surfaces `rm` failures; post-kill cleanup bounded to one grace; Windows process-tree
+kill; `parse_userns_mapping` detects rootful `--userns-remap` (M-4); broker Windows `islink`
+fail-closed no-follow and `OSError`→`BrokerError` mapping (T5b); `reap_stale` reports reaped only
+after confirmed removal.
