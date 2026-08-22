@@ -18,11 +18,16 @@ def discard_staging(staging_dir: str) -> str | None:
     residual that could NOT be removed (so the caller can surface it), or None when it is gone.
     Used both for rollback of a half-staged credential and for end-of-round reclamation."""
     try:
-        os.lstat(staging_dir)  # no-follow existence check
+        st = os.lstat(staging_dir)  # no-follow existence check
     except FileNotFoundError:
-        return None            # ENOENT: genuinely nothing to reclaim
-    except OSError as exc:     # a permission/other stat error is NOT "absent" -> a real failure
+        return None                 # ENOENT: genuinely nothing to reclaim
+    except OSError as exc:          # a permission/other stat error is NOT "absent" -> a real failure
         return f"{staging_dir}: cannot stat staging dir: {exc}"
+    import stat as _stat
+    if _stat.S_ISLNK(st.st_mode):
+        # A symlinked staging entry must never be followed: unlinking auth.json or rmtree'ing
+        # through it could delete an external target. Refuse and report.
+        return f"{staging_dir}: refusing to remove a symlinked staging entry"
     auth = os.path.join(staging_dir, "auth.json")
     errors = []
     try:

@@ -223,9 +223,10 @@ def test_reaper_reclaims_staging_when_no_container_exists(tmp_path):
     assert not (staging_root / ORPHAN).exists()  # credential reclaimed anyway
 
 
-def test_reaper_reclaims_credentials_even_if_container_listing_fails(tmp_path):
-    # A daemon outage makes list_labeled raise; the sweep must NOT abort -- an orphaned staging
-    # credential (known only locally) is still reclaimed.
+def test_reaper_listing_failure_invalidates_credential_but_keeps_lease(tmp_path):
+    # A daemon outage makes list_labeled raise; the sweep must NOT abort. The credential is
+    # invalidated (fail-safe), but because container state is unconfirmed the run is NOT reported
+    # reaped and its lease is retained for a later confirming sweep.
     lease_dir = tmp_path / "leases"; lease_dir.mkdir()
     staging_root = tmp_path / "staging"; staging_root.mkdir()
     (staging_root / ORPHAN).mkdir()
@@ -237,7 +238,9 @@ def test_reaper_reclaims_credentials_even_if_container_listing_fails(tmp_path):
             raise RuntimeError("docker daemon unreachable")
     reaped = reap_stale(RT(), lease_dir=str(lease_dir), label_prefix="gauntlet-",
                         staging_root=str(staging_root))
-    assert reaped == [ORPHAN] and not (staging_root / ORPHAN).exists()
+    assert reaped == []                                  # container state unconfirmed
+    assert not (staging_root / ORPHAN).exists()          # credential invalidated (fail-safe)
+    assert (lease_dir / f"{ORPHAN}.lease").exists()      # lease retained for a confirming sweep
 
 
 def test_reaper_ignores_unrelated_entries(tmp_path):

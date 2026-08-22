@@ -93,10 +93,15 @@ def reap_stale(runtime, *, lease_dir: str, label_prefix: str, staging_root: str)
     The lease file is removed after a confirmed reap."""
     try:
         labeled = set(runtime.list_labeled(label_prefix))
+        listing_ok = True
     except Exception:
         # A daemon outage / listing error must NOT abort the sweep: credential reclamation from
         # local lease + staging records is independent of container discovery and still runs.
+        # But container state is now UNCONFIRMED, so we invalidate credentials yet retain the
+        # lease and do not report the run reaped (a container may still exist) -- a later sweep
+        # with a working listing confirms and completes the reap.
         labeled = set()
+        listing_ok = False
     run_ids = set(labeled)
     for name in _safe_listdir(lease_dir):
         if name.endswith(".lease"):
@@ -123,10 +128,14 @@ def reap_stale(runtime, *, lease_dir: str, label_prefix: str, staging_root: str)
                     runtime.rm(run_id)
                 except Exception:
                     ok = False  # rm failed -> container remains -> retry next sweep
-            # Reclaim the credential-bearing staging dir even when no container was created.
+            # ALWAYS reclaim the credential-bearing staging dir for a dead (free-lease) run, even
+            # when no container was created or container listing failed -- the token is fail-safe
+            # to invalidate. But only count the run reaped when the container state was CONFIRMED.
             residual = discard_staging(os.path.join(staging_root, run_id))
             if residual is not None:
                 ok = False  # staging cleanup failed -> a live token may remain -> not reaped
+            if not listing_ok:
+                ok = False  # container state unconfirmed -> retain the lease, do not report reaped
             if ok:
                 reaped.append(run_id)
         finally:

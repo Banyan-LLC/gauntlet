@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from gauntlet_review.broker import BrokerError, stage_credential
+from gauntlet_review.broker import BrokerError, discard_staging, stage_credential
 
 AGENTS = b"# account AGENTS.md\nreview presentation rules\n"
 AGENTS_SHA = hashlib.sha256(AGENTS).hexdigest()
@@ -75,6 +75,21 @@ def test_symlinked_agents_md_rejected(tmp_path):
         stage_credential(codex_home=str(home), staging_dir=str(tmp_path / "stg"),
                          agents_md_sha256=AGENTS_SHA, min_lifetime_sec=1800,
                          token_provider=_provider(10_000), now=0.0)
+
+
+def test_discard_staging_refuses_symlinked_entry(tmp_path):
+    # A symlinked staging entry must never be followed: discard_staging refuses it and reports a
+    # residual instead of deleting the external target.
+    external = tmp_path / "external"; external.mkdir()
+    (external / "auth.json").write_text("SECRET", encoding="utf-8")
+    link = tmp_path / "staging-link"
+    try:
+        link.symlink_to(external, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not supported")
+    residual = discard_staging(str(link))
+    assert residual and "symlink" in residual        # refused and reported
+    assert (external / "auth.json").exists()          # external target left untouched
 
 
 def test_symlinked_agents_md_with_matching_hash_still_rejected(tmp_path):

@@ -63,6 +63,19 @@ def test_aggregate_cap_terminates_when_per_channel_caps_not_hit():
     assert len(r.stdout) + len(r.stderr) <= 1000  # RETAINED bytes bounded by the aggregate cap
 
 
+def test_many_small_writes_below_caps_are_not_over_limit():
+    # A normal streaming process that emits many small chunks whose combined size stays under every
+    # cap must NOT be falsely marked over-limit (regression: aggregate reservation once ignored the
+    # per-chunk size and reserved a whole channel cap on the first small read).
+    r = run_bounded([PY, "-c",
+                     "import sys,time\n"
+                     "for _ in range(50):\n"
+                     "    sys.stdout.write('x'*10); sys.stdout.flush(); time.sleep(0.001)\n"],
+                    timeout_sec=30, max_stdout=100000, max_stderr=100000, max_total=100000)
+    assert not r.over_limit and not r.timed_out and r.exit_code == 0
+    assert r.stdout == b"x" * 500
+
+
 def test_incomplete_stdin_delivery_is_surfaced_even_if_child_exits_ok():
     # Child reads only a small prefix, emits a "verdict", exits 0; we send a large prompt whose
     # remaining bytes then fault (EPIPE). Incomplete delivery MUST be surfaced regardless of the

@@ -59,7 +59,10 @@ def _drain(stream, cap: int, out: dict, key: str, lock, agg: dict, max_total: in
         n = len(chunk)
         with lock:
             agg["observed"] += n
-            room = max(0, min(cap - len(buf), max_total - agg["retained"]))
+            # room is what we may retain from THIS chunk: bounded by the chunk size, the remaining
+            # per-channel cap, AND the remaining aggregate cap. Clamping to n is essential -- without
+            # it a small first read would reserve an entire channel cap and falsely trip overflow.
+            room = max(0, min(n, cap - len(buf), max_total - agg["retained"]))
             agg["retained"] += room
             agg_over = agg["observed"] > max_total
         if room:
