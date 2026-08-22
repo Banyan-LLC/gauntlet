@@ -12,10 +12,13 @@ class BrokerError(Exception):
     """Fail-closed credential error (maps to exit 12 in Phase 3)."""
 
 
-def _rollback_staging(staging_dir: str) -> str | None:
-    """Remove a half-staged dir, invalidating auth.json FIRST so a live access token cannot
-    survive a partial/failed rmtree. Returns a description of any residual that could NOT be
-    removed (so the caller can surface it), or None when the dir is gone."""
+def discard_staging(staging_dir: str) -> str | None:
+    """Remove a staging dir, invalidating auth.json FIRST so a live access token cannot survive a
+    partial/failed rmtree. Idempotent (a missing dir is fine). Returns a description of any
+    residual that could NOT be removed (so the caller can surface it), or None when it is gone.
+    Used both for rollback of a half-staged credential and for end-of-round reclamation."""
+    if not os.path.exists(staging_dir):
+        return None
     auth = os.path.join(staging_dir, "auth.json")
     try:
         if os.path.lexists(auth):
@@ -87,7 +90,7 @@ def stage_credential(*, codex_home: str, staging_dir: str, agents_md_sha256: str
         # A partially-written staging dir would hold a live access token; invalidate it and fail
         # closed. Surface any residual credential material explicitly rather than reporting a
         # clean failure over a token that is still on disk.
-        residual = _rollback_staging(staging_dir)
+        residual = discard_staging(staging_dir)
         detail = f"failed to stage credential into {staging_dir}: {exc}"
         if residual:
             detail += f"; residual credential material could not be removed: {residual}"

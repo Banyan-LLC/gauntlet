@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from gauntlet_review.sandbox import run_round, reap_stale, RoundResult
@@ -7,7 +9,8 @@ from gauntlet_review.lease import RunLease
 
 class FakeRuntime:
     def __init__(self, *, exit_status=0, verdict=b'{"verdict":"approve"}', timed_out=False,
-                 over_limit=False, start_failed=False, proc_error=None, cp_ok=True, rm_raises=False):
+                 over_limit=False, start_failed=False, proc_error=None, cp_ok=True, rm_raises=False,
+                 create_raises=False):
         self.calls = []
         self._exit_status = exit_status
         self._verdict = verdict
@@ -17,9 +20,12 @@ class FakeRuntime:
         self._proc_error = proc_error
         self._cp_ok = cp_ok
         self._rm_raises = rm_raises
+        self._create_raises = create_raises
 
     def create(self, argv):
         self.calls.append("create")
+        if self._create_raises:
+            raise RuntimeError("create boom")
         return "cid-1"
 
     def start(self, cid, stdin_bytes, timeout_sec):
@@ -78,6 +84,44 @@ def test_over_limit_stream_terminates_and_flags(tmp_path):
     res = run_round(rt, _cfg(tmp_path), prompt_bytes=b"p", timeout_sec=30,
                     marker_path=str(tmp_path / "marker"))
     assert res.over_limit and "kill" in rt.calls and "rm" in rt.calls
+
+
+def _make_staging(cfg):
+    os.makedirs(cfg.staging_dir, exist_ok=True)
+    with open(os.path.join(cfg.staging_dir, "auth.json"), "w", encoding="utf-8") as fh:
+        fh.write('{"tokens":{"access_token":"AT"}}')
+
+
+def test_run_round_reclaims_staging_dir_on_success(tmp_path):
+    cfg = _cfg(tmp_path)
+    _make_staging(cfg)
+    res = run_round(FakeRuntime(exit_status=0), cfg, prompt_bytes=b"p", timeout_sec=30,
+                    marker_path=str(tmp_path / "marker"))
+    assert res.verdict_path and not os.path.exists(cfg.staging_dir)  # credential reclaimed
+
+
+def test_run_round_reclaims_staging_on_create_failure(tmp_path):
+    cfg = _cfg(tmp_path)
+    _make_staging(cfg)
+    rt = FakeRuntime(create_raises=True)
+    res = run_round(rt, cfg, prompt_bytes=b"p", timeout_sec=30, marker_path=str(tmp_path / "marker"))
+    assert res.error and not os.path.exists(cfg.staging_dir)  # cleaned even though create() raised
+    assert "rm" not in rt.calls  # no container id was ever created, so nothing to rm
+
+
+def test_reaper_reclaims_staging_dir(tmp_path):
+    lease_dir = tmp_path / "leases"; lease_dir.mkdir()
+    staging_root = tmp_path / "staging"; staging_root.mkdir()
+    (staging_root / "gauntlet-dead").mkdir()
+    (staging_root / "gauntlet-dead" / "auth.json").write_text("{}", encoding="utf-8")
+    (lease_dir / "gauntlet-dead.lease").write_text("", encoding="utf-8")
+
+    class RT(FakeRuntime):
+        def list_labeled(self, prefix):
+            return ["gauntlet-dead"]
+    reaped = reap_stale(RT(), lease_dir=str(lease_dir), label_prefix="gauntlet-",
+                        staging_root=str(staging_root))
+    assert reaped == ["gauntlet-dead"] and not (staging_root / "gauntlet-dead").exists()
 
 
 def test_fail_closed_on_start_failure(tmp_path):

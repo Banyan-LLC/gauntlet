@@ -74,6 +74,23 @@ def test_parse_image_identity_ambiguous_within_repo_raises():
         parse_image_identity(doc, expected_repo="ghcr.io/x/codex")
 
 
+def test_parse_image_identity_raises_when_expected_repo_absent():
+    # Repo digests exist but none matches the requested repo -> a pulled image of the wrong
+    # identity, which must NOT be silently accepted as if it were a local build.
+    doc = json.dumps({
+        "Id": "sha256:aaaa", "Os": "linux", "Architecture": "amd64",
+        "RepoDigests": ["docker.io/y/codex@sha256:cccc"],
+    })
+    with pytest.raises(ValueError):
+        parse_image_identity(doc, expected_repo="ghcr.io/x/codex")
+
+
+def test_parse_image_identity_local_build_with_expected_repo_is_none():
+    # A genuine local build (no RepoDigests) is distinguishable and yields no manifest digest.
+    doc = json.dumps({"Id": "sha256:aaaa", "Os": "linux", "Architecture": "amd64", "RepoDigests": []})
+    assert parse_image_identity(doc, expected_repo="ghcr.io/x/codex").manifest_digest is None
+
+
 def test_parse_userns_mapping_rootless():
     doc = json.dumps({"host": {"security": {"rootless": True}}})
     assert parse_userns_mapping(doc)["rootless"] is True

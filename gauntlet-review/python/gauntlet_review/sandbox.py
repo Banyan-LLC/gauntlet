@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from gauntlet_review.broker import discard_staging
 from gauntlet_review.lease import RunLease
 from gauntlet_review.runconfig import RunConfig, build_create_argv
 
@@ -22,9 +23,11 @@ class RoundResult:
 
 def run_round(runtime, cfg: RunConfig, *, prompt_bytes: bytes, timeout_sec: float,
               marker_path: str, max_verdict_bytes: int = 200_000) -> RoundResult:
-    cid = runtime.create(build_create_argv(getattr(runtime, "name", "docker"), cfg))
     result = RoundResult(None, None, b"", b"", False, False, None)
+    cid = None
     try:
+        # create() is INSIDE the guard so a creation failure still reaches staging cleanup below.
+        cid = runtime.create(build_create_argv(getattr(runtime, "name", "docker"), cfg))
         proc = runtime.start(cid, prompt_bytes, timeout_sec)
         result.stdout = proc.stdout
         result.stderr = proc.stderr
@@ -52,20 +55,31 @@ def run_round(runtime, cfg: RunConfig, *, prompt_bytes: bytes, timeout_sec: floa
             runtime.kill(cid)
     except Exception as exc:  # never leak a container on an unexpected error
         result.error = str(exc)
-        try:
-            runtime.kill(cid)
-        except Exception:
-            pass
+        if cid is not None:
+            try:
+                runtime.kill(cid)
+            except Exception:
+                pass
     finally:
-        try:
-            runtime.rm(cid)  # guaranteed cleanup on success, failure, and timeout alike
-        except Exception as rmexc:
-            # Cleanup failure must be surfaced, not silently reported as success.
-            result.error = (result.error + "; " if result.error else "") + f"container rm failed: {rmexc}"
+        if cid is not None:
+            try:
+                runtime.rm(cid)  # guaranteed container cleanup on success, failure, and timeout
+            except Exception as rmexc:
+                result.error = (result.error + "; " if result.error else "") + f"container rm failed: {rmexc}"
+        # Reclaim the credential-bearing staging dir on EVERY path (invalidates auth.json first),
+        # so a short-lived access token never survives the round.
+        residual = discard_staging(cfg.staging_dir)
+        if residual:
+            result.error = (result.error + "; " if result.error else "") + f"staging cleanup failed: {residual}"
     return result
 
 
-def reap_stale(runtime, *, lease_dir: str, label_prefix: str) -> list[str]:
+def reap_stale(runtime, *, lease_dir: str, label_prefix: str, staging_root: str | None = None) -> list[str]:
+    """Reap crashed runs: for each labeled container whose lease is free (i.e. not live), kill +
+    remove it, and — when `staging_root` is given — reclaim its credential-bearing staging dir at
+    the convention path `{staging_root}/{run_id}` (invalidating auth.json first). This is the
+    run->staging mapping the reaper needs; the caller (invoke_codex) must stage each run under
+    `{staging_root}/{run_id}` for it to hold."""
     reaped = []
     for run_id in runtime.list_labeled(label_prefix):
         lease_path = os.path.join(lease_dir, f"{run_id}.lease")
@@ -82,6 +96,8 @@ def reap_stale(runtime, *, lease_dir: str, label_prefix: str) -> list[str]:
                 reaped.append(run_id)  # report reaped ONLY after confirmed removal
             except Exception:
                 pass  # rm failed -> container remains -> retried on the next sweep
+            if staging_root is not None:
+                discard_staging(os.path.join(staging_root, run_id))  # reclaim the crashed run's token
         finally:
             lease.release()
     return reaped

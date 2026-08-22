@@ -94,8 +94,9 @@ def _make_killer(proc):
                 ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                timeout=_CLEANUP_GRACE_SEC,  # bound the fallback termination call
             )
-        except (ProcessLookupError, PermissionError, OSError):
+        except (ProcessLookupError, PermissionError, OSError, subprocess.TimeoutExpired):
             pass
         finally:
             if os.name != "posix":

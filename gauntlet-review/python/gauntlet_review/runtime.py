@@ -55,6 +55,12 @@ def parse_image_identity(inspect_json: str, expected_repo: str | None = None) ->
         matches = {rd.split("@", 1)[1] for rd in repo_digests if rd.split("@", 1)[0] == expected_repo}
         if len(matches) > 1:
             raise ValueError(f"ambiguous manifest digests for repo {expected_repo}: {sorted(matches)}")
+        if not matches and repo_digests:
+            # Repo digests exist but none is the requested repo: a pulled image whose identity
+            # does NOT match what was requested. Fail rather than silently look like a local build
+            # (which is the only legitimate no-digest case).
+            have = sorted({rd.split("@", 1)[0] for rd in repo_digests})
+            raise ValueError(f"no manifest digest for requested repo {expected_repo}; image carries {have}")
         manifest = next(iter(matches)) if matches else None
     else:
         digests = {rd.split("@", 1)[1] for rd in repo_digests}
