@@ -67,3 +67,38 @@ def parse_userns_mapping(info_json: str) -> dict:
         if "rootless" in opt:
             rootless = True
     return {"rootless": rootless, "uid_map_present": rootless}
+
+
+import io
+import os
+import tarfile
+
+
+def extract_single_file_from_tar(tar_bytes: bytes, dest_path: str, max_bytes: int) -> int:
+    """Extract the single regular-file member of a `docker cp SRC -` tar stream into
+    dest_path (0o600), enforcing max_bytes. Rejects oversized, absent, or non-regular
+    members. Returns bytes written."""
+    with tarfile.open(fileobj=io.BytesIO(tar_bytes), mode="r") as tf:
+        members = [m for m in tf.getmembers() if m.name not in (".", "")]
+        if len(members) != 1:
+            raise ValueError(f"expected exactly one member in the cp stream, got {len(members)}")
+        m = members[0]
+        if not m.isreg():
+            raise ValueError(f"member {m.name} is not a regular file")
+        if m.size > max_bytes:
+            raise ValueError(f"copied file {m.name} is {m.size} bytes, exceeds cap {max_bytes}")
+        src = tf.extractfile(m)
+        if src is None:
+            raise ValueError(f"member {m.name} is not extractable as a regular file")
+        fd = os.open(dest_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        written = 0
+        with os.fdopen(fd, "wb") as out:
+            while True:
+                chunk = src.read(65536)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > max_bytes:
+                    raise ValueError("copied file exceeds cap during read")
+                out.write(chunk)
+        return written
