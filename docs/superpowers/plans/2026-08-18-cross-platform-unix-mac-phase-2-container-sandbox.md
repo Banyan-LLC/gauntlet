@@ -530,17 +530,31 @@ def _cfg(**over):
     return RunConfig(**base)
 
 
+def _value_after(argv, flag):
+    """Return the value immediately following `flag` in argv, or None if `flag` is absent
+    (or has nothing after it). Used to assert flag->value ADJACENCY, not just membership."""
+    for i, a in enumerate(argv):
+        if a == flag:
+            return argv[i + 1] if i + 1 < len(argv) else None
+    return None
+
+
 def test_argv_carries_every_mandatory_security_flag():
     argv = build_create_argv("docker", _cfg())
-    joined = " ".join(argv)
     assert argv[:2] == ["docker", "create"]
     for token in ["--user", "1000:1000", "--read-only", "--cap-drop", "ALL",
                   "--security-opt", "no-new-privileges", "--pids-limit",
                   "--log-driver", "none", "--platform", "linux/arm64",
                   "--cidfile", "/run/cid-abc", "--label", "gauntlet-run-abc"]:
         assert token in argv, token
-    for ns in ["--pid", "--ipc", "--uts", "--cgroupns"]:
-        assert ns in argv, ns
+    # flag -> value ADJACENCY for the security-critical flags (not just membership)
+    assert _value_after(argv, "--user") == "1000:1000"
+    assert _value_after(argv, "--ipc") == "private"
+    assert _value_after(argv, "--cgroupns") == "private"
+    # PID and UTS namespaces are private by DEFAULT on Docker/Podman; Docker rejects the
+    # literal "--pid private"/"--uts private", so these flags must not appear at all.
+    assert "--pid" not in argv
+    assert "--uts" not in argv
     assert "--network" in argv  # egress mode is explicit (open, per spec v1)
     # exactly one user bind mount: the credential staging dir, read-only
     binds = [argv[i + 1] for i, a in enumerate(argv) if a == "-v" or a == "--mount"]
@@ -562,8 +576,13 @@ def test_argv_carries_all_codex_hermetic_flags_and_disable_set():
 
 def test_never_uses_host_namespaces_or_privileged():
     argv = build_create_argv("docker", _cfg())
-    joined = " ".join(argv)
-    assert "host" not in [argv[i + 1] for i, a in enumerate(argv) if a in ("--pid", "--ipc", "--uts")]
+    # no host-namespace sharing: --ipc/--cgroupns must never carry "host"
+    for flag in ("--ipc", "--cgroupns"):
+        assert _value_after(argv, flag) != "host"
+    # --pid and --uts must not be present with any value at all (private by default;
+    # Docker rejects the literal "--pid private"/"--uts private")
+    assert "--pid" not in argv
+    assert "--uts" not in argv
     assert "--privileged" not in argv
 
 
@@ -577,6 +596,14 @@ def test_semantic_profile_changes_when_a_security_value_changes():
     base = semantic_profile(_cfg())
     weakened = semantic_profile(_cfg(pids_limit=999999))
     assert base != weakened
+
+
+def test_semantic_profile_differs_when_image_ref_changes():
+    # image_ref is the pinned image digest -- the most security-critical value -- and must
+    # appear verbatim in the template, not be placeholder-ized away.
+    a = semantic_profile(_cfg(image_ref="codex@sha256:aaaa"))
+    b = semantic_profile(_cfg(image_ref="codex@sha256:bbbb"))
+    assert a != b
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -593,7 +620,7 @@ Create `gauntlet-review/python/gauntlet_review/runconfig.py`:
 and the canonical semantic profile descriptor (per-run values -> typed placeholders)."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -638,7 +665,10 @@ def build_create_argv(runtime: str, cfg: RunConfig) -> list[str]:
             "--read-only",
             "--cap-drop", "ALL",
             "--security-opt", "no-new-privileges",
-            "--pid", "private", "--ipc", "private", "--uts", "private", "--cgroupns", "private",
+            # PID and UTS namespaces are private by DEFAULT on Docker and Podman; Docker
+            # rejects the literal "--pid private"/"--uts private", so they are omitted (the
+            # Phase-3 policy validator asserts private PID/UTS via container inspection).
+            "--ipc", "private", "--cgroupns", "private",
             "--pids-limit", str(cfg.pids_limit),
             "--memory", cfg.memory, "--cpus", cfg.cpus,
             "--log-driver", "none",
@@ -654,20 +684,25 @@ def build_create_argv(runtime: str, cfg: RunConfig) -> list[str]:
 
 
 def semantic_profile(cfg: RunConfig) -> dict:
-    """Security-relevant shape with per-run values replaced by typed placeholders, so two
-    runs differing only in cidfile/staging_dir/run_label/uid/gid hash identically (Phase 3
-    hashes this). Any mandatory security value is included verbatim."""
+    """Security-relevant shape with ONLY the genuinely per-run values (cidfile, staging_dir,
+    run_label, uid, gid) replaced by typed placeholders, so two runs differing only in those
+    hash identically (Phase 3 hashes this). Every other value -- including image_ref, the
+    pinned image digest and the most security-critical field -- appears verbatim, so a
+    change to it changes the profile."""
     return {
         "runtime_argv_template": [
             "create", "--cidfile", "<cidfile>", "--label", "<run_label>",
             "--user", "<uid>:<gid>", "--read-only", "--cap-drop", "ALL",
             "--security-opt", "no-new-privileges",
-            "--pid", "private", "--ipc", "private", "--uts", "private", "--cgroupns", "private",
+            # PID and UTS namespaces are private by DEFAULT on Docker and Podman; Docker
+            # rejects the literal "--pid private"/"--uts private", so they are omitted (the
+            # Phase-3 policy validator asserts private PID/UTS via container inspection).
+            "--ipc", "private", "--cgroupns", "private",
             "--pids-limit", str(cfg.pids_limit), "--memory", cfg.memory, "--cpus", cfg.cpus,
             "--log-driver", "none", "--network", cfg.network, "--platform", cfg.platform,
-            "--tmpfs", f"<tmpfs_dir>:rw,nosuid,nodev,noexec",
-            "-v", "<staging_dir>:<codex_home>:ro", "-e", "CODEX_HOME=<codex_home>", "-i",
-            "<image_ref>",
+            "--tmpfs", f"{cfg.tmpfs_dir}:rw,nosuid,nodev,noexec",
+            "-v", f"<staging_dir>:{cfg.codex_home}:ro", "-e", f"CODEX_HOME={cfg.codex_home}", "-i",
+            cfg.image_ref,
         ],
         "codex_args": _codex_args_template(cfg),
         "disable_set": sorted(cfg.disable_set),
@@ -675,15 +710,15 @@ def semantic_profile(cfg: RunConfig) -> dict:
 
 
 def _codex_args_template(cfg: RunConfig) -> list[str]:
-    a = _codex_args(cfg)
-    # Replace the two per-run paths with placeholders; keep every flag/value verbatim.
-    return ["<schema_path>" if x == cfg.schema_path else "<verdict_path>" if x == cfg.verdict_path else x for x in a]
+    # schema_path and verdict_path are fixed in-container config, not per-run-random:
+    # keep every value verbatim (only cidfile/staging_dir/run_label/uid/gid are placeholders).
+    return _codex_args(cfg)
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `python -m pytest tests/test_runconfig.py -v`
-Expected: PASS (5 tests).
+Expected: PASS (6 tests).
 
 - [ ] **Step 5: Commit**
 

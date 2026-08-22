@@ -47,7 +47,10 @@ def build_create_argv(runtime: str, cfg: RunConfig) -> list[str]:
             "--read-only",
             "--cap-drop", "ALL",
             "--security-opt", "no-new-privileges",
-            "--pid", "private", "--ipc", "private", "--uts", "private", "--cgroupns", "private",
+            # PID and UTS namespaces are private by DEFAULT on Docker and Podman; Docker
+            # rejects the literal "--pid private"/"--uts private", so they are omitted (the
+            # Phase-3 policy validator asserts private PID/UTS via container inspection).
+            "--ipc", "private", "--cgroupns", "private",
             "--pids-limit", str(cfg.pids_limit),
             "--memory", cfg.memory, "--cpus", cfg.cpus,
             "--log-driver", "none",
@@ -63,20 +66,25 @@ def build_create_argv(runtime: str, cfg: RunConfig) -> list[str]:
 
 
 def semantic_profile(cfg: RunConfig) -> dict:
-    """Security-relevant shape with per-run values replaced by typed placeholders, so two
-    runs differing only in cidfile/staging_dir/run_label/uid/gid hash identically (Phase 3
-    hashes this). Any mandatory security value is included verbatim."""
+    """Security-relevant shape with ONLY the genuinely per-run values (cidfile, staging_dir,
+    run_label, uid, gid) replaced by typed placeholders, so two runs differing only in those
+    hash identically (Phase 3 hashes this). Every other value -- including image_ref, the
+    pinned image digest and the most security-critical field -- appears verbatim, so a
+    change to it changes the profile."""
     return {
         "runtime_argv_template": [
             "create", "--cidfile", "<cidfile>", "--label", "<run_label>",
             "--user", "<uid>:<gid>", "--read-only", "--cap-drop", "ALL",
             "--security-opt", "no-new-privileges",
-            "--pid", "private", "--ipc", "private", "--uts", "private", "--cgroupns", "private",
+            # PID and UTS namespaces are private by DEFAULT on Docker and Podman; Docker
+            # rejects the literal "--pid private"/"--uts private", so they are omitted (the
+            # Phase-3 policy validator asserts private PID/UTS via container inspection).
+            "--ipc", "private", "--cgroupns", "private",
             "--pids-limit", str(cfg.pids_limit), "--memory", cfg.memory, "--cpus", cfg.cpus,
             "--log-driver", "none", "--network", cfg.network, "--platform", cfg.platform,
-            "--tmpfs", "<tmpfs_dir>:rw,nosuid,nodev,noexec",
-            "-v", "<staging_dir>:<codex_home>:ro", "-e", "CODEX_HOME=<codex_home>", "-i",
-            "<image_ref>",
+            "--tmpfs", f"{cfg.tmpfs_dir}:rw,nosuid,nodev,noexec",
+            "-v", f"<staging_dir>:{cfg.codex_home}:ro", "-e", f"CODEX_HOME={cfg.codex_home}", "-i",
+            cfg.image_ref,
         ],
         "codex_args": _codex_args_template(cfg),
         "disable_set": sorted(cfg.disable_set),
@@ -84,6 +92,6 @@ def semantic_profile(cfg: RunConfig) -> dict:
 
 
 def _codex_args_template(cfg: RunConfig) -> list[str]:
-    a = _codex_args(cfg)
-    # Replace the two per-run paths with placeholders; keep every flag/value verbatim.
-    return ["<schema_path>" if x == cfg.schema_path else "<verdict_path>" if x == cfg.verdict_path else x for x in a]
+    # schema_path and verdict_path are fixed in-container config, not per-run-random:
+    # keep every value verbatim (only cidfile/staging_dir/run_label/uid/gid are placeholders).
+    return _codex_args(cfg)

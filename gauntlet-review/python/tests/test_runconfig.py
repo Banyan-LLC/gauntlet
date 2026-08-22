@@ -12,17 +12,31 @@ def _cfg(**over):
     return RunConfig(**base)
 
 
+def _value_after(argv, flag):
+    """Return the value immediately following `flag` in argv, or None if `flag` is absent
+    (or has nothing after it). Used to assert flag->value ADJACENCY, not just membership."""
+    for i, a in enumerate(argv):
+        if a == flag:
+            return argv[i + 1] if i + 1 < len(argv) else None
+    return None
+
+
 def test_argv_carries_every_mandatory_security_flag():
     argv = build_create_argv("docker", _cfg())
-    joined = " ".join(argv)
     assert argv[:2] == ["docker", "create"]
     for token in ["--user", "1000:1000", "--read-only", "--cap-drop", "ALL",
                   "--security-opt", "no-new-privileges", "--pids-limit",
                   "--log-driver", "none", "--platform", "linux/arm64",
                   "--cidfile", "/run/cid-abc", "--label", "gauntlet-run-abc"]:
         assert token in argv, token
-    for ns in ["--pid", "--ipc", "--uts", "--cgroupns"]:
-        assert ns in argv, ns
+    # flag -> value ADJACENCY for the security-critical flags (not just membership)
+    assert _value_after(argv, "--user") == "1000:1000"
+    assert _value_after(argv, "--ipc") == "private"
+    assert _value_after(argv, "--cgroupns") == "private"
+    # PID and UTS namespaces are private by DEFAULT on Docker/Podman; Docker rejects the
+    # literal "--pid private"/"--uts private", so these flags must not appear at all.
+    assert "--pid" not in argv
+    assert "--uts" not in argv
     assert "--network" in argv  # egress mode is explicit (open, per spec v1)
     # exactly one user bind mount: the credential staging dir, read-only
     binds = [argv[i + 1] for i, a in enumerate(argv) if a == "-v" or a == "--mount"]
@@ -44,8 +58,13 @@ def test_argv_carries_all_codex_hermetic_flags_and_disable_set():
 
 def test_never_uses_host_namespaces_or_privileged():
     argv = build_create_argv("docker", _cfg())
-    joined = " ".join(argv)
-    assert "host" not in [argv[i + 1] for i, a in enumerate(argv) if a in ("--pid", "--ipc", "--uts")]
+    # no host-namespace sharing: --ipc/--cgroupns must never carry "host"
+    for flag in ("--ipc", "--cgroupns"):
+        assert _value_after(argv, flag) != "host"
+    # --pid and --uts must not be present with any value at all (private by default;
+    # Docker rejects the literal "--pid private"/"--uts private")
+    assert "--pid" not in argv
+    assert "--uts" not in argv
     assert "--privileged" not in argv
 
 
@@ -59,3 +78,11 @@ def test_semantic_profile_changes_when_a_security_value_changes():
     base = semantic_profile(_cfg())
     weakened = semantic_profile(_cfg(pids_limit=999999))
     assert base != weakened
+
+
+def test_semantic_profile_differs_when_image_ref_changes():
+    # image_ref is the pinned image digest -- the most security-critical value -- and must
+    # appear verbatim in the template, not be placeholder-ized away.
+    a = semantic_profile(_cfg(image_ref="codex@sha256:aaaa"))
+    b = semantic_profile(_cfg(image_ref="codex@sha256:bbbb"))
+    assert a != b
