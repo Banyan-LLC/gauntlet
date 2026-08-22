@@ -209,6 +209,23 @@ def test_read_text_rejects_symlinked_state_file(tmp_path):
         prior_recommendations(_sd(sd_path), up_to_round=2)
 
 
+def test_doc_state_dir_rejects_trailing_newline(tmp_path):
+    with pytest.raises(ValueError):
+        doc_state_dir(tmp_path, topic="t\n", phase="spec", date="2026-08-18")
+    with pytest.raises(ValueError):
+        doc_state_dir(tmp_path, topic="t", phase="spec", date="2026-08-18\n")
+
+
+def test_ledger_surrogate_reason_rejected(tmp_path):
+    _write_verdict(tmp_path, 1, [REC])
+    rid = recommendation_id(1, 0, REC)
+    p = tmp_path / "ledger-2.json"
+    entry = _entry(rid, status="disputed", reason="ok " + chr(0xD800))
+    p.write_text(json.dumps({"version": 1, "round": 2, "entries": [entry]}), encoding="utf-8")
+    r = validate_carryover_ledger(_sd(tmp_path), 2, p)
+    assert not r.valid and "surrogate" in r.reason
+
+
 def test_closed_statedir_raises_not_fallback(tmp_path):
     # After close(), reads must RAISE, never silently degrade to path-based I/O.
     _write_verdict(tmp_path, 1, [REC])

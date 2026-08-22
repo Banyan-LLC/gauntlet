@@ -32,6 +32,10 @@ def _reject_constant(name):  # NaN / Infinity / -Infinity are not valid JSON
     raise ValueError(f"non-JSON constant {name}")
 
 
+def _has_surrogate(s: str) -> bool:
+    return any(0xD800 <= ord(c) <= 0xDFFF for c in s)
+
+
 _TOPIC_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _VALID_STATUS = {"addressed", "disputed", "outstanding"}
@@ -150,9 +154,9 @@ def doc_state_dir(repo_root, topic: str, phase: str, date: str) -> StateDir:
     """docs/superpowers/reviews/{date}-{topic}/{phase}, validated and created, returned
     as a handle-backed StateDir. No symlink is ever followed during creation, and the
     returned handle keeps confinement through subsequent I/O (POSIX)."""
-    if not _TOPIC_RE.match(topic):
+    if not _TOPIC_RE.fullmatch(topic):  # fullmatch, not match: match+$ would accept a trailing newline
         raise ValueError(f"invalid topic '{topic}'")
-    if not _DATE_RE.match(date):
+    if not _DATE_RE.fullmatch(date):
         raise ValueError(f"invalid date '{date}'")
     if phase not in ("spec", "plan"):
         raise ValueError(f"invalid phase '{phase}'")
@@ -264,6 +268,13 @@ def validate_carryover_ledger(state_dir: StateDir, round_num: int, ledger_path) 
             return _bad(f"entry '{e['id']}' has a non-string reason")
         if status != "addressed" and not (isinstance(reason, str) and reason.strip()):
             return _bad(f"entry '{e['id']}' is '{status}' but carries no reason")
+        # Reject invalid Unicode in any string that render_carryover_text emits, so a ledger
+        # declared valid can never fail later when the rendered prompt is UTF-8 encoded.
+        for field in _MATCH_FIELDS:
+            if _has_surrogate(e[field]):
+                return _bad(f"entry '{e['id']}' field '{field}' contains an invalid lone surrogate")
+        if isinstance(reason, str) and _has_surrogate(reason):
+            return _bad(f"entry '{e['id']}' reason contains an invalid lone surrogate")
 
     return LedgerResult(True, None, entries, derived)
 
