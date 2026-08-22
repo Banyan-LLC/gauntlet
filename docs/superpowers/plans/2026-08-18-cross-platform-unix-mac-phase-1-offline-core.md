@@ -884,6 +884,16 @@ def test_ledger_non_string_id_rejected(tmp_path):
     assert not r.valid and "id" in r.reason
 
 
+def test_ledger_non_string_status_rejected(tmp_path):
+    _write_verdict(tmp_path, 1, [REC])
+    rid = recommendation_id(1, 0, REC)
+    p = tmp_path / "ledger-2.json"
+    entry = {**_entry(rid), "status": ["addressed"]}  # a list must not raise TypeError
+    p.write_text(json.dumps({"version": 1, "round": 2, "entries": [entry]}), encoding="utf-8")
+    r = validate_carryover_ledger(tmp_path, 2, p)
+    assert not r.valid and "status" in r.reason
+
+
 def test_render_carryover_text_sorted_and_labeled(tmp_path):
     entries = [
         {"id": "r1-bbb", "severity": "nit", "location": "L2", "issue": "i2", "suggestion": "s2", "status": "addressed", "reason": None},
@@ -1036,7 +1046,7 @@ def validate_carryover_ledger(state_dir, round_num: int, ledger_path) -> LedgerR
             if e.get(field) != d[field]:
                 return _bad(f"entry '{e['id']}' does not match the canonical verdict text (mutation)")
         status = e.get("status")
-        if status not in _VALID_STATUS:
+        if not isinstance(status, str) or status not in _VALID_STATUS:  # str check first: a list status would raise TypeError on `in`
             return _bad(f"entry '{e['id']}' has invalid status '{status}'")
         if status != "addressed" and not (isinstance(e.get("reason"), str) and e["reason"].strip()):
             return _bad(f"entry '{e['id']}' is '{status}' but carries no reason")
@@ -1067,7 +1077,7 @@ def render_carryover_text(entries: list[dict]) -> str:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `python -m pytest tests/test_state.py -v`
-Expected: PASS (17 tests).
+Expected: PASS (18 tests).
 
 - [ ] **Step 5: Run the full Phase-1 suite and commit**
 
