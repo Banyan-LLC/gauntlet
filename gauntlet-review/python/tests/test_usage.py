@@ -78,3 +78,15 @@ def test_boolean_input_tokens_rejected():
 def test_non_positive_input_tokens_fails():
     r = parse_run_usage(_stream({"type": "turn.completed", "usage": {"input_tokens": 0}}))
     assert not r.ok and "positive integer" in r.reason
+
+
+def test_nan_constant_rejected():
+    # Python json.loads accepts NaN/Infinity by default; the gate must reject them.
+    r = parse_run_usage(['{"type":"thread.started","x":NaN}',
+                         json.dumps({"type": "turn.completed", "usage": {"input_tokens": 5}})])
+    assert not r.ok and "not valid JSON" in r.reason
+
+
+def test_infinity_constant_rejected():
+    r = parse_run_usage(['{"type":"turn.completed","usage":{"input_tokens":5},"y":Infinity}'])
+    assert not r.ok and "not valid JSON" in r.reason

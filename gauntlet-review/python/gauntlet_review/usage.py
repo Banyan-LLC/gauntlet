@@ -18,14 +18,18 @@ def _bad(reason: str) -> UsageResult:
     return UsageResult(False, reason, None, None)
 
 
+def _reject_constant(name):  # NaN / Infinity / -Infinity are not valid JSON
+    raise ValueError(f"non-JSON constant {name}")
+
+
 def parse_run_usage(event_lines: list[str]) -> UsageResult:
     events = []  # list[(raw_line, parsed_dict)]
     for line in event_lines:
         if not line or not line.strip():
             continue
         try:
-            parsed = json.loads(line)
-        except json.JSONDecodeError as exc:
+            parsed = json.loads(line, parse_constant=_reject_constant)
+        except ValueError as exc:  # JSONDecodeError is a ValueError; also catches _reject_constant
             return _bad(f"event stream line is not valid JSON: {exc}")
         if not isinstance(parsed, dict):
             shape = "null" if parsed is None else type(parsed).__name__

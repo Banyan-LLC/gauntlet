@@ -47,3 +47,11 @@ def test_summary_over_800_fails():
 def test_non_json_fails_cleanly():
     r = normalize_verdict("{not json", SCHEMA)
     assert not r.valid
+
+
+def test_lone_surrogate_verdict_returns_invalid_not_raises():
+    # A lone surrogate passes json.loads + schema, but canonicalization must fail
+    # closed via the result contract (not raise). json.dumps emits the \\udXXX escape.
+    raw = json.dumps({"verdict": "request_changes", "summary": chr(0xD800), "recommendations": []})
+    r = normalize_verdict(raw, SCHEMA)
+    assert not r.valid and "canonicalization failed" in r.reason

@@ -177,6 +177,7 @@ def test_doc_state_dir_rejects_symlinked_reviews_escape(tmp_path):
         pytest.skip("symlinks not supported on this platform/privilege")
     with pytest.raises(ValueError):
         doc_state_dir(repo, topic="t", phase="spec", date="2026-08-18")
+    assert list(outside.iterdir()) == []  # no external write occurred through the symlink
 
 
 def test_render_carryover_text_sorted_and_labeled(tmp_path):

@@ -17,12 +17,55 @@ _VALID_STATUS = {"addressed", "disputed", "outstanding"}
 _MATCH_FIELDS = ("severity", "location", "issue", "suggestion")
 
 
+def _create_dirs_nofollow_posix(repo_root: Path, components: list[str]) -> Path:
+    """Create/traverse each component relative to its parent's directory fd with
+    O_NOFOLLOW, so no symlink is ever followed and no write escapes the repo. A
+    symlinked component fails the O_NOFOLLOW open (ELOOP) and is rejected before
+    anything is written under it. Handle-based, so it is not TOCTOU-defeatable."""
+    fds = [os.open(repo_root, os.O_RDONLY | os.O_DIRECTORY)]
+    try:
+        for part in components:
+            try:
+                os.mkdir(part, dir_fd=fds[-1])
+            except FileExistsError:
+                pass
+            try:
+                fds.append(os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fds[-1]))
+            except OSError as exc:  # ELOOP when the component is a symlink
+                raise ValueError(f"refusing to traverse symlinked path component: {part}") from exc
+        return repo_root.joinpath(*components).resolve()
+    finally:
+        for fd in fds:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+
+def _create_dirs_checked(repo_root: Path, components: list[str]) -> Path:
+    """Cross-platform fallback: reject any symlinked component BEFORE creating under
+    it, so no write escapes the repository (no O_NOFOLLOW/dir_fd on this platform)."""
+    base = repo_root
+    for part in components:
+        nxt = base / part
+        if nxt.is_symlink():
+            raise ValueError(f"refusing to traverse symlinked path component: {nxt}")
+        if nxt.exists():
+            if not nxt.is_dir():
+                raise ValueError(f"path component is not a directory: {nxt}")
+        else:
+            os.mkdir(nxt)
+        base = nxt
+    return base.resolve()
+
+
 def doc_state_dir(repo_root, topic: str, phase: str, date: str) -> Path:
     """docs/superpowers/reviews/{date}-{topic}/{phase}, validated and created.
-    Confinement is anchored to the resolved repository ROOT (not the reviews dir),
-    and rechecked after creation so a symlinked path component cannot redirect writes
-    outside the repository (a plain .resolve() on the reviews dir would follow such a
-    symlink and defeat the check)."""
+    Every component is created/traversed WITHOUT following symlinks, so a symlinked
+    component in an untrusted worktree cannot redirect writes outside the repository
+    — and no external write occurs, because a symlinked component is rejected before
+    anything is created under it. On POSIX this is handle-based O_NOFOLLOW traversal
+    (TOCTOU-safe); elsewhere, a per-component symlink check."""
     if not _TOPIC_RE.match(topic):
         raise ValueError(f"invalid topic '{topic}'")
     if not _DATE_RE.match(date):
@@ -30,18 +73,10 @@ def doc_state_dir(repo_root, topic: str, phase: str, date: str) -> Path:
     if phase not in ("spec", "plan"):
         raise ValueError(f"invalid phase '{phase}'")
     repo_root = Path(repo_root)
-    d = repo_root / "docs" / "superpowers" / "reviews" / f"{date}-{topic}" / phase
-    # Lexical pre-check (no symlink follow): the path must stay under repo_root.
-    repo_abs = os.path.abspath(repo_root)
-    if os.path.commonpath([os.path.abspath(d), repo_abs]) != repo_abs:
-        raise ValueError("state path escapes the repository root")
-    d.mkdir(parents=True, exist_ok=True)
-    # Real post-check (resolves symlinks): a symlinked component must not have redirected
-    # the real location outside the repository.
-    repo_real = str(repo_root.resolve())
-    if os.path.commonpath([str(d.resolve()), repo_real]) != repo_real:
-        raise ValueError("state path escapes the repository root (symlink redirection)")
-    return d.resolve()
+    components = ["docs", "superpowers", "reviews", f"{date}-{topic}", phase]
+    if os.name == "posix" and hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"):
+        return _create_dirs_nofollow_posix(repo_root, components)
+    return _create_dirs_checked(repo_root, components)
 
 
 def prior_recommendations(state_dir, up_to_round: int) -> list[dict]:

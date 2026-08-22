@@ -60,4 +60,10 @@ def normalize_verdict(json_text: str, schema_path: str | os.PathLike) -> Normali
             downgraded = True
             reason = f"approve carried {len(non_nit)} non-nit recommendation(s); downgraded"
 
-    return NormalizeResult(True, reason, downgraded, obj, jcs.canonical(obj))
+    try:
+        canonical = jcs.canonical(obj)
+    except (ValueError, TypeError) as exc:
+        # e.g. a lone surrogate that passed json.loads + schema but is not valid Unicode.
+        # Fail closed via the result contract rather than raising.
+        return NormalizeResult(False, f"canonicalization failed: {exc}", False, None, None)
+    return NormalizeResult(True, reason, downgraded, obj, canonical)

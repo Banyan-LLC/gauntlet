@@ -938,20 +938,61 @@ _VALID_STATUS = {"addressed", "disputed", "outstanding"}
 _MATCH_FIELDS = ("severity", "location", "issue", "suggestion")
 
 
+def _create_dirs_nofollow_posix(repo_root: Path, components: list[str]) -> Path:
+    """Handle-based O_NOFOLLOW traversal: no symlink is ever followed and no write
+    escapes the repo (a symlinked component fails the O_NOFOLLOW open with ELOOP and
+    is rejected before anything is written under it). TOCTOU-safe."""
+    fds = [os.open(repo_root, os.O_RDONLY | os.O_DIRECTORY)]
+    try:
+        for part in components:
+            try:
+                os.mkdir(part, dir_fd=fds[-1])
+            except FileExistsError:
+                pass
+            try:
+                fds.append(os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fds[-1]))
+            except OSError as exc:
+                raise ValueError(f"refusing to traverse symlinked path component: {part}") from exc
+        return repo_root.joinpath(*components).resolve()
+    finally:
+        for fd in fds:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+
+def _create_dirs_checked(repo_root: Path, components: list[str]) -> Path:
+    """Cross-platform fallback: reject any symlinked component BEFORE creating under it."""
+    base = repo_root
+    for part in components:
+        nxt = base / part
+        if nxt.is_symlink():
+            raise ValueError(f"refusing to traverse symlinked path component: {nxt}")
+        if nxt.exists():
+            if not nxt.is_dir():
+                raise ValueError(f"path component is not a directory: {nxt}")
+        else:
+            os.mkdir(nxt)
+        base = nxt
+    return base.resolve()
+
+
 def doc_state_dir(repo_root, topic: str, phase: str, date: str) -> Path:
-    """docs/superpowers/reviews/{date}-{topic}/{phase}, validated and created."""
+    """docs/superpowers/reviews/{date}-{topic}/{phase}, validated and created, with
+    no symlink ever followed (a symlinked component cannot redirect writes outside the
+    repo, and no external write occurs). POSIX: handle-based O_NOFOLLOW; else per-component check."""
     if not _TOPIC_RE.match(topic):
         raise ValueError(f"invalid topic '{topic}'")
     if not _DATE_RE.match(date):
         raise ValueError(f"invalid date '{date}'")
     if phase not in ("spec", "plan"):
         raise ValueError(f"invalid phase '{phase}'")
-    root = Path(repo_root) / "docs" / "superpowers" / "reviews"
-    d = (root / f"{date}-{topic}" / phase).resolve()
-    if os.path.commonpath([str(d), str(root.resolve())]) != str(root.resolve()):
-        raise ValueError("state path escapes its root")
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    repo_root = Path(repo_root)
+    components = ["docs", "superpowers", "reviews", f"{date}-{topic}", phase]
+    if os.name == "posix" and hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"):
+        return _create_dirs_nofollow_posix(repo_root, components)
+    return _create_dirs_checked(repo_root, components)
 
 
 def prior_recommendations(state_dir, up_to_round: int) -> list[dict]:
