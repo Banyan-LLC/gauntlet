@@ -1147,11 +1147,14 @@ def extract_single_file_from_tar(tar_bytes: bytes, dest_path: str, max_bytes: in
     dest_path (0o600), enforcing max_bytes. Rejects oversized, absent, or non-regular
     members. Returns bytes written."""
     with tarfile.open(fileobj=io.BytesIO(tar_bytes), mode="r") as tf:
+        # Count ALL members first: a decoy regular member must not mask a second (e.g. symlink)
+        # member, so reject on total count != 1 BEFORE testing regularity.
         members = [m for m in tf.getmembers() if m.name not in (".", "")]
-        regular = [m for m in members if m.isreg()]
-        if len(regular) != 1:
-            raise ValueError(f"expected exactly one regular file in the cp stream, got {len(regular)}")
-        m = regular[0]
+        if len(members) != 1:
+            raise ValueError(f"expected exactly one member in the cp stream, got {len(members)}")
+        m = members[0]
+        if not m.isreg():
+            raise ValueError(f"member {m.name} is not a regular file")
         if m.size > max_bytes:
             raise ValueError(f"copied file {m.name} is {m.size} bytes, exceeds cap {max_bytes}")
         src = tf.extractfile(m)
@@ -1159,22 +1162,30 @@ def extract_single_file_from_tar(tar_bytes: bytes, dest_path: str, max_bytes: in
             raise ValueError(f"member {m.name} is not extractable as a regular file")
         fd = os.open(dest_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         written = 0
-        with os.fdopen(fd, "wb") as out:
-            while True:
-                chunk = src.read(65536)
-                if not chunk:
-                    break
-                written += len(chunk)
-                if written > max_bytes:
-                    raise ValueError("copied file exceeds cap during read")
-                out.write(chunk)
+        try:
+            with os.fdopen(fd, "wb") as out:
+                while True:
+                    chunk = src.read(65536)
+                    if not chunk:
+                        break
+                    written += len(chunk)
+                    if written > max_bytes:
+                        raise ValueError("copied file exceeds cap during read")
+                    out.write(chunk)
+        except BaseException:
+            # Never leave a partial (credential- or verdict-bearing) file behind.
+            try:
+                os.unlink(dest_path)
+            except OSError:
+                pass
+            raise
         return written
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `python -m pytest tests/test_cp_bounded.py -v`
-Expected: PASS (3 tests).
+Expected: PASS (4 tests, incl. partial-file cleanup on over-cap-during-read).
 
 - [ ] **Step 5: Commit**
 
@@ -1743,4 +1754,52 @@ git commit -m "test(py): Docker-gated container smoke test (skipped offline)"
 
 **Placeholder scan:** the only non-code steps are Task 5 Step 0 (a concrete empirical procedure for the access-only token, required because the real `auth.json` schema must be observed) and Task 9 Step 3 (the real-Docker wiring), plus the Dockerfile's pinned-digest/CLI-install lines which are resolved at build time and recorded in the manifest — these are genuine external dependencies, not vague TODOs. `default_token_provider`'s body is the one function whose implementation follows the Step-0 finding; its callers and tests are complete via injection.
 
-**Type consistency:** `run_bounded`/`ProcResult` (Task 1) are consumed with the same shape by `runtime` (Task 2/6) and the `FakeRuntime`/`run_round` (Task 8); `RunConfig`/`build_create_argv`/`semantic_profile` (Task 3) are used unchanged in Task 8; `RunLease.try_acquire`/`acquire`/`release` (Task 4) are used by `broker` and `reap_stale`; `ImageIdentity` (Task 2) is the shape Phase 3 will fingerprint. The `ContainerRuntime` method set named in Task 2's interface (`create`/`start`/`read_exit_status`/`cp_out_bounded`/`kill`/`rm`/`list_labeled`/`inspect_image`/`inspect_mounts`/`info`) matches exactly what `run_round`/`reap_stale` call and what `FakeRuntime` implements.
+**Type consistency:** `run_bounded`/`ProcResult` (Task 1) are consumed with the same shape by `runtime` (Task 2/6) and the `FakeRuntime`/`run_round` (Task 8); `RunConfig`/`build_create_argv`/`semantic_profile` (Task 3) are used unchanged in Task 8; `RunLease.try_acquire`/`acquire`/`release` (Task 4) are used by `broker` and `reap_stale`; `ImageIdentity` (Task 2) is the shape Phase 3 will fingerprint. The `ContainerRuntime` method set named in Task 2's interface (`create`/`start`/`read_exit_status`/`cp_out_bounded`/`kill`/`rm`/`list_labeled`/`inspect_image`/`inspect_mounts`/`info`) is the contract `run_round`/`reap_stale` call against and that `FakeRuntime` implements for the offline suite. **Note (corrected after the Phase-2 final review):** Phase 2 delivers this only as the *interface* plus the `FakeRuntime` — no real docker/podman-shelling `ContainerRuntime` class exists yet, so `run_round`/`reap_stale` have only ever executed against the fake. The real shelling implementation, and un-stubbing the Task-9 smoke test against it, is the first Phase-3 task (see "Carried forward to Phase 3" below). The exact method signatures (e.g. whether `start` takes a `caps` argument, the presence of `read_exit_status`) are finalized when that real class and `invoke_codex.py` are written.
+
+---
+
+## Carried forward to Phase 3 (from the Phase-2 final whole-branch review)
+
+The Phase-2 offline core passed the final whole-branch review (no Critical; no P0/P1;
+verdict: mergeable as the offline-testable core it is scoped to be). The review surfaced
+cross-module **integration seams on the deliberately-deferred real-Docker path** that are
+Phase-3 entry work (they cannot be resolved without doing Phase-3 wiring), plus a few
+fix-later Minors. They are recorded here so Phase-3 planning picks them up:
+
+**Phase-3 entry tasks (must resolve before real Docker is wired):**
+- **Real `ContainerRuntime` (I-3):** implement the docker/podman-shelling class satisfying the
+  Task-2 interface, then un-stub `tests/integration/test_container_smoke.py` Step 3 against it
+  on a Docker host. Finalize signatures the fake left loose (`start(..., caps?)`,
+  `read_exit_status`). This is the first Phase-3 task.
+- **create-argv ↔ entrypoint contract (I-1):** `build_create_argv` currently appends the Codex
+  `exec … -` args as the container command, but the image ENTRYPOINT is `entrypoint.py`, which
+  reads its config from `GAUNTLET_*` env vars (`GAUNTLET_CODEX_ARGV_JSON`, `_VERDICT_PATH`,
+  `_EXIT_STATUS_PATH`, `_MARKER_PATH`, `_DEADLINE_SEC`) and ignores argv. Pick one contract in
+  `invoke_codex.py` — pass the codex argv + paths as `-e GAUNTLET_*` env (preferred), or have the
+  entrypoint accept argv — and make the two halves consistent.
+- **marker / start / copy-out handshake (I-2):** define where the "go" marker file lives so it is
+  writable by the host and visible in-container (today `run_round` writes a host path while the
+  entrypoint waits on an in-container path, and the create-argv mounts only the staging dir `:ro`
+  plus a private tmpfs), and define when `runtime.start` returns relative to Codex vs. the wrapper
+  so `docker cp` can read the still-running container's tmpfs without stalling on the in-container
+  deadline.
+
+**Fix-later Minors (fold into the relevant Phase-3 wiring):**
+- **Staging-dir + lease reclamation (M-3, ledger Task 8):** `reap_stale` does not remove the
+  `.lease` file or the crashed run's credential-bearing staging dir; wire reclamation once
+  `run_id`/`run_label`/`staging_dir`/lease are correlated in `invoke_codex.py`.
+- **`parse_userns_mapping` misses Docker `--userns-remap` (M-4):** `uid_map_present` is tied to
+  `rootless`; a root daemon with userns-remap (`SecurityOptions: ["name=userns"]`) reports
+  `False`. Extend before the Phase-3/5 userns preflight relies on it.
+- **broker `OSError` → `BrokerError` mapping (T5b):** a symlinked credential source raises raw
+  `OSError` from `os.open` (before makedirs); the Phase-3 exit-12 mapping must catch `OSError`
+  or the broker should wrap that open.
+- **`_lock_nb` errno breadth (M-5):** treats every `OSError` as "held"; distinguish
+  `EWOULDBLOCK`/`EACCES` from genuine lock errors so `acquire()` doesn't report a misleading
+  "already held."
+- **Grandchild-kill confirmation (T7):** the watchdog kills a single process; confirm on a real
+  Docker host that container teardown + `--pids-limit` reap any Codex grandchildren.
+
+**Already fixed in Phase-2 (commit `dddae2a`):** partial-file cleanup in
+`extract_single_file_from_tar` (M-1); staging-dir rollback on a post-makedirs write failure in
+`stage_credential` (M-2); `auth.json`/`AGENTS.md` 0600 assertions (T5d); dead imports removed.
