@@ -101,6 +101,12 @@ def test_no_trailing_newline():
 def test_float_is_rejected():
     with pytest.raises(TypeError):
         canonical({"x": 1.5})
+
+
+def test_int_at_exact_boundary_ok_and_beyond_rejected():
+    assert canonical(2 ** 53 - 1) == str(2 ** 53 - 1)
+    with pytest.raises(ValueError):
+        canonical(2 ** 53)
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -183,6 +189,10 @@ def _serialize(value) -> str:
     if isinstance(value, str):
         return _escape_string(value)
     if isinstance(value, int):
+        # bool is handled above; guard the exact-integer domain (RFC 8785 numbers are IEEE-754,
+        # exact only within +/-(2^53 - 1)). This stack only ever emits small non-negative ints.
+        if not (-(2 ** 53 - 1) <= value <= 2 ** 53 - 1):
+            raise ValueError(f"JCS: integer {value} outside the exact-representable range")
         return str(value)
     if isinstance(value, list):
         return "[" + ",".join(_serialize(v) for v in value) + "]"
@@ -204,7 +214,7 @@ def canonical_bytes(value) -> bytes:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `python -m pip install -e ".[dev]" && python -m pytest tests/test_jcs.py -v`
-Expected: PASS (7 tests).
+Expected: PASS (8 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -315,7 +325,8 @@ from pathlib import Path
 
 from gauntlet_review.verdict import normalize_verdict
 
-SCHEMA = Path(__file__).resolve().parents[3] / "schemas" / "verdict.schema.json"
+SCHEMA = Path(__file__).resolve().parents[2] / "schemas" / "verdict.schema.json"
+assert SCHEMA.is_file(), f"schema fixture not found: {SCHEMA}"
 
 
 def _verdict(verdict, recs):
@@ -847,6 +858,32 @@ def test_ledger_wrong_round_fails(tmp_path):
     assert not r.valid and "round" in r.reason
 
 
+def test_ledger_version_true_rejected(tmp_path):
+    _write_verdict(tmp_path, 1, [REC])
+    rid = recommendation_id(1, 0, REC)
+    p = tmp_path / "ledger-2.json"
+    p.write_text(json.dumps({"version": True, "round": 2, "entries": [_entry(rid)]}), encoding="utf-8")
+    r = validate_carryover_ledger(tmp_path, 2, p)
+    assert not r.valid and "version" in r.reason
+
+
+def test_ledger_entries_not_list_rejected(tmp_path):
+    _write_verdict(tmp_path, 1, [REC])
+    p = tmp_path / "ledger-2.json"
+    p.write_text(json.dumps({"version": 1, "round": 2, "entries": "nope"}), encoding="utf-8")
+    r = validate_carryover_ledger(tmp_path, 2, p)
+    assert not r.valid and "entries" in r.reason
+
+
+def test_ledger_non_string_id_rejected(tmp_path):
+    _write_verdict(tmp_path, 1, [REC])
+    p = tmp_path / "ledger-2.json"
+    entry = {**_entry("placeholder"), "id": 123}
+    p.write_text(json.dumps({"version": 1, "round": 2, "entries": [entry]}), encoding="utf-8")
+    r = validate_carryover_ledger(tmp_path, 2, p)
+    assert not r.valid and "id" in r.reason
+
+
 def test_render_carryover_text_sorted_and_labeled(tmp_path):
     entries = [
         {"id": "r1-bbb", "severity": "nit", "location": "L2", "issue": "i2", "suggestion": "s2", "status": "addressed", "reason": None},
@@ -958,23 +995,27 @@ def validate_carryover_ledger(state_dir, round_num: int, ledger_path) -> LedgerR
         return _bad(f"ledger is not valid JSON: {exc}")
     if not isinstance(ledger, dict):
         return _bad("ledger JSON must be an object")
-    if ledger.get("version") != 1:
-        return _bad(f"unsupported ledger version '{ledger.get('version')}'")
-    if ledger.get("round") is None:
+    version = ledger.get("version")
+    if isinstance(version, bool) or version != 1:  # True == 1 in Python, so reject bool explicitly
+        return _bad(f"unsupported ledger version '{version}'")
+    round_val = ledger.get("round")
+    if round_val is None:
         return _bad("ledger is missing 'round'")
-    if not isinstance(ledger.get("round"), int) or isinstance(ledger.get("round"), bool):
-        return _bad(f"ledger 'round' is not a valid integer: '{ledger.get('round')}'")
-    if ledger["round"] != round_num:
-        return _bad(f"ledger is for round {ledger['round']}, invoked for round {round_num}")
+    if not isinstance(round_val, int) or isinstance(round_val, bool):
+        return _bad(f"ledger 'round' is not a valid integer: '{round_val}'")
+    if round_val != round_num:
+        return _bad(f"ledger is for round {round_val}, invoked for round {round_num}")
 
-    entries = ledger.get("entries") or []
+    entries = ledger.get("entries")
+    if entries is None:
+        entries = []
     if not isinstance(entries, list):
         return _bad("ledger 'entries' must be an array")
     for e in entries:
         if not isinstance(e, dict):
             return _bad("ledger entry is not an object")
-        if not e.get("id"):
-            return _bad("ledger entry is missing 'id'")
+        if not (isinstance(e.get("id"), str) and e["id"]):
+            return _bad("ledger entry is missing a string 'id'")
 
     ids = [e["id"] for e in entries]
     dupes = sorted({i for i in ids if ids.count(i) > 1})
@@ -997,7 +1038,7 @@ def validate_carryover_ledger(state_dir, round_num: int, ledger_path) -> LedgerR
         status = e.get("status")
         if status not in _VALID_STATUS:
             return _bad(f"entry '{e['id']}' has invalid status '{status}'")
-        if status != "addressed" and not (e.get("reason") and str(e["reason"]).strip()):
+        if status != "addressed" and not (isinstance(e.get("reason"), str) and e["reason"].strip()):
             return _bad(f"entry '{e['id']}' is '{status}' but carries no reason")
 
     return LedgerResult(True, None, entries, derived)
@@ -1026,7 +1067,7 @@ def render_carryover_text(entries: list[dict]) -> str:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `python -m pytest tests/test_state.py -v`
-Expected: PASS (15 tests).
+Expected: PASS (17 tests).
 
 - [ ] **Step 5: Run the full Phase-1 suite and commit**
 

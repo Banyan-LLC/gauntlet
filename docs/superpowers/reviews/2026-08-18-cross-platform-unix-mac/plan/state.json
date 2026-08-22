@@ -1,0 +1,10 @@
+{
+  "state_version": 1,
+  "downgraded": false,
+  "status": "in_review",
+  "failure_reason": null,
+  "verdict": "request_changes",
+  "round": 1,
+  "harness_dir": "C:\\Users\\geoff\\AppData\\Local\\gauntlet-review\\harness\\5b106375083e4c46943392d316e81ec4",
+  "attempt": 1
+}

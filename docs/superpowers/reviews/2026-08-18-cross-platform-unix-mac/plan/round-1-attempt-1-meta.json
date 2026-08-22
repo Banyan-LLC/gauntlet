@@ -1,0 +1,19 @@
+{
+  "carryover_entries": 0,
+  "cli_sha256": "a8a7b676945def441ff7a65e546e460da33c274cfe98967662cf96915c3cabb9",
+  "cli_version": "0.148.0-alpha.15",
+  "round": 1,
+  "prompt_body_sha256": "2a8ce7eaab3594d65fbf1e92013136f08c5bdfabc0ca8c39896e9e5114689747",
+  "cli_path": "C:\\Users\\geoff\\AppData\\Local\\OpenAI\\Codex\\bin\\39633208fb6e0c47\\codex.exe",
+  "artifact_commit": "334aad9cc3232a79f62d3e3a46a884e8b2326de9",
+  "attempt": 1,
+  "prompt_bytes": 91500,
+  "harness_dir": "C:\\Users\\geoff\\AppData\\Local\\gauntlet-review\\harness\\5b106375083e4c46943392d316e81ec4",
+  "audit": "codex exec --ignore-user-config --ignore-rules --skip-git-repo-check --ephemeral -s read-only -C C:\\Users\\geoff\\AppData\\Local\\gauntlet-review\\harness\\5b106375083e4c46943392d316e81ec4 -m gpt-5.6-sol -c model_reasoning_effort=\"xhigh\" -c web_search=\"disabled\" -c shell_environment_policy.inherit=\"none\" --disable apply_patch_freeform --disable apps --disable apps_mcp_path_override --disable auth_elicitation --disable browser_use --disable browser_use_external --disable browser_use_full_cdp_access --disable code_mode_buffered_exec --disable code_mode_host --disable codex_git_commit --disable collaboration_modes --disable computer_use --disable elevated_windows_sandbox --disable enable_fanout --disable experimental_windows_sandbox --disable external_migration --disable goals --disable hooks --disable image_detail_original --disable image_generation --disable in_app_browser --disable in_app_updates --disable item_ids --disable js_repl --disable js_repl_tools_only --disable memories --disable mentions_v2 --disable multi_agent --disable multi_agent_mode --disable multi_agent_v2 --disable network_proxy --disable plugin_hooks --disable plugin_sharing --disable plugins --disable prevent_idle_sleep --disable recommended_plugins --disable remote_control --disable remote_models --disable remote_plugin --disable request_rule --disable resize_all_images --disable responses_websockets --disable responses_websockets_v2 --disable search_tool --disable secret_auth_storage --disable shell_snapshot --disable shell_tool --disable skill_env_var_dependency_prompt --disable skill_mcp_dependency_install --disable skill_search --disable sqlite --disable steer --disable terminal_resize_reflow --disable tool_call_mcp_elicitation --disable tool_search --disable tool_search_always_defer_mcp_tools --disable tool_suggest --disable tui_app_server --disable unavailable_dummy_tools --disable undo --disable unified_exec --disable use_legacy_landlock --disable use_linux_sandbox_bwrap --disable view_image --disable web_search_cached --disable web_search_request --disable workspace_dependencies --disable workspace_owner_usage_nudge --output-schema C:\\Users\\geoff\\.claude\\skills\\gauntlet-review\\scripts\\..\\schemas\\verdict.schema.json -o C:\\Users\\geoff\\Documents\\Projects\\Banyan\\gauntlet\\.claude\\worktrees\\cross-platform-unix-mac-45143c\\docs\\superpowers\\reviews\\2026-08-18-cross-platform-unix-mac\\plan\\round-1-attempt-1-verdict.raw.json --json -",
+  "prompt_sha256": "2a8ce7eaab3594d65fbf1e92013136f08c5bdfabc0ca8c39896e9e5114689747",
+  "carryover_source_file": "",
+  "artifact_path": "docs/superpowers/plans/2026-08-18-cross-platform-unix-mac-phase-1-offline-core.md",
+  "mode": "doc",
+  "carryover_rendered_sha256": null,
+  "timestamp": "2026-08-22T01:46:13.7961443Z"
+}
