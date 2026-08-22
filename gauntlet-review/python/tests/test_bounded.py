@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from gauntlet_review.bounded import run_bounded
+from gauntlet_review.bounded import run_bounded, _CLEANUP_GRACE_SEC
 
 PY = sys.executable
 
@@ -60,6 +60,47 @@ def test_aggregate_cap_terminates_when_per_channel_caps_not_hit():
     r = run_bounded([PY, "-c", "import sys,time; sys.stdout.write('a'*2000); sys.stdout.flush(); time.sleep(30)"],
                     timeout_sec=10, max_stdout=100000, max_stderr=100000, max_total=1000)
     assert r.over_limit and not r.timed_out
+    assert len(r.stdout) + len(r.stderr) <= 1000  # RETAINED bytes bounded by the aggregate cap
+
+
+def test_incomplete_stdin_delivery_is_surfaced_even_if_child_exits_ok():
+    # Child reads only a small prefix, emits a "verdict", exits 0; we send a large prompt whose
+    # remaining bytes then fault (EPIPE). Incomplete delivery MUST be surfaced regardless of the
+    # child's clean exit, so a verdict from partial input can be rejected downstream.
+    r = run_bounded([PY, "-c", "import sys; sys.stdin.buffer.read(10); sys.stdout.write('verdict'); sys.exit(0)"],
+                    stdin_bytes=b"x" * 5_000_000, timeout_sec=30)
+    assert r.error and "stdin write failed" in r.error
+
+
+def test_overflow_terminates_during_stalled_stdin_not_at_deadline():
+    # Child never reads stdin but floods stdout while we try to send a large prompt (so the
+    # writer is blocked). Overflow must be observed CONCURRENTLY and kill immediately, rather
+    # than waiting out the deadline.
+    start = time.monotonic()
+    r = run_bounded([PY, "-c", "import sys,time; sys.stdout.write('a'*300000); sys.stdout.flush(); time.sleep(30)"],
+                    stdin_bytes=b"x" * 5_000_000, timeout_sec=15, max_stdout=1024)
+    elapsed = time.monotonic() - start
+    assert r.over_limit and elapsed < 12  # killed on overflow, well before the 15s deadline
+
+
+@pytest.mark.skipif(os.name != "posix",
+                    reason="descendant process-group kill is the POSIX production path; Windows is best-effort")
+def test_descendant_inheriting_pipes_is_terminated(tmp_path):
+    # A grandchild inherits stdout and outlives the parent, which exits. The drain would block on
+    # the grandchild's still-open pipe; run_bounded must tree-kill the group so the grandchild is
+    # terminated (never writes its sentinel) AND run_bounded must not hang.
+    sentinel = tmp_path / "alive.txt"
+    parent = (
+        "import subprocess,sys,time\n"
+        f"subprocess.Popen([sys.executable,'-c','import time; time.sleep(6); open(r\"{sentinel}\",\"w\").write(\"x\")'])\n"
+        "time.sleep(0.5)\n"   # give run_bounded time to capture the process group
+        "sys.exit(0)\n"
+    )
+    start = time.monotonic()
+    run_bounded([PY, "-c", parent], timeout_sec=30)
+    assert (time.monotonic() - start) < _CLEANUP_GRACE_SEC + 5  # bounded; did not hang
+    time.sleep(7)  # past the grandchild's 6s sleep
+    assert not sentinel.exists()  # the descendant was terminated by the tree-kill
 
 
 def test_huge_stdin_does_not_deadlock_against_slow_reader():

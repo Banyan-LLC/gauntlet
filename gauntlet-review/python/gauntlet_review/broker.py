@@ -12,12 +12,31 @@ class BrokerError(Exception):
     """Fail-closed credential error (maps to exit 12 in Phase 3)."""
 
 
+def _rollback_staging(staging_dir: str) -> str | None:
+    """Remove a half-staged dir, invalidating auth.json FIRST so a live access token cannot
+    survive a partial/failed rmtree. Returns a description of any residual that could NOT be
+    removed (so the caller can surface it), or None when the dir is gone."""
+    auth = os.path.join(staging_dir, "auth.json")
+    try:
+        if os.path.lexists(auth):
+            os.unlink(auth)  # invalidate the token before removing anything else
+    except OSError:
+        pass
+    shutil.rmtree(staging_dir, ignore_errors=True)
+    if os.path.exists(staging_dir):
+        return f"{staging_dir} (auth.json still present: {os.path.lexists(auth)})"
+    return None
+
+
 def _read_regular_nofollow(path: str) -> bytes:
     have_nofollow = hasattr(os, "O_NOFOLLOW")
-    # On POSIX, O_NOFOLLOW rejects a symlinked source at open (ELOOP). On platforms without
-    # O_NOFOLLOW (Windows), that protection is absent, so fail closed if the path is a symlink
-    # / reparse point -- otherwise a symlink whose target happens to carry the approved hash
-    # would be silently followed and staged.
+    # On POSIX, O_NOFOLLOW rejects a symlinked source atomically at open (ELOOP) -- this is the
+    # production path (the container stack runs on Unix/macOS). On platforms without O_NOFOLLOW
+    # (Windows, dev/CI only), that atomic protection is absent, so fail closed if the path is a
+    # symlink / reparse point -- otherwise a symlink whose target carries the approved hash would
+    # be silently followed. This pre-open check leaves a residual check-then-open TOCTOU window on
+    # Windows that a fully reparse-resistant handle open would close; acceptable because Windows is
+    # not the production execution path for the container stack.
     if not have_nofollow and os.path.islink(path):
         raise BrokerError(f"credential source is a symlink; refusing to follow: {path}")
     try:
@@ -65,9 +84,14 @@ def stage_credential(*, codex_home: str, staging_dir: str, agents_md_sha256: str
         with os.fdopen(agents_fd, "wb") as fh:
             fh.write(agents)
     except BaseException as exc:
-        # A partially-written staging dir would hold a live access token; remove it and fail closed.
-        shutil.rmtree(staging_dir, ignore_errors=True)
-        raise BrokerError(f"failed to stage credential into {staging_dir}: {exc}") from exc
+        # A partially-written staging dir would hold a live access token; invalidate it and fail
+        # closed. Surface any residual credential material explicitly rather than reporting a
+        # clean failure over a token that is still on disk.
+        residual = _rollback_staging(staging_dir)
+        detail = f"failed to stage credential into {staging_dir}: {exc}"
+        if residual:
+            detail += f"; residual credential material could not be removed: {residual}"
+        raise BrokerError(detail) from exc
 
 
 def default_token_provider(codex_home: str) -> dict:  # pragma: no cover - wired in Phase 3, body per Step 0
