@@ -3,11 +3,13 @@
 The Gauntlet reviewer (gpt-5.6-sol xhigh) is adversarial and deep. Left to a bare "review this
 diff" prompt it surfaces defects a **layer at a time**: it fixes attention on whatever the last
 change touched, reports the shallowest defect there, and only on the *next* round — after your fix
-exposes the next layer — reports the one beneath it. PR #2 took **7 rounds** this way; one defect
-*class* (bounded-runner stream/process safety) unfolded across **eight** rounds:
+exposes the next layer — reports the one beneath it. PR #2 took **7 rounds** this way; a single
+defect *class* — bounded-runner stream/process safety — drew a new finding in **six** of them
+(rounds 1–6):
 
-> overflow-kill(stdout/stderr) → aggregate cap → immediate-during-stdin → cleanup grace →
-> tree-kill → stdin-only descendant → pgid race → aggregate-retention regression → no-follow handles
+> no aggregate cap / no immediate termination (r1) → overflow unobserved while stdin still writing
+> (r2) → tree-kill misses inherited-pipe descendants (r3) → stdin-only descendant leaks (r4) →
+> process-group capture race (r5) → aggregate-retention false-overflow regression (r6)
 
 That churn is not the reviewer withholding — it reports every defect it *sees* each round. It is
 **emergent depth**: narrow, instance-level fixes keep revealing the next instance of the same
@@ -51,7 +53,7 @@ where it first bit — evidence these are what this reviewer actually applies, n
    none unbounded); termination kills the whole process **tree** (group/job), and works after the
    direct child exits; a descendant that inherits **any** pipe (stdout, stderr, *or* stdin) is
    still reaped; cleanup is guaranteed on every path including unexpected exceptions; a
-   BufferedReader/Writer is never closed under an active worker. (rounds 1–6, the eight-layer
+   BufferedReader/Writer is never closed under an active worker. (rounds 1–6, the six-round
    cascade above.)
 
 3. **Path & filesystem safety.** *Class:* every path built from external or enumerated input is

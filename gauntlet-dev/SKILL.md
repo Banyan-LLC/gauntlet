@@ -48,12 +48,20 @@ author `geoffroth` · reviewer `BanyanLLC` · round cap 10/phase · CI-fix cap 3
 Codex rounds are live and paid; local subagents are cheap. Before spending a round, pre-harden the
 artifact with the SAME lenses the reviewer applies, so the FIRST submission already clears most of
 them. WHY: PR #2 took **7 rounds** mostly because instance-level fixes revealed a defect *class* a
-layer at a time (one class unfolded over eight rounds) — the reviewer was not withholding, the
-depth was emergent. Full rationale, evidence, and the lens list: `gauntlet-review/references/review-lenses.md`.
+layer at a time (one class drew a new finding in six of the seven rounds) — the reviewer was not
+withholding, the depth was emergent. Full rationale, evidence, and the lens list: `gauntlet-review/references/review-lenses.md`.
 
 - Dispatch **one subagent per lens** (fail-closed; resource bounds & lifecycle; path/filesystem
-  safety; cross-platform parity; typed/structured errors; spec conformance) over the changed files
-  (pr) or the artifact (doc), each given the controlling spec.
+  safety; cross-platform parity; typed/structured errors; spec conformance), with per-mode inputs:
+  - **spec (point A):** the artifact under review IS the spec and there is NO approved controlling
+    spec yet — never feed the spec back as its own controlling context. Agents review it against
+    the lenses + sound engineering/security principles + any SEPARATE, already-user-approved
+    requirements doc if one exists (the spec-conformance lens is N/A here).
+  - **plan (point B) / PR (4c):** the plan (doc) or the changed files (pr), each given the APPROVED
+    spec as the conformance baseline.
+  Because the agents have file access (the hermetic reviewer does not), THEY do the repository-wide
+  expansion the reviewer cannot: every unchanged sibling instance, every call site, the whole
+  subsystem a change touches.
 - Aggregate; **fix by CLASS, not instance** — every sibling occurrence, every call site, every
   platform, in one pass; then re-run tests + a regression scan (a fix you have not exercised can
   itself cost a round, as PR #2's round-6 regression did).
