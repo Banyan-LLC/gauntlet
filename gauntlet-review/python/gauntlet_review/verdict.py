@@ -3,6 +3,13 @@ Behavioral port of Test-Verdict and Get-RecommendationId (lib.ps1)."""
 from __future__ import annotations
 
 import hashlib
+import json
+import os
+from dataclasses import dataclass
+
+import jsonschema
+
+from gauntlet_review import jcs
 
 
 def recommendation_id(round_num: int, index: int, rec: dict) -> str:
@@ -18,3 +25,39 @@ def recommendation_id(round_num: int, index: int, rec: dict) -> str:
     )
     digest = hashlib.sha256(material.encode("utf-8")).digest()
     return "r{}-".format(round_num) + digest[:16].hex()
+
+
+@dataclass
+class NormalizeResult:
+    valid: bool
+    reason: str | None
+    downgraded: bool
+    normalized: dict | None
+    canonical_json: str | None
+
+
+def normalize_verdict(json_text: str, schema_path: str | os.PathLike) -> NormalizeResult:
+    """Structural validation + severity-invariant downgrade + canonical JSON.
+    Behavioral port of Test-Verdict (lib.ps1)."""
+    try:
+        obj = json.loads(json_text)
+    except json.JSONDecodeError:
+        return NormalizeResult(False, "structural validation failed", False, None, None)
+
+    with open(schema_path, "r", encoding="utf-8") as fh:
+        schema = json.load(fh)
+    try:
+        jsonschema.validate(instance=obj, schema=schema, cls=jsonschema.Draft7Validator)
+    except jsonschema.ValidationError:
+        return NormalizeResult(False, "structural validation failed", False, None, None)
+
+    downgraded = False
+    reason = None
+    if obj["verdict"] == "approve":
+        non_nit = [r for r in obj["recommendations"] if r["severity"] != "nit"]
+        if non_nit:
+            obj["verdict"] = "request_changes"
+            downgraded = True
+            reason = f"approve carried {len(non_nit)} non-nit recommendation(s); downgraded"
+
+    return NormalizeResult(True, reason, downgraded, obj, jcs.canonical(obj))
