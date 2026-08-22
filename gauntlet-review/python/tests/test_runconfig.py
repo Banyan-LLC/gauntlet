@@ -44,6 +44,17 @@ def test_argv_carries_every_mandatory_security_flag():
     assert not any("/run/stg-abc" not in b and b.startswith("/") and ":" in b and "tmpfs" not in b for b in binds)
 
 
+def test_workdir_is_the_tmpfs_mount():
+    argv = build_create_argv("docker", _cfg())
+    # The container must run IN the writable tmpfs, not the image's default working directory.
+    assert _value_after(argv, "--workdir") == "/work"
+    assert _value_after(argv, "--tmpfs").split(":", 1)[0] == "/work"  # workdir == the tmpfs target
+    # and the semantic profile carries it too
+    prof = semantic_profile(_cfg())
+    tmpl = prof["runtime_argv_template"]
+    assert tmpl[tmpl.index("--workdir") + 1] == "/work"
+
+
 def test_argv_carries_all_codex_hermetic_flags_and_disable_set():
     argv = build_create_argv("docker", _cfg())
     for token in ["--ignore-user-config", "--ignore-rules", "--ephemeral",

@@ -57,6 +57,7 @@ def build_create_argv(runtime: str, cfg: RunConfig) -> list[str]:
             "--network", cfg.network,
             "--platform", cfg.platform,
             "--tmpfs", f"{cfg.tmpfs_dir}:rw,nosuid,nodev,noexec",
+            "--workdir", cfg.tmpfs_dir,  # run IN the writable tmpfs, not the image default dir
             "-v", f"{cfg.staging_dir}:{cfg.codex_home}:ro",
             "-e", f"CODEX_HOME={cfg.codex_home}",
             "-i",  # keep stdin open for the prompt
@@ -83,6 +84,7 @@ def semantic_profile(cfg: RunConfig) -> dict:
             "--pids-limit", str(cfg.pids_limit), "--memory", cfg.memory, "--cpus", cfg.cpus,
             "--log-driver", "none", "--network", cfg.network, "--platform", cfg.platform,
             "--tmpfs", f"{cfg.tmpfs_dir}:rw,nosuid,nodev,noexec",
+            "--workdir", cfg.tmpfs_dir,
             "-v", f"<staging_dir>:{cfg.codex_home}:ro", "-e", f"CODEX_HOME={cfg.codex_home}", "-i",
             cfg.image_ref,
         ],
