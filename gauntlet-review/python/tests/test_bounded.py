@@ -1,8 +1,6 @@
 import sys
 import time
 
-import pytest
-
 from gauntlet_review.bounded import run_bounded
 
 PY = sys.executable
@@ -48,3 +46,19 @@ def test_huge_stdin_does_not_deadlock_against_slow_reader():
     r = run_bounded([PY, "-c", "import sys; sys.stdin.read(10); print('ok')"],
                     stdin_bytes=b"x" * 5_000_000, timeout_sec=30)
     assert r.stdout.strip() == b"ok"
+
+
+def test_error_surfaced_when_child_stops_reading_stdin_while_alive():
+    # Child reads a few bytes, then sleeps for a long time WITHOUT exiting and
+    # WITHOUT closing stdin: the write blocks on a full pipe against a child
+    # that is genuinely still alive. This must be detected within the timeout
+    # (fast-fail with an error), not silently waited out to the full sleep.
+    start = time.monotonic()
+    r = run_bounded(
+        [PY, "-c", "import sys, time; sys.stdin.read(5); time.sleep(30)"],
+        stdin_bytes=b"x" * 5_000_000,
+        timeout_sec=2,
+    )
+    elapsed = time.monotonic() - start
+    assert elapsed < 30
+    assert r.timed_out or r.error

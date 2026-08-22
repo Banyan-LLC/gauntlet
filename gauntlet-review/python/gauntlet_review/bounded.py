@@ -7,6 +7,7 @@ import os
 import signal
 import subprocess
 import threading
+import time
 from dataclasses import dataclass
 
 
@@ -67,6 +68,11 @@ def run_bounded(argv, *, stdin_bytes=b"", timeout_sec=1800, env=None, clear_env=
     except OSError as exc:
         return ProcResult(None, b"", b"", False, True, str(exc), False, False)
 
+    deadline = time.monotonic() + timeout_sec
+
+    def remaining():
+        return max(0, deadline - time.monotonic())
+
     captured: dict = {}
     t_out = threading.Thread(target=_drain, args=(proc.stdout, max_stdout, captured, "stdout"), daemon=True)
     t_err = threading.Thread(target=_drain, args=(proc.stderr, max_stderr, captured, "stderr"), daemon=True)
@@ -80,18 +86,39 @@ def run_bounded(argv, *, stdin_bytes=b"", timeout_sec=1800, env=None, clear_env=
             if stdin_bytes:
                 proc.stdin.write(stdin_bytes)
             proc.stdin.close()
-        except (BrokenPipeError, OSError) as exc:  # child exited without draining: normal failure
+        except (BrokenPipeError, OSError) as exc:  # broken pipe: child exited, or a genuine fault
             write_err["e"] = exc
 
     t_in = threading.Thread(target=_write, daemon=True)
     t_in.start()
 
     timed_out = False
-    try:
-        proc.wait(timeout=timeout_sec)
-    except subprocess.TimeoutExpired:
+    error: str | None = None
+
+    t_in.join(timeout=remaining())
+    if t_in.is_alive():
+        # Write did not complete within the deadline: a child that never drains stdin.
         timed_out = True
         _kill(proc)
+    elif "e" in write_err and proc.poll() is None:
+        # Write failed while the child is still running: a genuine fault, not a
+        # benign failure caused by an already-exited child. Surface it and kill early.
+        error = f"stdin write failed: {write_err['e']}"
+        _kill(proc)
+    else:
+        # stdin delivered, or the write failed only because the child already
+        # exited (benign): proceed to collect its exit.
+        try:
+            proc.wait(timeout=remaining())
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            _kill(proc)
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
+
+    if (timed_out or error is not None) and proc.poll() is None:
         try:
             proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
@@ -101,13 +128,29 @@ def run_bounded(argv, *, stdin_bytes=b"", timeout_sec=1800, env=None, clear_env=
     t_out.join(timeout=15)
     t_err.join(timeout=15)
 
+    # A write failure raised before reaching `proc.stdin.close()` inside `_write()`
+    # (e.g. a genuine fault, or the kill-while-blocked path) leaves the stdin pipe
+    # open; closing here is idempotent and guarantees no unclosed-file warnings.
+    try:
+        proc.stdin.close()
+    except OSError:
+        pass
+    try:
+        proc.stdout.close()
+    except OSError:
+        pass
+    try:
+        proc.stderr.close()
+    except OSError:
+        pass
+
     return ProcResult(
-        exit_code=(None if timed_out else proc.returncode),
+        exit_code=(None if (timed_out or error is not None) else proc.returncode),
         stdout=captured.get("stdout", b""),
         stderr=captured.get("stderr", b""),
         timed_out=timed_out,
         start_failed=False,
-        error=None,
+        error=error,
         stdout_truncated=captured.get("stdout_truncated", False),
         stderr_truncated=captured.get("stderr_truncated", False),
     )
