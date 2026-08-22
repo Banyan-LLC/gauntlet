@@ -92,13 +92,21 @@ def extract_single_file_from_tar(tar_bytes: bytes, dest_path: str, max_bytes: in
             raise ValueError(f"member {m.name} is not extractable as a regular file")
         fd = os.open(dest_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         written = 0
-        with os.fdopen(fd, "wb") as out:
-            while True:
-                chunk = src.read(65536)
-                if not chunk:
-                    break
-                written += len(chunk)
-                if written > max_bytes:
-                    raise ValueError("copied file exceeds cap during read")
-                out.write(chunk)
+        try:
+            with os.fdopen(fd, "wb") as out:
+                while True:
+                    chunk = src.read(65536)
+                    if not chunk:
+                        break
+                    written += len(chunk)
+                    if written > max_bytes:
+                        raise ValueError("copied file exceeds cap during read")
+                    out.write(chunk)
+        except BaseException:
+            # Never leave a partial (credential- or verdict-bearing) file behind.
+            try:
+                os.unlink(dest_path)
+            except OSError:
+                pass
+            raise
         return written

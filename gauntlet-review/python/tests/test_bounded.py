@@ -71,7 +71,6 @@ def test_error_surfaced_when_child_stops_reading_stdin_while_alive():
 def test_error_surfaced_on_write_failure_while_child_alive():
     # Child closes its stdin read end but stays alive; a large write then hits EPIPE
     # while the process is still running -> fast-fail with error, not a full-timeout wait.
-    import time
     r = run_bounded([PY, "-c", "import sys,time; sys.stdin.close(); time.sleep(30)"],
                     stdin_bytes=b"x" * 5_000_000, timeout_sec=5)
     assert r.error and "stdin write failed" in r.error

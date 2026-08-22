@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 
 
 class BrokerError(Exception):
@@ -43,16 +44,21 @@ def stage_credential(*, codex_home: str, staging_dir: str, agents_md_sha256: str
         raise BrokerError("AGENTS.md staged bytes do not match the manifest agents_md_sha256")
 
     os.makedirs(staging_dir, mode=0o700, exist_ok=False)
-    os.chmod(staging_dir, 0o700)  # makedirs mode is umask-masked; force it
-    # Write access-only auth.json and the verified AGENTS.md into the staging dir.
-    auth_fd = os.open(os.path.join(staging_dir, "auth.json"),
-                      os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(auth_fd, "w", encoding="utf-8") as fh:
-        fh.write(token["json"])
-    agents_fd = os.open(os.path.join(staging_dir, "AGENTS.md"),
-                        os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(agents_fd, "wb") as fh:
-        fh.write(agents)
+    try:
+        os.chmod(staging_dir, 0o700)  # makedirs mode is umask-masked; force it
+        # Write access-only auth.json and the verified AGENTS.md into the staging dir.
+        auth_fd = os.open(os.path.join(staging_dir, "auth.json"),
+                          os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(auth_fd, "w", encoding="utf-8") as fh:
+            fh.write(token["json"])
+        agents_fd = os.open(os.path.join(staging_dir, "AGENTS.md"),
+                            os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(agents_fd, "wb") as fh:
+            fh.write(agents)
+    except BaseException as exc:
+        # A partially-written staging dir would hold a live access token; remove it and fail closed.
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        raise BrokerError(f"failed to stage credential into {staging_dir}: {exc}") from exc
 
 
 def default_token_provider(codex_home: str) -> dict:  # pragma: no cover - wired in Phase 3, body per Step 0
