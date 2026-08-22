@@ -1785,9 +1785,10 @@ fix-later Minors. They are recorded here so Phase-3 planning picks them up:
   deadline.
 
 **Fix-later Minors (fold into the relevant Phase-3 wiring):**
-- **Staging-dir + lease reclamation (M-3, ledger Task 8):** `reap_stale` does not remove the
-  `.lease` file or the crashed run's credential-bearing staging dir; wire reclamation once
-  `run_id`/`run_label`/`staging_dir`/lease are correlated in `invoke_codex.py`.
+- **Lease-file removal (remainder of M-3):** `reap_stale` now reclaims the credential-bearing
+  staging dir (`{staging_root}/{run_id}`) and `run_round` reclaims its own `cfg.staging_dir`; the
+  only remainder is deleting the `.lease` file itself after a confirmed reap. `invoke_codex` must
+  stage each run under `{staging_root}/{run_id}` for the reaper's mapping to hold.
 - **`_lock_nb` errno breadth (M-5):** treats every `OSError` as "held"; distinguish
   `EWOULDBLOCK`/`EACCES` from genuine lock errors so `acquire()` doesn't report a misleading
   "already held."
@@ -1828,3 +1829,9 @@ flood during a stalled stdin); the process group is captured up front for a POSI
 survives direct-child exit and reaps lingering pipe-holding descendants; stream closes are guarded
 behind thread liveness (no blocking close); the aggregate cap now bounds RETAINED bytes; broker
 rollback invalidates `auth.json` first and reports residual credential material.
+
+**Fixed in Phase-2 from PR-review round 3 (commit `974ff72`):** `run_round` reclaims its
+credential-bearing `cfg.staging_dir` on every path (auth.json invalidated first) and moved
+`create()` inside the lifecycle guard; `reap_stale` reclaims a crashed run's staging dir via the
+`{staging_root}/{run_id}` convention; `parse_image_identity` raises on a requested-repo mismatch;
+the Windows `taskkill` fallback is time-bounded.
