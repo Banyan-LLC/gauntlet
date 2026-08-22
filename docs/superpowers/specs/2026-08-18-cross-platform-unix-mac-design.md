@@ -266,7 +266,7 @@ Most of `lib.ps1` is OS-agnostic logic that ports directly; only the boundary is
 | `broker.py` | (new) | Host-side auth broker: refresh host-side, stage an access-only token, cleanup |
 | `publish.py` | `publish-review.ps1` + `Publish-CodexReview` | Direct port; still shells to `gh`; provenance binding, idempotency (`--paginate --slurp`), drift, dismissal all preserved |
 | `premises.py` | `Test-PremiseManifest`, calibration, live-evidence | Re-keyed to the container fingerprints (below) |
-| `state.py` | `Get-StateDir`, carry-over ledger, create-only artifacts | Direct port; **identical path layout and logical schema** to the PS stack |
+| `state.py` | `Get-StateDir`, carry-over ledger, create-only artifacts | Direct port; **identical path layout and logical schema** to the PS stack. **Handle-backed confinement:** the state directory is returned as a retained handle (`StateDir`) and all artifact I/O is performed relative to it with no-follow semantics (POSIX `dir_fd`/`O_NOFOLLOW`; per-file symlink rejection elsewhere), so a symlinked component can never redirect a read or write outside the directory and there is no TOCTOU gap between creation and use. |
 | `invoke_codex.py` | `invoke-codex.ps1` entry point | One review round: pin check → stage credential → run → usage gate → verdict validate |
 
 ## Premises / live-evidence, re-keyed

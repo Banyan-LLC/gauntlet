@@ -2,6 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Authoritative source note.** This plan has been executed. The **authoritative
+> implementation and tests live in `gauntlet-review/python/`** and incorporate hardening
+> added during the Codex PR review beyond the snippets below — notably: handle-backed
+> `StateDir` no-follow I/O (replacing the `doc_state_dir` snippet in Task 6), lone-surrogate
+> and non-string-key rejection in `jcs.py` (Task 1), `normalize_verdict` failing closed on
+> canonicalization errors (Task 3), and `NaN`/`Infinity` rejection via `parse_constant` in
+> `usage.py` and the ledger (Tasks 4 and 6). Where a snippet here differs from the source,
+> **the source is authoritative** — do not regress the implementation to match a snippet.
+
 **Goal:** Build the OS-agnostic, offline core of the Python `gauntlet-review` stack — canonical serialization, verdict normalization + recommendation-id derivation, the acceptance-time usage gate, the default-deny feature policy, and the state/carry-over-ledger logic — each verified by pytest with **zero** Docker, network, or model calls.
 
 **Architecture:** A Python package `gauntlet_review` under `gauntlet-review/python/`, ported *behaviorally* from the Windows PowerShell reference (`gauntlet-review/scripts/lib.ps1`). This phase is the foundation the container sandbox, broker, publisher, premises/evidence, battery, and installer (Phases 2–5) build on. The Windows PowerShell stack is untouched.
