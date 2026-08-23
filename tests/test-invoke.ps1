@@ -1542,6 +1542,27 @@ pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stat
 Assert-Eq $LASTEXITCODE 12 "local mode: a non-ancestor (diverged) base exits 12"
 Assert-True (-not (Test-Path "$stateLocDiverged\round-1-attempt-1-meta.json")) "no attempt record for a non-ancestor base"
 
+# --- A malformed HeadSha (not a valid rev) fails closed at resolution. ---
+$stateLocBadHead = "$tmp\sLocBadHead"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocBadHead -Round 1 -RepoRoot $repo -BaseOid $locBase -HeadSha 'not a valid ref!!' -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 12 "local mode: a malformed HeadSha exits 12"
+Assert-True (-not (Test-Path "$stateLocBadHead\round-1-attempt-1-meta.json")) "no attempt record for a malformed head"
+
+# --- A GENUINELY disconnected history (an orphan commit sharing no ancestor with head) fails
+# closed at the ancestry check -- distinct from the connected-sibling case above. ---
+$orphanTree = (git -C $repo rev-parse "$locBase^{tree}").Trim()
+$locOrphan = (git -C $repo commit-tree $orphanTree -m orphan).Trim()   # no -p => no parent, no shared history
+$stateLocOrphan = "$tmp\sLocOrphan"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocOrphan -Round 1 -RepoRoot $repo -BaseOid $locOrphan -HeadSha $locHead -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 12 "local mode: a disconnected (orphan) base exits 12"
+Assert-True (-not (Test-Path "$stateLocOrphan\round-1-attempt-1-meta.json")) "no attempt record for a disconnected base"
+
+# --- Bounds-first: a CAPPED local invocation with an invalid ref returns the cap result (14),
+# NOT the ref-resolution result (12) -- provenance git work runs only after the bounds checks. ---
+$stateLocCap = "$tmp\sLocCap"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocCap -Round 2 -RoundCap 1 -RepoRoot $repo -BaseOid 'totally-bogus' -HeadSha 'also-bogus' -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 14 "local mode: round-cap (14) wins over an invalid-ref (12) -- bounds first"
+
 # --- Symbolic revisions are canonicalized: meta records the RESOLVED full OIDs, not the input
 # strings ('HEAD~1'/'HEAD'), so provenance names the exact commits reviewed. ---
 $stateLocSym = "$tmp\sLocSym"
@@ -1563,6 +1584,15 @@ pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stat
 Assert-Eq $LASTEXITCODE 0 "local mode: nonempty-diff round ok"
 $mNe = Get-Content -Raw "$stateLocNe\round-1-attempt-1-meta.json" | ConvertFrom-Json
 Assert-Eq $mNe.reviewed_diff_sha256 $expectedDiffSha "reviewed_diff_sha256 equals the digest of the ACTUAL git diff for the range"
+# Independent of the meta digest: prove the EXACT generated diff reached the reviewer's stdin as
+# REVIEW MATERIAL. Reconstruct the full prompt the script assembles (round 1 => empty carry-over;
+# preamble.TrimEnd() + marker + hermetic diff) and match the shim's recorded stdin digest.
+$preambleRaw = Get-Content -Raw -Encoding utf8 $promptFile
+$expectedDiffText = (git -C $repo -c core.useReplaceRefs=false diff --no-ext-diff --no-textconv --no-color $locHead $locHead2 -- | Out-String)
+$expectedPrompt = $preambleRaw.TrimEnd() + "`n`n== REVIEW MATERIAL (untrusted) ==`n" + $expectedDiffText + "`n"
+$expectedPromptSha = -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($expectedPrompt)) | ForEach-Object { $_.ToString('x2') })
+$neReceipt = Get-Content -Raw "$tmp\shim2\receipt.json" | ConvertFrom-Json
+Assert-Eq $neReceipt.stdinSha256 $expectedPromptSha "the EXACT generated diff reached the reviewer as REVIEW MATERIAL over stdin"
 
 # ATOMIC CREATE-ONLY: two racing writers must not both produce a canonical artifact.
 $raceDir = Join-Path $tmp 'race'; New-Item -ItemType Directory -Force $raceDir | Out-Null

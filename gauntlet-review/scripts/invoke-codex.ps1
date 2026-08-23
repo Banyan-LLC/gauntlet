@@ -53,26 +53,11 @@ New-Item -ItemType Directory -Force $StateDir | Out-Null
 
 if ($Mode -eq 'doc' -and -not ($ArtifactPath -and $ArtifactCommit)) { Write-Error "doc mode requires -ArtifactPath and -ArtifactCommit"; exit 12 }
 if ($Mode -eq 'pr' -and -not ($PrNumber -and $BaseOid -and $HeadSha -and $BaseRefName -and $BaseTipOid)) { Write-Error "pr mode requires -PrNumber, -BaseOid, -HeadSha, -BaseRefName, -BaseTipOid"; exit 12 }
-# local mode reviews a LOCAL branch diff (baseOid..headSha) with no PR and no publish; its
-# provenance is the two local commits. Unlike the hermetic pr mode (no repo access), local mode
-# CAN and MUST verify: both refs must resolve to real commits in RepoRoot, and the review material
-# is GENERATED from that exact range below (never trusted from the caller) so the verdict cannot
-# carry false provenance.
+# local mode reviews a LOCAL branch diff (baseOid..headSha) with no PR and no publish. Only the
+# cheap parameter-PRESENCE check runs here; all git resolution/ancestry/diff work is deferred to
+# AFTER the bounds/replay checks below (see the local-mode provenance block), so a capped or
+# replayed invocation returns its cap/replay result without ever touching the repository.
 if ($Mode -eq 'local' -and -not ($BaseOid -and $HeadSha)) { Write-Error "local mode requires -BaseOid and -HeadSha"; exit 12 }
-$canonBase = $null; $canonHead = $null
-if ($Mode -eq 'local') {
-    # Resolve BOTH refs to CANONICAL commit OIDs (a symbolic input like 'HEAD~2' is recorded as the
-    # commit it names, never verbatim), fail closed if either does not resolve, and require the base
-    # to be an ANCESTOR of the head so the recorded base is the true diff base -- a disconnected or
-    # diverged history is rejected rather than silently diffed against a hidden merge base.
-    $canonBase = (git -C $RepoRoot rev-parse --verify --quiet "$BaseOid^{commit}")
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($canonBase)) { Write-Error "local mode: BaseOid '$BaseOid' does not resolve to a commit in $RepoRoot"; exit 12 }
-    $canonHead = (git -C $RepoRoot rev-parse --verify --quiet "$HeadSha^{commit}")
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($canonHead)) { Write-Error "local mode: HeadSha '$HeadSha' does not resolve to a commit in $RepoRoot"; exit 12 }
-    $canonBase = $canonBase.Trim(); $canonHead = $canonHead.Trim()
-    git -C $RepoRoot merge-base --is-ancestor $canonBase $canonHead
-    if ($LASTEXITCODE -ne 0) { Write-Error "local mode: BaseOid ($canonBase) is not an ancestor of HeadSha ($canonHead) -- disconnected or diverged history"; exit 12 }
-}
 
 # --- BOUNDS FIRST. Both caps are checked before any probe, pin, harness, or process work, so a
 #     refused invocation launches nothing and leaves pin/harness state untouched.
@@ -99,6 +84,32 @@ if ($attempt -gt $MaxAttempts) {
     Write-RoundState -StateDir $StateDir -Patch @{ status='flagged'; failure_reason="round $Round exhausted $MaxAttempts attempts" }
     Write-Error "HUMAN FLAG: round $Round already used $priorAttempts of $MaxAttempts allowed attempts."
     exit 14
+}
+
+# --- local-mode provenance (AFTER the bounds/replay checks: a capped or replayed invocation never
+#     touches the repo). All git here is HERMETIC so neither replacement refs, a configured
+#     external diff / textconv helper, nor a partial-clone lazy fetch can alter -- or execute code
+#     during -- what is reviewed and hashed: replace objects OFF, lazy fetch OFF, and diff run with
+#     no external driver / textconv / color and an explicit `--`. Both refs resolve to CANONICAL
+#     commit OIDs (a symbolic input like 'HEAD~2' is recorded as the commit it names), and the base
+#     MUST be an ancestor of the head (a disconnected/diverged history is rejected, not diffed
+#     against a hidden merge base). The diff is generated from that verified range and its digest
+#     recorded, so a verdict cannot carry false provenance.
+$canonBase = $null; $canonHead = $null; $localDiff = $null; $localDiffSha = $null
+if ($Mode -eq 'local') {
+    $env:GIT_NO_LAZY_FETCH = '1'
+    $gx = @('-C', $RepoRoot, '-c', 'core.useReplaceRefs=false')
+    $canonBase = (git @gx rev-parse --verify --quiet "$BaseOid^{commit}")
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($canonBase)) { Write-Error "local mode: BaseOid '$BaseOid' does not resolve to a commit in $RepoRoot"; exit 12 }
+    $canonHead = (git @gx rev-parse --verify --quiet "$HeadSha^{commit}")
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($canonHead)) { Write-Error "local mode: HeadSha '$HeadSha' does not resolve to a commit in $RepoRoot"; exit 12 }
+    $canonBase = $canonBase.Trim(); $canonHead = $canonHead.Trim()
+    git @gx merge-base --is-ancestor $canonBase $canonHead
+    if ($LASTEXITCODE -ne 0) { Write-Error "local mode: BaseOid ($canonBase) is not an ancestor of HeadSha ($canonHead) -- disconnected or diverged history"; exit 12 }
+    $localDiff = (git @gx diff --no-ext-diff --no-textconv --no-color $canonBase $canonHead -- | Out-String)
+    if ($LASTEXITCODE -ne 0) { Write-Error "local mode: 'git diff $canonBase $canonHead' failed (exit $LASTEXITCODE)"; exit 12 }
+    $localDiffSha = -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash(
+        [Text.Encoding]::UTF8.GetBytes($localDiff)) | ForEach-Object { $_.ToString('x2') })
 }
 
 # --- Carry-over ledger. Fresh sessions carry no memory, so for round > 1 continuity is a
@@ -137,18 +148,10 @@ if ($priorCount -gt 0) {
 }
 
 $promptBody = Get-Content -Raw -Encoding utf8 $PromptFile
-$localDiffSha = $null
 if ($Mode -eq 'local') {
-    # local mode OWNS the review material: generate the diff from the VERIFIED range so the
-    # reviewed content is provably that range, not whatever a caller might supply. The caller's
-    # PromptFile is the PREAMBLE (header + trusted context) only; the diff is appended here and
-    # its digest recorded in the attempt meta, binding the verdict's provenance to the exact range.
-    # Two-dot from the CANONICAL base to head (the exact recorded range, not a merge-base-relative
-    # symmetric diff), and abort if git errors rather than reviewing a silently-empty diff.
-    $localDiff = (git -C $RepoRoot diff $canonBase $canonHead | Out-String)
-    if ($LASTEXITCODE -ne 0) { Write-Error "local mode: 'git diff $canonBase $canonHead' failed (exit $LASTEXITCODE)"; exit 12 }
-    $localDiffSha = -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash(
-        [Text.Encoding]::UTF8.GetBytes($localDiff)) | ForEach-Object { $_.ToString('x2') })
+    # The caller's PromptFile is the PREAMBLE (header + trusted context) only; append the review
+    # material generated hermetically above from the verified range, so the reviewed bytes are
+    # provably that range and its digest (recorded in meta) binds the verdict's provenance.
     $promptBody = $promptBody.TrimEnd() + "`n`n== REVIEW MATERIAL (untrusted) ==`n" + $localDiff + "`n"
 }
 $prompt = $carryText + $promptBody
