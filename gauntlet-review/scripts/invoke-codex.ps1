@@ -86,32 +86,6 @@ if ($attempt -gt $MaxAttempts) {
     exit 14
 }
 
-# --- local-mode provenance (AFTER the bounds/replay checks: a capped or replayed invocation never
-#     touches the repo). All git here is HERMETIC so neither replacement refs, a configured
-#     external diff / textconv helper, nor a partial-clone lazy fetch can alter -- or execute code
-#     during -- what is reviewed and hashed: replace objects OFF, lazy fetch OFF, and diff run with
-#     no external driver / textconv / color and an explicit `--`. Both refs resolve to CANONICAL
-#     commit OIDs (a symbolic input like 'HEAD~2' is recorded as the commit it names), and the base
-#     MUST be an ancestor of the head (a disconnected/diverged history is rejected, not diffed
-#     against a hidden merge base). The diff is generated from that verified range and its digest
-#     recorded, so a verdict cannot carry false provenance.
-$canonBase = $null; $canonHead = $null; $localDiff = $null; $localDiffSha = $null
-if ($Mode -eq 'local') {
-    $env:GIT_NO_LAZY_FETCH = '1'
-    $gx = @('-C', $RepoRoot, '-c', 'core.useReplaceRefs=false')
-    $canonBase = (git @gx rev-parse --verify --quiet "$BaseOid^{commit}")
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($canonBase)) { Write-Error "local mode: BaseOid '$BaseOid' does not resolve to a commit in $RepoRoot"; exit 12 }
-    $canonHead = (git @gx rev-parse --verify --quiet "$HeadSha^{commit}")
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($canonHead)) { Write-Error "local mode: HeadSha '$HeadSha' does not resolve to a commit in $RepoRoot"; exit 12 }
-    $canonBase = $canonBase.Trim(); $canonHead = $canonHead.Trim()
-    git @gx merge-base --is-ancestor $canonBase $canonHead
-    if ($LASTEXITCODE -ne 0) { Write-Error "local mode: BaseOid ($canonBase) is not an ancestor of HeadSha ($canonHead) -- disconnected or diverged history"; exit 12 }
-    $localDiff = (git @gx diff --no-ext-diff --no-textconv --no-color $canonBase $canonHead -- | Out-String)
-    if ($LASTEXITCODE -ne 0) { Write-Error "local mode: 'git diff $canonBase $canonHead' failed (exit $LASTEXITCODE)"; exit 12 }
-    $localDiffSha = -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash(
-        [Text.Encoding]::UTF8.GetBytes($localDiff)) | ForEach-Object { $_.ToString('x2') })
-}
-
 # --- Carry-over ledger. Fresh sessions carry no memory, so for round > 1 continuity is a
 #     VALIDATED artifact, not prose: every prior recommendation exactly once, verbatim, with
 #     a status and a reason where the status is not 'addressed'. Validated before any process
@@ -147,12 +121,38 @@ if ($priorCount -gt 0) {
         [Text.Encoding]::UTF8.GetBytes($carryText)) | ForEach-Object { $_.ToString('x2') })
 }
 
+# --- local-mode provenance. Runs AFTER the bounds/replay checks AND after carry-over validation,
+#     so a capped/replayed round, or a later round with a missing/invalid ledger, returns its own
+#     result (14/16) without touching the repo. Best-effort HERMETIC diff: replace objects OFF,
+#     lazy fetch OFF, no external diff / textconv / color, explicit `--`; refs resolved to CANONICAL
+#     OIDs; base MUST be an ancestor of head. Scope: local mode is a NON-authoritative pre-check the
+#     operator runs on their OWN repo to cut PR rounds -- pr mode on the PR is the authoritative
+#     gate -- so it does not additionally defend the generated diff against the operator's own
+#     ambient repo config (submodule/attribute knobs); an imperfect local diff costs at most one
+#     extra pr round, never a security gap.
+$canonBase = $null; $canonHead = $null; $localDiff = $null; $localDiffSha = $null
+if ($Mode -eq 'local') {
+    $env:GIT_NO_LAZY_FETCH = '1'
+    $gx = @('-C', $RepoRoot, '-c', 'core.useReplaceRefs=false')
+    $canonBase = (git @gx rev-parse --verify --quiet "$BaseOid^{commit}")
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($canonBase)) { Write-Error "local mode: BaseOid '$BaseOid' does not resolve to a commit in $RepoRoot"; exit 12 }
+    $canonHead = (git @gx rev-parse --verify --quiet "$HeadSha^{commit}")
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($canonHead)) { Write-Error "local mode: HeadSha '$HeadSha' does not resolve to a commit in $RepoRoot"; exit 12 }
+    $canonBase = $canonBase.Trim(); $canonHead = $canonHead.Trim()
+    git @gx merge-base --is-ancestor $canonBase $canonHead
+    if ($LASTEXITCODE -ne 0) { Write-Error "local mode: BaseOid ($canonBase) is not an ancestor of HeadSha ($canonHead) -- disconnected or diverged history"; exit 12 }
+    $localDiff = (git @gx diff --no-ext-diff --no-textconv --no-color $canonBase $canonHead -- | Out-String)
+    if ($LASTEXITCODE -ne 0) { Write-Error "local mode: 'git diff $canonBase $canonHead' failed (exit $LASTEXITCODE)"; exit 12 }
+    $localDiffSha = -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash(
+        [Text.Encoding]::UTF8.GetBytes($localDiff)) | ForEach-Object { $_.ToString('x2') })
+}
+
 $promptBody = Get-Content -Raw -Encoding utf8 $PromptFile
 if ($Mode -eq 'local') {
     # The PromptFile is the PREAMBLE (header + trusted context) ONLY and must be ENFORCED as such:
-    # reject a caller-supplied review-material section so ALL reviewed bytes provably come from the
-    # generated, digest-bound diff -- nothing the caller could slip in alongside it.
-    if ($promptBody -match '(?m)^==\s*REVIEW MATERIAL') { Write-Error "local mode: PromptFile must be a preamble only and must NOT contain a '== REVIEW MATERIAL ==' section (the diff is generated from the verified range)"; exit 12 }
+    # reject a caller-supplied review-material section (normalized: leading whitespace and case are
+    # ignored) so ALL reviewed bytes provably come from the generated, digest-bound diff.
+    if ($promptBody -match '(?im)^\s*==\s*REVIEW MATERIAL') { Write-Error "local mode: PromptFile must be a preamble only and must NOT contain a '== REVIEW MATERIAL ==' section (the diff is generated from the verified range)"; exit 12 }
     # Append the review material generated hermetically above from the verified range, so the
     # reviewed bytes are provably that range and its digest (recorded in meta) binds provenance.
     $promptBody = $promptBody.TrimEnd() + "`n`n== REVIEW MATERIAL (untrusted) ==`n" + $localDiff + "`n"

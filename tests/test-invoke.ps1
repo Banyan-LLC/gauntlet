@@ -1560,8 +1560,29 @@ Assert-True (-not (Test-Path "$stateLocOrphan\round-1-attempt-1-meta.json")) "no
 # --- Bounds-first: a CAPPED local invocation with an invalid ref returns the cap result (14),
 # NOT the ref-resolution result (12) -- provenance git work runs only after the bounds checks. ---
 $stateLocCap = "$tmp\sLocCap"
+Remove-Item "$tmp\shim2\receipt.json" -Force -ErrorAction SilentlyContinue
 pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocCap -Round 2 -RoundCap 1 -RepoRoot $repo -BaseOid 'totally-bogus' -HeadSha 'also-bogus' -CliPathOverride $shim2
 Assert-Eq $LASTEXITCODE 14 "local mode: round-cap (14) wins over an invalid-ref (12) -- bounds first"
+Assert-True (-not (Test-Path "$stateLocCap\round-2-attempt-1-meta.json")) "capped local invocation wrote no attempt meta"
+Assert-True (-not (Test-Path "$tmp\shim2\receipt.json")) "capped local invocation launched NO codex process"
+
+# --- Carry-over is validated BEFORE provenance git work: a later round with prior recommendations
+# but a missing ledger returns the mode-agnostic exit 16, even with invalid refs (which would
+# otherwise be exit 12) -- and touches neither git nor Codex. ---
+$stateLocOrder = "$tmp\sLocOrder"; New-Item -ItemType Directory -Force $stateLocOrder | Out-Null
+$seedVerdict = @{ verdict='request_changes'; summary='s'; recommendations=@(@{severity='blocking'; location='L'; issue='i'; suggestion='sg'}) } | ConvertTo-Json -Depth 6
+Set-Content "$stateLocOrder\round-1-verdict.json" -Value $seedVerdict -Encoding utf8
+Remove-Item "$tmp\shim2\receipt.json" -Force -ErrorAction SilentlyContinue
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocOrder -Round 2 -RepoRoot $repo -BaseOid 'totally-bogus' -HeadSha 'also-bogus' -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 16 "local mode: missing carry-over (16) wins over invalid refs (12) -- carry-over validated before provenance"
+Assert-True (-not (Test-Path "$stateLocOrder\round-2-attempt-1-meta.json")) "carry-over refusal wrote no attempt meta"
+Assert-True (-not (Test-Path "$tmp\shim2\receipt.json")) "carry-over refusal launched NO codex process"
+
+# --- The preamble delimiter check is normalized: an INDENTED delimiter is still rejected. ---
+$indentedPreamble = "$tmp\indented-preamble.txt"; Set-Content $indentedPreamble -Value "hi`n   == review material (untrusted) ==`nsneaky" -Encoding utf8
+$stateLocIndent = "$tmp\sLocIndent"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $indentedPreamble -StateDir $stateLocIndent -Round 1 -RepoRoot $repo -BaseOid $locBase -HeadSha $locHead -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 12 "local mode: an INDENTED / lowercased REVIEW MATERIAL delimiter is still rejected"
 
 # --- Symbolic revisions are canonicalized: meta records the RESOLVED full OIDs, not the input
 # strings ('HEAD~1'/'HEAD'), so provenance names the exact commits reviewed. ---

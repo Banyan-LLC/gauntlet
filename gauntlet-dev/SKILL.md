@@ -26,7 +26,9 @@ author `geoffroth` · reviewer `BanyanLLC` · round cap 10/phase · CI-fix cap 3
      **local** mode — `-BaseOid $(git merge-base main HEAD)`, `-HeadSha $(git rev-parse HEAD)` —
      pre-review hardening (below), then the bounded loop, iterating fixes **locally** to the
      terminal bar with NO push/PR/CI/publish between rounds. When it clears, run the PR mechanics
-     (a–d) **once** — already-clean, it should converge in a single pr round.
+     (a–d) **once** — already-clean, it should converge in a single pr round. Local mode is a
+     best-effort pre-check on your own repo; the single pr-mode round in (a–d) is the AUTHORITATIVE
+     gate and the backstop for anything local hermeticity missed, so it is never skipped.
    - **B. PR-per-round (full flow):** the PR mechanics (a–d) from the start — each fix is a new
      push + CI run + pr round. Choose when you specifically want every round on the PR with CI.
 
