@@ -54,11 +54,12 @@ author `geoffroth` · reviewer `BanyanLLC` · round cap 10/phase · CI-fix cap 3
       same requirement as (c) — this is the exact push→re-review transition the live drill's
       wasted round happened on), then a FRESH round whose ledger records each prior finding as
       addressed/disputed/outstanding; re-review the new `(baseOid, headSha, baseRefName, baseTipOid)`.
-**Spec/plan cut-short (points A & B).** The doc-mode review keeps running while any **P1**
-remains. The moment a round returns **no P1s AND no P2s** (only nits, if anything), OFFER the user
-to cut the loop short — conclude and go to their review gate, no formal `approve` verdict required —
-rather than spend further live rounds chasing a clean approve. The no-P0/P1 floor still lets them
-proceed with P2s open if they choose; this offer is the cleaner "nothing important left" stop. It
+**Spec/plan cut-short (points A & B).** The doc-mode review keeps running while any **blocking**
+finding remains. The moment a round returns **no blocking or important recommendations** (only
+**nit** recommendations, if anything), OFFER the user to cut the loop short — conclude and go to
+their review gate, no formal `approve` verdict required — rather than spend further live rounds
+chasing a clean approve. The existing no-blocking floor still lets them proceed with important
+recommendations open if they choose; this offer is the cleaner "nothing important left" stop. It
 is an OFFER, not automatic — the user may also push on to a formal approve.
 
 5. **Handoff**: `Test-HandoffFresh` (lib.ps1) must return Fresh — APPROVED state, commit match, head oid unchanged, AND the base ref's name/live tip unchanged (a separate, independently-checked endpoint from the PR's static base oid — see docs/build-log/task-14-report.md). Stale → re-sync, re-enter review; if the reason is specifically head or base drift, first call `Revoke-SupersededReview` (lib.ps1) to retire the stale tool-owned approval — see gauntlet-review/SKILL.md's Handoff section for the exact contract and its three safety preconditions. `Test-HandoffFresh` itself never mutates. Then notify the user (message + push notification). **The user merges. Never merge.**
