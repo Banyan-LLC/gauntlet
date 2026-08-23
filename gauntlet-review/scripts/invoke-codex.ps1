@@ -14,7 +14,7 @@
    | 13 pin changed or missing (re-invoke same round with -AcceptNewBinary)
    | 14 round cap OR attempts exhausted, state flagged | 16 carry-over ledger required/invalid #>
 param(
-    [Parameter(Mandatory)][ValidateSet('doc','pr')][string]$Mode,
+    [Parameter(Mandatory)][ValidateSet('doc','pr','local')][string]$Mode,
     [Parameter(Mandatory)][string]$PromptFile,
     [Parameter(Mandatory)][string]$StateDir,
     [Parameter(Mandatory)][ValidateRange(1, 1000)][int]$Round,
@@ -35,7 +35,7 @@ param(
     [string]$CarryOverFile,         # required for round > 1 (validated ledger; see Test-CarryOverLedger)
     [switch]$AcceptNewBinary,       # re-probe and re-pin after exit 13, same round number
     [ValidateRange(1, 100)][int]$RoundCap = 10,
-    [ValidateRange(1024, 10000000)][int]$BudgetBytes = 50000,
+    [ValidateRange(1024, 10000000)][int]$BudgetBytes = 100000,
     [ValidateRange(1, 86400)][int]$TimeoutSec = 1800,
     [string]$CliPathOverride        # TEST-ONLY; also the only way a wrapper may be pinned
 )
@@ -53,6 +53,11 @@ New-Item -ItemType Directory -Force $StateDir | Out-Null
 
 if ($Mode -eq 'doc' -and -not ($ArtifactPath -and $ArtifactCommit)) { Write-Error "doc mode requires -ArtifactPath and -ArtifactCommit"; exit 12 }
 if ($Mode -eq 'pr' -and -not ($PrNumber -and $BaseOid -and $HeadSha -and $BaseRefName -and $BaseTipOid)) { Write-Error "pr mode requires -PrNumber, -BaseOid, -HeadSha, -BaseRefName, -BaseTipOid"; exit 12 }
+# local mode reviews a LOCAL branch diff (baseOid..headSha) with no PR and no publish. Only the
+# cheap parameter-PRESENCE check runs here; all git resolution/ancestry/diff work is deferred to
+# AFTER the bounds/replay checks below (see the local-mode provenance block), so a capped or
+# replayed invocation returns its cap/replay result without ever touching the repository.
+if ($Mode -eq 'local' -and -not ($BaseOid -and $HeadSha)) { Write-Error "local mode requires -BaseOid and -HeadSha"; exit 12 }
 
 # --- BOUNDS FIRST. Both caps are checked before any probe, pin, harness, or process work, so a
 #     refused invocation launches nothing and leaves pin/harness state untouched.
@@ -116,19 +121,57 @@ if ($priorCount -gt 0) {
         [Text.Encoding]::UTF8.GetBytes($carryText)) | ForEach-Object { $_.ToString('x2') })
 }
 
+# --- local-mode provenance. Runs AFTER the bounds/replay checks AND after carry-over validation,
+#     so a capped/replayed round, or a later round with a missing/invalid ledger, returns its own
+#     result (14/16) without touching the repo. Best-effort HERMETIC diff: replace objects OFF,
+#     lazy fetch OFF, no external diff / textconv / color, explicit `--`; refs resolved to CANONICAL
+#     OIDs; base MUST be an ancestor of head. Scope: local mode is a NON-authoritative pre-check the
+#     operator runs on their OWN repo to cut PR rounds -- pr mode on the PR is the authoritative
+#     gate -- so it does not additionally defend the generated diff against the operator's own
+#     ambient repo config (submodule/attribute knobs); an imperfect local diff costs at most one
+#     extra pr round, never a security gap.
+$canonBase = $null; $canonHead = $null; $localDiff = $null; $localDiffSha = $null
+if ($Mode -eq 'local') {
+    $env:GIT_NO_LAZY_FETCH = '1'
+    $gx = @('-C', $RepoRoot, '-c', 'core.useReplaceRefs=false')
+    $canonBase = (git @gx rev-parse --verify --quiet "$BaseOid^{commit}")
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($canonBase)) { Write-Error "local mode: BaseOid '$BaseOid' does not resolve to a commit in $RepoRoot"; exit 12 }
+    $canonHead = (git @gx rev-parse --verify --quiet "$HeadSha^{commit}")
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($canonHead)) { Write-Error "local mode: HeadSha '$HeadSha' does not resolve to a commit in $RepoRoot"; exit 12 }
+    $canonBase = $canonBase.Trim(); $canonHead = $canonHead.Trim()
+    git @gx merge-base --is-ancestor $canonBase $canonHead
+    if ($LASTEXITCODE -ne 0) { Write-Error "local mode: BaseOid ($canonBase) is not an ancestor of HeadSha ($canonHead) -- disconnected or diverged history"; exit 12 }
+    $localDiff = (git @gx diff --no-ext-diff --no-textconv --no-color $canonBase $canonHead -- | Out-String)
+    if ($LASTEXITCODE -ne 0) { Write-Error "local mode: 'git diff $canonBase $canonHead' failed (exit $LASTEXITCODE)"; exit 12 }
+    $localDiffSha = -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash(
+        [Text.Encoding]::UTF8.GetBytes($localDiff)) | ForEach-Object { $_.ToString('x2') })
+}
+
 $promptBody = Get-Content -Raw -Encoding utf8 $PromptFile
+if ($Mode -eq 'local') {
+    # The PromptFile is the PREAMBLE (header + trusted context) ONLY and must be ENFORCED as such:
+    # reject a caller-supplied review-material section (normalized: leading whitespace and case are
+    # ignored) so ALL reviewed bytes provably come from the generated, digest-bound diff.
+    if ($promptBody -match '(?im)^\s*==\s*REVIEW MATERIAL') { Write-Error "local mode: PromptFile must be a preamble only and must NOT contain a '== REVIEW MATERIAL ==' section (the diff is generated from the verified range)"; exit 12 }
+    # Append the review material generated hermetically above from the verified range, so the
+    # reviewed bytes are provably that range and its digest (recorded in meta) binds provenance.
+    $promptBody = $promptBody.TrimEnd() + "`n`n== REVIEW MATERIAL (untrusted) ==`n" + $localDiff + "`n"
+}
 $prompt = $carryText + $promptBody
-# This 50,000-byte preflight is an OPERATIONAL INPUT BOUND ONLY -- a cheap, local, BEFORE-the-
-# round estimate from the prompt's own byte count. It is NOT the formal guarantee (added: real-
-# CLI evidence, see task-7-report.md) and does not promise an oversized request is never
-# attempted: bytes only bound tokens from above, and CLI-side overhead is not visible here. The
-# formal guarantee is enforced AFTER the round runs, at the acceptance-time usage gate near the
-# canonical verdict write below: a completed review is accepted and publishable only when the
-# real CLI itself reported at least 25% context headroom (see Get-RunUsage in lib.ps1).
+# This byte preflight (100,000-byte default -BudgetBytes) is an OPERATIONAL INPUT BOUND ONLY -- a
+# cheap, local, BEFORE-the-round estimate from the prompt's own byte count. It is NOT the formal
+# guarantee (added: real-CLI evidence, see task-7-report.md) and does not promise an oversized
+# request is never attempted: bytes only bound tokens from above, and CLI-side overhead is not
+# visible here. The formal guarantee is enforced AFTER the round runs, at the acceptance-time usage
+# gate near the canonical verdict write below: a completed review is accepted and publishable only
+# when the real CLI itself reported at least 25% context headroom (see Get-RunUsage in lib.ps1).
+# A preflight overflow is RETRYABLE by raising -BudgetBytes -- the caller may do so AUTONOMOUSLY up
+# to the 500,000-byte ceiling (~140k tokens, well within the usage gate); only a prompt genuinely
+# over 500,000 bytes is a human flag. (The acceptance-time usage-gate exit 10 below is NOT retryable.)
 $budget = Test-EmbedBudget -PromptText $prompt -BudgetBytes $BudgetBytes
 if (-not $budget.Ok) {
     Write-RoundState -StateDir $StateDir -Patch @{ status='flagged'; failure_reason="embed budget: $($budget.Bytes) > $BudgetBytes bytes" }
-    Write-Error "HUMAN FLAG: prompt is $($budget.Bytes) bytes (budget $BudgetBytes). No round ran. Never truncate."
+    Write-Error "prompt is $($budget.Bytes) bytes over the $BudgetBytes-byte preflight budget; No round ran. Raise -BudgetBytes and retry (autonomously up to 500000); a prompt over 500000 bytes is a human flag. Never truncate."
     exit 10
 }
 
@@ -238,6 +281,7 @@ $meta = @{
     timestamp=(Get-Date -AsUTC -Format o)
 }
 if ($Mode -eq 'doc') { $meta.artifact_path = $ArtifactPath; $meta.artifact_commit = $ArtifactCommit }
+elseif ($Mode -eq 'local') { $meta.base_oid = $canonBase; $meta.head_sha = $canonHead; $meta.reviewed_diff_sha256 = $localDiffSha }
 else {
     $meta.pr_number = $PrNumber; $meta.base_oid = $BaseOid; $meta.head_sha = $HeadSha
     $meta.base_ref_name = $BaseRefName; $meta.base_tip_oid = $BaseTipOid

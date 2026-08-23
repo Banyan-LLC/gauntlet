@@ -8,18 +8,31 @@ description: Gauntlet: a development pipeline with Codex peer-review gates. Use 
 Wraps the superpowers lifecycle (pinned: superpowers 6.0.2 — re-verify both insertion points on superpowers updates). This is user policy and takes precedence over brainstorming's "writing-plans is the only next skill" rule. Every superpowers user gate still happens, on Codex-approved documents.
 
 **Defaults** (project AGENTS.md/CLAUDE.md may override; in-session user instructions win):
-author `geoffroth` · reviewer `BanyanLLC` · round cap 10/phase · CI-fix cap 3 · model `gpt-5.6-sol` @ `xhigh` · embed budget 50,000 bytes (operational input bound; the acceptance-time usage gate on the real CLI's reported usage is the actual guarantee — see gauntlet-review SKILL.md).
+author `geoffroth` · reviewer `BanyanLLC` · round cap 10/phase · CI-fix cap 3 · model `gpt-5.6-sol` @ `xhigh` · embed budget 100,000 bytes default, raised to 500,000 AUTONOMOUSLY (no user prompt) as needed — a prompt over 500,000 bytes is a human flag (operational input bound; the acceptance-time usage gate on the real CLI's reported usage is the actual guarantee — see gauntlet-review SKILL.md).
 
 ## Pipeline
 
 1. **Spec**: superpowers brainstorming → spec committed →
-   **INSERTION POINT A**: pre-review hardening (below), then gauntlet-review skill, doc mode, phase `spec` → approval or human flag →
-   user reviews the Codex-approved spec (brainstorming's gate).
+   **INSERTION POINT A**: pre-review hardening (below), then gauntlet-review skill, doc mode, phase `spec` → approval, cut-short offer, or human flag →
+   user reviews the Codex-approved spec (brainstorming's gate). (Spec/plan cut-short applies — see below.)
 2. **Plan**: superpowers writing-plans → plan committed →
    **INSERTION POINT B**: pre-review hardening (below), then gauntlet-review, doc mode, phase `plan` (approved spec as TRUSTED CONTEXT — the only trusted context) →
-   user plan-review gate. NEVER start implementation before it.
+   user plan-review gate. NEVER start implementation before it. (Spec/plan cut-short applies — see below.)
 3. **Build**: subagent-driven development per existing conventions. No Codex involvement.
-4. **PR**:
+4. **Review & PR** — at the review transition (implementation complete), **OFFER the user both
+   paths; never pick silently**. The goal is to spend CI runs and PR review rounds only on
+   already-hardened code — each PR round costs a push + a CI run + a live review round.
+   - **A. Local-branch review (recommended for iteration; no CI/PR churn):** gauntlet-review
+     **local** mode — `-BaseOid $(git merge-base main HEAD)`, `-HeadSha $(git rev-parse HEAD)` —
+     pre-review hardening (below), then the bounded loop, iterating fixes **locally** to the
+     terminal bar with NO push/PR/CI/publish between rounds. When it clears, run the PR mechanics
+     (a–d) **once** — already-clean, it should converge in a single pr round. Local mode is a
+     best-effort pre-check on your own repo; the single pr-mode round in (a–d) is the AUTHORITATIVE
+     gate and the backstop for anything local hermeticity missed, so it is never skipped.
+   - **B. PR-per-round (full flow):** the PR mechanics (a–d) from the start — each fix is a new
+     push + CI run + pr round. Choose when you specifically want every round on the PR with CI.
+
+   PR mechanics (used once after path A, or each round in path B):
    a. Sync main; verification gates; branch `feat/…`/`fix/…`/`chore/…`; push; PR as geoffroth
       (`GH_TOKEN=$(gh auth token -u geoffroth) gh pr create …` from Git Bash).
    b. CI gate (author-owned): `GH_TOKEN=$(gh auth token -u geoffroth) gh pr checks <n> --watch`;
@@ -41,6 +54,14 @@ author `geoffroth` · reviewer `BanyanLLC` · round cap 10/phase · CI-fix cap 3
       same requirement as (c) — this is the exact push→re-review transition the live drill's
       wasted round happened on), then a FRESH round whose ledger records each prior finding as
       addressed/disputed/outstanding; re-review the new `(baseOid, headSha, baseRefName, baseTipOid)`.
+**Spec/plan cut-short (points A & B).** The doc-mode review keeps running while any **blocking**
+finding remains. The moment a round returns **no blocking or important recommendations** (only
+**nit** recommendations, if anything), OFFER the user to cut the loop short — conclude and go to
+their review gate, no formal `approve` verdict required — rather than spend further live rounds
+chasing a clean approve. The existing no-blocking floor still lets them proceed with important
+recommendations open if they choose; this offer is the cleaner "nothing important left" stop. It
+is an OFFER, not automatic — the user may also push on to a formal approve.
+
 5. **Handoff**: `Test-HandoffFresh` (lib.ps1) must return Fresh — APPROVED state, commit match, head oid unchanged, AND the base ref's name/live tip unchanged (a separate, independently-checked endpoint from the PR's static base oid — see docs/build-log/task-14-report.md). Stale → re-sync, re-enter review; if the reason is specifically head or base drift, first call `Revoke-SupersededReview` (lib.ps1) to retire the stale tool-owned approval — see gauntlet-review/SKILL.md's Handoff section for the exact contract and its three safety preconditions. `Test-HandoffFresh` itself never mutates. Then notify the user (message + push notification). **The user merges. Never merge.**
 
 ## Pre-review hardening (before EVERY Codex gate — points A, B, and 4c)
@@ -79,9 +100,12 @@ No `gh auth switch`, ever. geoffroth token for author calls, BanyanLLC token ins
 
 ## Human flags
 
-Stop; summarize state and sticking points; push notification. Triggers: exits 4/6/10/14, cap
+Stop; summarize state and sticking points; push notification. Triggers: exits 4/6/14, cap
 reached, CI-fix cap, transient-failure retry exhausted, dismissal denied, publish-argument/
-attempt-provenance mismatch (exit 6 — see gauntlet-review/SKILL.md).
+attempt-provenance mismatch (exit 6 — see gauntlet-review/SKILL.md). **Exit 10 is NOT automatically
+a human flag:** a byte-preflight overflow is retryable — raise `-BudgetBytes` up to 500,000
+AUTONOMOUSLY and re-invoke; only a prompt over 500,000 bytes, or the acceptance-time usage-gate
+exit 10 (real tokens <25% headroom), is a human flag.
 
 Exit 12 is NOT unconditional. Two self-serve manifest causes, both handled exactly as the
 gauntlet-review protocol says: stack-identity drift (absent, stale, or bound to a different

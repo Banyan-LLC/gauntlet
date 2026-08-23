@@ -1082,6 +1082,12 @@ Set-TestManifest $shim2
 $bigPrompt = "$tmp\big.txt"; Set-Content $bigPrompt -Value ('z' * 700000) -Encoding utf8 -NoNewline
 pwsh -NoProfile -File $entry @doc -PromptFile $bigPrompt -StateDir "$tmp\state5" -Round 1
 Assert-Eq $LASTEXITCODE 10 "budget overflow exits 10"
+# The DEFAULT preflight budget is 100 KB (raised from 50 KB): a ~60 KB prompt now passes with no
+# explicit -BudgetBytes (it would have exit-10'd at the old 50 KB default).
+Set-TestManifest $shim2
+$midPrompt = "$tmp\mid.txt"; Set-Content $midPrompt -Value ('z' * 60000) -Encoding utf8 -NoNewline
+pwsh -NoProfile -File $entry @doc -PromptFile $midPrompt -StateDir "$tmp\stateMid" -Round 1
+Assert-Eq $LASTEXITCODE 0 "a 60 KB prompt passes under the new 100 KB default budget"
 
 # Normalization at entry level: shim returns approve+important -> canonical file says request_changes.
 $shim3 = New-FakeCodexShim -Dir "$tmp\shim3" -Version "0.147.0" -ExecHelp $goodExecHelp -ResumeHelp $goodResumeHelp -FeaturesText $feat `
@@ -1385,8 +1391,9 @@ Assert-True (-not (Test-Path "$stateU7\round-1-verdict.json")) "usage-artifact c
 Set-TestManifest $shim2
 
 # =====================================================================================
-# PR-MODE COVERAGE: invoke-codex.ps1 supports two -Mode values, 'doc' and 'pr', but every
-# entry-behavior test above only ever exercised 'doc'. That leaves the entire pr branch --
+# PR-MODE COVERAGE: invoke-codex.ps1 supports three -Mode values -- 'doc', 'pr', and 'local'
+# (the last covered in its own section below) -- but every entry-behavior test above only ever
+# exercised 'doc'. That leaves the entire pr branch --
 # a real ValidateSet value, its own required-provenance gate (-PrNumber/-BaseOid/-HeadSha,
 # the pr-mode equivalent of doc mode's -ArtifactPath/-ArtifactCommit), and its own attempt-meta
 # field set -- completely unverified end to end. This section proves pr mode to the same
@@ -1471,6 +1478,208 @@ Assert-True (-not (Test-Path "$statePr\round-1-attempt-2-meta.json")) "pr mode r
 Assert-True (-not (Test-Path "$tmp\shim2\receipt.json")) "pr mode replay launched no codex process"
 Assert-Eq (Get-Content -Raw "$statePr\round-1-verdict.json") $verdictBeforePr "pr mode replay did not touch the canonical verdict"
 Assert-Eq (Get-Content -Raw "$statePr\state.json") $stateJsonBeforePr "pr mode replay left state.json completely untouched"
+
+# =====================================================================================
+# LOCAL-MODE COVERAGE: invoke-codex.ps1's third -Mode, 'local', reviews a LOCAL branch diff
+# (baseOid..headSha) with NO PR and NO publish -- the cheap iteration path (gauntlet-dev step 4)
+# that avoids a CI run + a full PR review round per fix. Proven to the same standard as doc/pr:
+# a real ValidateSet value, its own required-provenance gate (-BaseOid/-HeadSha, no PR metadata),
+# and its own attempt-meta field set (base_oid/head_sha only -- no PR or artifact fields).
+# =====================================================================================
+Set-TestManifest $shim2
+# local mode VERIFIES both refs resolve in RepoRoot and GENERATES the reviewed diff from that
+# range itself, so the tests use REAL commits (not placeholder shas) -- two empty commits give a
+# well-formed (empty) range the fake shim still returns a canned verdict for.
+git -C $repo -c user.email=t@t -c user.name=t commit -q --allow-empty -m local-base
+$locBase = (git -C $repo rev-parse HEAD).Trim()
+git -C $repo -c user.email=t@t -c user.name=t commit -q --allow-empty -m local-head
+$locHead = (git -C $repo rev-parse HEAD).Trim()
+$loc = @{ Mode='local'; RepoRoot=$repo; BaseOid=$locBase; HeadSha=$locHead; CliPathOverride=$shim2 }
+
+# --- Golden path: mirrors the doc/pr "round 1 ok" blocks, property for property. ---
+$stateLoc = "$tmp\stateLoc"; New-Item -ItemType Directory -Force $stateLoc | Out-Null
+pwsh -NoProfile -File $entry @loc -PromptFile $promptFile -StateDir $stateLoc -Round 1
+Assert-Eq $LASTEXITCODE 0 "local mode round 1 ok"
+Assert-True (Test-Path "$stateLoc\round-1-verdict.json") "local mode: canonical normalized verdict written"
+Assert-True (Test-Path "$stateLoc\round-1-attempt-1-meta.json") "local mode: attempt-scoped immutable meta"
+Assert-True (Test-Path "$stateLoc\cli-pin.json") "local mode: pin written on round 1"
+$mLoc1 = Get-Content -Raw "$stateLoc\round-1-attempt-1-meta.json" | ConvertFrom-Json
+Assert-Eq $mLoc1.mode 'local' "meta records local mode"
+Assert-Eq $mLoc1.base_oid $locBase "local meta records base oid"
+Assert-Eq $mLoc1.head_sha $locHead "local meta records head sha"
+Assert-True ($mLoc1.reviewed_diff_sha256 -match '^[0-9a-f]{64}$') "local meta records a diff digest binding provenance to the range"
+# local-mode meta carries ONLY the two local commits + the diff digest -- NOT pr mode's PR/base-ref
+# provenance, nor doc mode's artifact fields (mutually exclusive if/elseif/else). PSObject.Properties,
+# not dot-access -- Set-StrictMode throws on a genuinely-absent property.
+Assert-True ($mLoc1.PSObject.Properties.Name -notcontains 'pr_number') "local-mode meta does not carry pr_number"
+Assert-True ($mLoc1.PSObject.Properties.Name -notcontains 'base_ref_name') "local-mode meta does not carry base_ref_name"
+Assert-True ($mLoc1.PSObject.Properties.Name -notcontains 'artifact_path') "local-mode meta does not carry artifact_path"
+
+# --- Missing provenance is rejected before anything runs -- each required commit independently
+# trips the gate when the other is supplied (mirrors doc/pr provenance checks). ---
+Remove-Item "$tmp\shim2\receipt.json" -Force -ErrorAction SilentlyContinue
+$stateLocNoBase = "$tmp\sLocNoBase"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocNoBase -Round 1 -RepoRoot $repo -HeadSha $locHead -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 12 "local mode without -BaseOid exits 12"
+Assert-True (-not (Test-Path "$stateLocNoBase\round-1-attempt-1-meta.json")) "no attempt record when -BaseOid is missing (local)"
+Assert-True (-not (Test-Path "$stateLocNoBase\cli-pin.json")) "provenance refusal (local -BaseOid) wrote no pin"
+Assert-True (-not (Test-Path "$tmp\shim2\receipt.json")) "provenance refusal (local -BaseOid) launched no codex process"
+
+$stateLocNoHead = "$tmp\sLocNoHead"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocNoHead -Round 1 -RepoRoot $repo -BaseOid $locBase -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 12 "local mode without -HeadSha exits 12"
+Assert-True (-not (Test-Path "$stateLocNoHead\round-1-attempt-1-meta.json")) "no attempt record when -HeadSha is missing (local)"
+
+# --- A supplied ref that does NOT resolve to a commit in RepoRoot fails closed (local mode's
+# repo-access advantage over hermetic pr mode): false provenance is impossible. ---
+Remove-Item "$tmp\shim2\receipt.json" -Force -ErrorAction SilentlyContinue
+$stateLocBadCommit = "$tmp\sLocBadCommit"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocBadCommit -Round 1 -RepoRoot $repo -BaseOid 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef' -HeadSha $locHead -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 12 "local mode with a nonexistent BaseOid exits 12 (does not resolve)"
+Assert-True (-not (Test-Path "$stateLocBadCommit\round-1-attempt-1-meta.json")) "no attempt record for an unresolvable commit"
+Assert-True (-not (Test-Path "$tmp\shim2\receipt.json")) "unresolvable-commit refusal launched no codex process"
+
+# --- Non-ancestor / disconnected base fails closed. A sibling commit (same parent as head) is not
+# an ancestor of head, so it must be rejected rather than diffed against a hidden merge base. ---
+$sibTree = (git -C $repo rev-parse "$locBase^{tree}").Trim()
+$locSibling = (git -C $repo commit-tree $sibTree -p $locBase -m divergent).Trim()
+$stateLocDiverged = "$tmp\sLocDiverged"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocDiverged -Round 1 -RepoRoot $repo -BaseOid $locSibling -HeadSha $locHead -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 12 "local mode: a non-ancestor (diverged) base exits 12"
+Assert-True (-not (Test-Path "$stateLocDiverged\round-1-attempt-1-meta.json")) "no attempt record for a non-ancestor base"
+
+# --- A malformed HeadSha (not a valid rev) fails closed at resolution. ---
+$stateLocBadHead = "$tmp\sLocBadHead"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocBadHead -Round 1 -RepoRoot $repo -BaseOid $locBase -HeadSha 'not a valid ref!!' -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 12 "local mode: a malformed HeadSha exits 12"
+Assert-True (-not (Test-Path "$stateLocBadHead\round-1-attempt-1-meta.json")) "no attempt record for a malformed head"
+
+# --- A GENUINELY disconnected history (an orphan commit sharing no ancestor with head) fails
+# closed at the ancestry check -- distinct from the connected-sibling case above. ---
+$orphanTree = (git -C $repo rev-parse "$locBase^{tree}").Trim()
+$locOrphan = (git -C $repo commit-tree $orphanTree -m orphan).Trim()   # no -p => no parent, no shared history
+$stateLocOrphan = "$tmp\sLocOrphan"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocOrphan -Round 1 -RepoRoot $repo -BaseOid $locOrphan -HeadSha $locHead -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 12 "local mode: a disconnected (orphan) base exits 12"
+Assert-True (-not (Test-Path "$stateLocOrphan\round-1-attempt-1-meta.json")) "no attempt record for a disconnected base"
+
+# --- Bounds-first: a CAPPED local invocation with an invalid ref returns the cap result (14),
+# NOT the ref-resolution result (12) -- provenance git work runs only after the bounds checks. ---
+$stateLocCap = "$tmp\sLocCap"
+Remove-Item "$tmp\shim2\receipt.json" -Force -ErrorAction SilentlyContinue
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocCap -Round 2 -RoundCap 1 -RepoRoot $repo -BaseOid 'totally-bogus' -HeadSha 'also-bogus' -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 14 "local mode: round-cap (14) wins over an invalid-ref (12) -- bounds first"
+Assert-True (-not (Test-Path "$stateLocCap\round-2-attempt-1-meta.json")) "capped local invocation wrote no attempt meta"
+Assert-True (-not (Test-Path "$tmp\shim2\receipt.json")) "capped local invocation launched NO codex process"
+
+# --- Carry-over is validated BEFORE provenance git work: a later round with prior recommendations
+# but a missing ledger returns the mode-agnostic exit 16, even with invalid refs (which would
+# otherwise be exit 12) -- and touches neither git nor Codex. ---
+$stateLocOrder = "$tmp\sLocOrder"; New-Item -ItemType Directory -Force $stateLocOrder | Out-Null
+$seedVerdict = @{ verdict='request_changes'; summary='s'; recommendations=@(@{severity='blocking'; location='L'; issue='i'; suggestion='sg'}) } | ConvertTo-Json -Depth 6
+Set-Content "$stateLocOrder\round-1-verdict.json" -Value $seedVerdict -Encoding utf8
+Remove-Item "$tmp\shim2\receipt.json" -Force -ErrorAction SilentlyContinue
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocOrder -Round 2 -RepoRoot $repo -BaseOid 'totally-bogus' -HeadSha 'also-bogus' -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 16 "local mode: missing carry-over (16) wins over invalid refs (12) -- carry-over validated before provenance"
+Assert-True (-not (Test-Path "$stateLocOrder\round-2-attempt-1-meta.json")) "carry-over refusal wrote no attempt meta"
+Assert-True (-not (Test-Path "$tmp\shim2\receipt.json")) "carry-over refusal launched NO codex process"
+
+# --- The preamble delimiter check is normalized: an INDENTED delimiter is still rejected. ---
+$indentedPreamble = "$tmp\indented-preamble.txt"; Set-Content $indentedPreamble -Value "hi`n   == review material (untrusted) ==`nsneaky" -Encoding utf8
+$stateLocIndent = "$tmp\sLocIndent"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $indentedPreamble -StateDir $stateLocIndent -Round 1 -RepoRoot $repo -BaseOid $locBase -HeadSha $locHead -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 12 "local mode: an INDENTED / lowercased REVIEW MATERIAL delimiter is still rejected"
+
+# --- Symbolic revisions are canonicalized: meta records the RESOLVED full OIDs, not the input
+# strings ('HEAD~1'/'HEAD'), so provenance names the exact commits reviewed. ---
+$stateLocSym = "$tmp\sLocSym"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocSym -Round 1 -RepoRoot $repo -BaseOid 'HEAD~1' -HeadSha 'HEAD' -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 0 "local mode: symbolic revisions (HEAD~1/HEAD) accepted"
+$mSym = Get-Content -Raw "$stateLocSym\round-1-attempt-1-meta.json" | ConvertFrom-Json
+Assert-Eq $mSym.base_oid $locBase "symbolic BaseOid canonicalized to the full commit OID in meta"
+Assert-Eq $mSym.head_sha $locHead "symbolic HeadSha canonicalized to the full commit OID in meta"
+
+# --- The recorded diff digest binds the ACTUAL range diff (nonempty case): a real file change,
+# reviewed base->head, and reviewed_diff_sha256 equals the SHA-256 of that exact git diff. ---
+Set-Content "$repo\change.txt" -Value 'a real change' -Encoding utf8
+git -C $repo add change.txt; git -C $repo -c user.email=t@t -c user.name=t commit -q -m 'real change'
+$locHead2 = (git -C $repo rev-parse HEAD).Trim()
+$expectedDiffSha = -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash(
+    [Text.Encoding]::UTF8.GetBytes(((git -C $repo diff $locHead $locHead2) | Out-String))) | ForEach-Object { $_.ToString('x2') })
+$stateLocNe = "$tmp\sLocNonEmpty"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocNe -Round 1 -RepoRoot $repo -BaseOid $locHead -HeadSha $locHead2 -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 0 "local mode: nonempty-diff round ok"
+$mNe = Get-Content -Raw "$stateLocNe\round-1-attempt-1-meta.json" | ConvertFrom-Json
+Assert-Eq $mNe.reviewed_diff_sha256 $expectedDiffSha "reviewed_diff_sha256 equals the digest of the ACTUAL git diff for the range"
+# Independent of the meta digest: prove the EXACT generated diff reached the reviewer's stdin as
+# REVIEW MATERIAL. Reconstruct the full prompt the script assembles (round 1 => empty carry-over;
+# preamble.TrimEnd() + marker + hermetic diff) and match the shim's recorded stdin digest.
+$preambleRaw = Get-Content -Raw -Encoding utf8 $promptFile
+$expectedDiffText = (git -C $repo -c core.useReplaceRefs=false diff --no-ext-diff --no-textconv --no-color $locHead $locHead2 -- | Out-String)
+$expectedPrompt = $preambleRaw.TrimEnd() + "`n`n== REVIEW MATERIAL (untrusted) ==`n" + $expectedDiffText + "`n"
+$expectedPromptSha = -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($expectedPrompt)) | ForEach-Object { $_.ToString('x2') })
+$neReceipt = Get-Content -Raw "$tmp\shim2\receipt.json" | ConvertFrom-Json
+Assert-Eq $neReceipt.stdinSha256 $expectedPromptSha "the EXACT generated diff reached the reviewer as REVIEW MATERIAL over stdin"
+
+# --- Preamble contract: a PromptFile that already carries a REVIEW MATERIAL delimiter is rejected,
+# so caller bytes can never ride alongside the generated (digest-bound) diff. ---
+$badPreamble = "$tmp\bad-preamble.txt"; Set-Content $badPreamble -Value "hi`n== REVIEW MATERIAL (untrusted) ==`nsneaky caller bytes" -Encoding utf8
+$stateLocBadPre = "$tmp\sLocBadPre"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $badPreamble -StateDir $stateLocBadPre -Round 1 -RepoRoot $repo -BaseOid $locHead -HeadSha $locHead2 -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 12 "local mode: a PromptFile containing a REVIEW MATERIAL delimiter is rejected"
+Assert-True (-not (Test-Path "$stateLocBadPre\round-1-attempt-1-meta.json")) "no attempt record for a non-preamble PromptFile"
+
+# --- Malformed base and nonexistent head each fail closed independently. ---
+$stateLocBadBase = "$tmp\sLocBadBase"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocBadBase -Round 1 -RepoRoot $repo -BaseOid 'bad ref!!' -HeadSha $locHead2 -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 12 "local mode: a malformed BaseOid exits 12"
+$stateLocNoSuchHead = "$tmp\sLocNoSuchHead"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocNoSuchHead -Round 1 -RepoRoot $repo -BaseOid $locHead -HeadSha ('0' * 40) -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 12 "local mode: a well-formed but nonexistent HeadSha exits 12"
+
+# --- Control: `git replace` must NOT alter the reviewed range (replace objects disabled). Build a
+# decoy commit with different content, replace locHead2 with it, and assert the reviewed diff is
+# still the ORIGINAL range (its digest unchanged) -- if replace were honored the digest would differ. ---
+Set-Content "$repo\decoy.txt" -Value 'DECOY CONTENT that must not appear in the review' -Encoding utf8
+git -C $repo add decoy.txt; git -C $repo -c user.email=t@t -c user.name=t commit -q -m decoy
+$locDecoy = (git -C $repo rev-parse HEAD).Trim()
+$expectedOriginalSha = -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash(
+    [Text.Encoding]::UTF8.GetBytes(((git -C $repo -c core.useReplaceRefs=false diff --no-ext-diff --no-textconv --no-color $locHead $locHead2 --) | Out-String))) | ForEach-Object { $_.ToString('x2') })
+git -C $repo replace $locHead2 $locDecoy
+try {
+    $stateLocReplace = "$tmp\sLocReplace"
+    pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocReplace -Round 1 -RepoRoot $repo -BaseOid $locHead -HeadSha $locHead2 -CliPathOverride $shim2
+    Assert-Eq $LASTEXITCODE 0 "local mode: round ok with a replace ref present"
+    $mReplace = Get-Content -Raw "$stateLocReplace\round-1-attempt-1-meta.json" | ConvertFrom-Json
+    Assert-Eq $mReplace.reviewed_diff_sha256 $expectedOriginalSha "replace refs are IGNORED: the reviewed diff is the ORIGINAL range, not the replacement content"
+} finally {
+    git -C $repo replace -d $locHead2 2>$null
+}
+
+# --- Control (self-guarding): a configured external diff driver is NEVER launched by local mode's
+# hermetic diff (--no-ext-diff). A positive control proves the driver DOES fire on a plain diff, so
+# the negative assertion can't pass vacuously; if this platform's git does not invoke the driver
+# for a tree diff at all, the case skips cleanly rather than asserting nothing. ---
+$extSentinel = "$tmp\extdiff-ran.txt"
+$extScript = "$tmp\extdiff.sh"
+Set-Content $extScript -Encoding ascii -Value "#!/bin/sh`necho ran > '$($extSentinel -replace '\\','/')'`n"
+git -C $repo config diff.external ($extScript -replace '\\','/')
+try {
+    Remove-Item $extSentinel -Force -ErrorAction SilentlyContinue
+    git -C $repo diff $locHead $locHead2 -- *> $null   # plain diff: the driver SHOULD fire here
+    if (Test-Path $extSentinel) {
+        Remove-Item $extSentinel -Force -ErrorAction SilentlyContinue
+        $stateLocExt = "$tmp\sLocExt"
+        pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocExt -Round 1 -RepoRoot $repo -BaseOid $locHead -HeadSha $locHead2 -CliPathOverride $shim2
+        Assert-Eq $LASTEXITCODE 0 "local mode: round ok with diff.external configured"
+        Assert-True (-not (Test-Path $extSentinel)) "configured external diff driver is NEVER launched by local mode's hermetic diff"
+    } else {
+        Write-Host "  (skipped external-diff control: this platform's git did not invoke diff.external for a tree diff)"
+    }
+} finally {
+    git -C $repo config --unset diff.external 2>$null
+    Remove-Item $extSentinel -Force -ErrorAction SilentlyContinue
+}
 
 # ATOMIC CREATE-ONLY: two racing writers must not both produce a canonical artifact.
 $raceDir = Join-Path $tmp 'race'; New-Item -ItemType Directory -Force $raceDir | Out-Null

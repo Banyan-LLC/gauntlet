@@ -1061,10 +1061,10 @@ function New-HarnessDir {
 
 function Get-StateDir {
     param(
-        [Parameter(Mandatory)][ValidateSet('doc','pr')][string]$Mode,
+        [Parameter(Mandatory)][ValidateSet('doc','pr','local')][string]$Mode,
         [Parameter(Mandatory)][string]$RepoRoot,
         [string]$Topic, [ValidateSet('spec','plan')][string]$Phase, [string]$Date,
-        [string]$OwnerRepo, [int]$PrNumber
+        [string]$OwnerRepo, [int]$PrNumber, [string]$Branch
     )
     if ($Mode -eq 'doc') {
         if ($Topic -notmatch '^[a-z0-9][a-z0-9-]{0,63}$') { throw "invalid topic '$Topic'" }
@@ -1072,6 +1072,28 @@ function Get-StateDir {
         if (-not $Phase) { throw "doc mode requires -Phase" }
         $root = Join-Path $RepoRoot 'docs\superpowers\reviews'
         $dir = [System.IO.Path]::GetFullPath((Join-Path $root "$Date-$Topic\$Phase"))
+    } elseif ($Mode -eq 'local') {
+        # A local-branch review has no PR; state lives under the git common dir (never committed),
+        # keyed by branch. Reject traversal ('..') and any character outside a safe branch charset
+        # BEFORE using it in a path; Test-PathUnderRoot below is the backstop.
+        if ([string]::IsNullOrWhiteSpace($Branch)) { throw "local mode requires -Branch" }
+        if ($Branch -match '\.\.' -or $Branch -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$') { throw "invalid branch '$Branch'" }
+        $common = (git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir).Trim()
+        if ($LASTEXITCODE -ne 0) { throw "not a git repository: $RepoRoot" }
+        $root = Join-Path $common 'info\gauntlet-review'
+        # Collision-resistant: a readable (bounded) sanitized prefix PLUS the FULL SHA-256 of the
+        # complete branch name, so lookalike names ('feat/phase-3' vs 'feat-phase-3') never share a
+        # state dir. A bare separator->hyphen substitution is not injective, and a truncated digest
+        # (e.g. 48 bits) is birthday-collidable from attacker-chosen branch names; the full digest
+        # is the collision-resistant key, the prefix is only for human readability.
+        $safe = ($Branch -replace '[^A-Za-z0-9._-]', '-')
+        if ($safe.Length -gt 40) { $safe = $safe.Substring(0, 40) }   # bound path length; digest is the key
+        $digest = -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash(
+            [Text.Encoding]::UTF8.GetBytes($Branch)) | ForEach-Object { $_.ToString('x2') })
+        # Fixed 'branch-' stem so a leaf can never be a Windows reserved DEVICE name (CON, NUL,
+        # COM1, ...): 'CON.<digest>' is still a device name to Windows even with an extension,
+        # but 'branch-CON.<digest>' is an ordinary directory.
+        $dir = [System.IO.Path]::GetFullPath((Join-Path $root "local\branch-$safe.$digest"))
     } else {
         if ($OwnerRepo -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw "invalid owner/repo '$OwnerRepo'" }
         if ($PrNumber -lt 1) { throw "invalid PR number $PrNumber" }
