@@ -1061,10 +1061,10 @@ function New-HarnessDir {
 
 function Get-StateDir {
     param(
-        [Parameter(Mandatory)][ValidateSet('doc','pr')][string]$Mode,
+        [Parameter(Mandatory)][ValidateSet('doc','pr','local')][string]$Mode,
         [Parameter(Mandatory)][string]$RepoRoot,
         [string]$Topic, [ValidateSet('spec','plan')][string]$Phase, [string]$Date,
-        [string]$OwnerRepo, [int]$PrNumber
+        [string]$OwnerRepo, [int]$PrNumber, [string]$Branch
     )
     if ($Mode -eq 'doc') {
         if ($Topic -notmatch '^[a-z0-9][a-z0-9-]{0,63}$') { throw "invalid topic '$Topic'" }
@@ -1072,6 +1072,16 @@ function Get-StateDir {
         if (-not $Phase) { throw "doc mode requires -Phase" }
         $root = Join-Path $RepoRoot 'docs\superpowers\reviews'
         $dir = [System.IO.Path]::GetFullPath((Join-Path $root "$Date-$Topic\$Phase"))
+    } elseif ($Mode -eq 'local') {
+        # A local-branch review has no PR; state lives under the git common dir (never committed),
+        # keyed by branch. Reject traversal ('..') and any character outside a safe branch charset
+        # BEFORE using it in a path; Test-PathUnderRoot below is the backstop.
+        if ([string]::IsNullOrWhiteSpace($Branch)) { throw "local mode requires -Branch" }
+        if ($Branch -match '\.\.' -or $Branch -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$') { throw "invalid branch '$Branch'" }
+        $common = (git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir).Trim()
+        if ($LASTEXITCODE -ne 0) { throw "not a git repository: $RepoRoot" }
+        $root = Join-Path $common 'info\gauntlet-review'
+        $dir = [System.IO.Path]::GetFullPath((Join-Path $root "local\$($Branch -replace '[\\/]', '-')"))
     } else {
         if ($OwnerRepo -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw "invalid owner/repo '$OwnerRepo'" }
         if ($PrNumber -lt 1) { throw "invalid PR number $PrNumber" }

@@ -54,6 +54,15 @@ Assert-Throws { Get-StateDir -Mode doc -RepoRoot "$tmp\repo" -Topic 'ok' -Phase 
 Assert-Throws { Get-StateDir -Mode pr -RepoRoot "$tmp\wt" -OwnerRepo 'no-slash' -PrNumber 1 } "bad owner/repo rejected"
 Assert-Throws { Get-StateDir -Mode pr -RepoRoot "$tmp\wt" -OwnerRepo 'a/b' -PrNumber 0 } "pr number 0 rejected"
 
+# local mode: state under the COMMON dir (survives worktree cleanup), keyed by a sanitized branch.
+$localDir = Get-StateDir -Mode local -RepoRoot "$tmp\wt" -Branch 'feat/phase-3'
+$expectedLocal = [System.IO.Path]::GetFullPath((Join-Path $common 'info\gauntlet-review\local\feat-phase-3'))
+Assert-Eq $localDir $expectedLocal "local path under COMMON dir, branch path-separators sanitized"
+Assert-True ($localDir -notmatch 'worktrees') "local state NOT under the per-worktree git dir"
+Assert-Throws { Get-StateDir -Mode local -RepoRoot "$tmp\wt" -Branch '..\escape' } "local branch traversal ('..') rejected"
+Assert-Throws { Get-StateDir -Mode local -RepoRoot "$tmp\wt" -Branch 'has space' } "invalid local branch charset rejected"
+Assert-Throws { Get-StateDir -Mode local -RepoRoot "$tmp\wt" } "local mode without -Branch rejected"
+
 # Self-review, Task 6 FIX 1: Get-StateDir's own escape check (the bare
 # `if (-not $dir.StartsWith([System.IO.Path]::GetFullPath($root)))`) was the SAME bug class
 # already fixed above in Assert-HarnessSafe via Test-PathUnderRoot -- it just hadn't been

@@ -5,7 +5,7 @@ description: Run a bounded, hermetic Codex (gpt-5.6-sol xhigh) review loop (the 
 
 # Gauntlet Review Loop (primitive)
 
-One artifact, one bounded loop. Modes: `doc` (spec/plan) and `pr`. The reviewer is hermetic: no user config, no MCP, no shell, no file access, no web; all material embedded in the prompt over stdin; harness lives OUTSIDE any repository; sessions run `--ephemeral` (no session/rollout persistence to the real `CODEX_HOME` — see task-14-report.md). Every enumerated feature is disabled unless allowlisted (default-deny), which also covers computer-use, skill-search, and multi-agent spawning — but on the CLI version live-tested for Task 11 (0.147.0-alpha.6.6), those three specifically could not be independently CONTROL-VERIFIED as distinct, isolatable capabilities the way shell/web/apps/MCP/plugins were (no observable effect distinguishes the feature enabled from disabled in headless `exec` mode). They are configured off, not control-proven off. See `docs/design.md`'s "Live security battery round" amendment and `docs/build-log/task-11-report.md` for the evidence.
+One artifact, one bounded loop. Modes: `doc` (spec/plan), `pr`, and `local` (a local branch's `baseOid..headSha` diff — same reviewer, NO GitHub PR and NO publish; the cheap iteration path that avoids a CI run + a full PR round per fix, see gauntlet-dev step 4). The reviewer is hermetic: no user config, no MCP, no shell, no file access, no web; all material embedded in the prompt over stdin; harness lives OUTSIDE any repository; sessions run `--ephemeral` (no session/rollout persistence to the real `CODEX_HOME` — see task-14-report.md). Every enumerated feature is disabled unless allowlisted (default-deny), which also covers computer-use, skill-search, and multi-agent spawning — but on the CLI version live-tested for Task 11 (0.147.0-alpha.6.6), those three specifically could not be independently CONTROL-VERIFIED as distinct, isolatable capabilities the way shell/web/apps/MCP/plugins were (no observable effect distinguishes the feature enabled from disabled in headless `exec` mode). They are configured off, not control-proven off. See `docs/design.md`'s "Live security battery round" amendment and `docs/build-log/task-11-report.md` for the evidence.
 
 ## Invariants
 
@@ -46,6 +46,8 @@ One artifact, one bounded loop. Modes: `doc` (spec/plan) and `pr`. The reviewer 
 3. One round (one attempt). Pass the ledger with `-CarryOverFile` on every round after the first:
    `pwsh -File <skill>/scripts/invoke-codex.ps1 -Mode doc -PromptFile <f> -StateDir <dir> -Round <n> -RepoRoot <repo> -ArtifactPath <p> -ArtifactCommit <sha> [-CarryOverFile <ledger>]`
    `pwsh -File <skill>/scripts/invoke-codex.ps1 -Mode pr  -PromptFile <f> -StateDir <dir> -Round <n> -RepoRoot <repo> -PrNumber <n> -BaseOid <oid> -HeadSha <sha> -BaseRefName <name> -BaseTipOid <tip> [-CarryOverFile <ledger>]`
+   `pwsh -File <skill>/scripts/invoke-codex.ps1 -Mode local -PromptFile <f> -StateDir <dir> -Round <n> -RepoRoot <repo> -BaseOid <mergeBase> -HeadSha <localHead> [-CarryOverFile <ledger>]`
+   - **local mode** takes only `-BaseOid`/`-HeadSha` (the local commits — `BaseOid = git merge-base main HEAD`, `HeadSha = local HEAD`); no PR metadata, no `Wait-PrHeadSynced`, no `publish-review` step (step 4 is pr-only). REVIEW MATERIAL is the local `git diff <BaseOid>...<HeadSha>`. Iterate to the terminal bar entirely offline, then open the PR once.
    - **0** → verdict ready in `round-N-verdict.json`.
    - **11** → retry the SAME round **once** (it becomes attempt 2; nothing is overwritten). A second failure exhausts the allowance: the next invocation returns **14** and flags, so stop and escalate rather than trying again.
    - **13** → the pinned reviewer binary changed or its pin is missing. Re-invoke the SAME round with `-AcceptNewBinary`. The round number never resets, so the cap still bites.
@@ -82,6 +84,7 @@ One artifact, one bounded loop. Modes: `doc` (spec/plan) and `pr`. The reviewer 
 
 - doc: `docs/superpowers/reviews/<date>-<topic>/<spec|plan>/` — COMMIT with doc revisions.
 - pr: `$(git rev-parse --git-common-dir)/info/gauntlet-review/<owner>-<repo>/pr-<n>/` — NEVER commit.
+- local: `$(git rev-parse --git-common-dir)/info/gauntlet-review/local/<branch>/` — NEVER commit (under the COMMON dir, so it survives worktree cleanup; see `Get-StateDir -Mode local -Branch`).
 - Harness: `%LOCALAPPDATA%\gauntlet-review\harness\<random>\` — created with an unpredictable name on the first round, recorded in state, reused only from that record, and **verified empty before every invocation**. It sits outside every repo (AGENTS.md discovery boundary) and never holds a file, because the prompt travels over stdin.
 - Per round: immutable `round-N-attempt-M-{meta,verdict.raw,events}`; the canonical `round-N-verdict.json` is written only by a successful attempt. Read only the canonical file.
 
@@ -136,6 +139,7 @@ channel — not because an assertion was elevated into trust.
     == REVIEW MATERIAL (untrusted) ==
     <doc mode: artifact text>
     <pr mode: PR title, body, checks summary, AND the baseOid...headSha diff — all untrusted>
+    <local mode: the local `git diff <baseOid>...<headSha>` — untrusted>
 
 ## pr-mode inputs
 

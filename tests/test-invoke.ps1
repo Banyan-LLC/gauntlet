@@ -1385,8 +1385,9 @@ Assert-True (-not (Test-Path "$stateU7\round-1-verdict.json")) "usage-artifact c
 Set-TestManifest $shim2
 
 # =====================================================================================
-# PR-MODE COVERAGE: invoke-codex.ps1 supports two -Mode values, 'doc' and 'pr', but every
-# entry-behavior test above only ever exercised 'doc'. That leaves the entire pr branch --
+# PR-MODE COVERAGE: invoke-codex.ps1 supports three -Mode values -- 'doc', 'pr', and 'local'
+# (the last covered in its own section below) -- but every entry-behavior test above only ever
+# exercised 'doc'. That leaves the entire pr branch --
 # a real ValidateSet value, its own required-provenance gate (-PrNumber/-BaseOid/-HeadSha,
 # the pr-mode equivalent of doc mode's -ArtifactPath/-ArtifactCommit), and its own attempt-meta
 # field set -- completely unverified end to end. This section proves pr mode to the same
@@ -1468,6 +1469,50 @@ Remove-Item "$tmp\shim2\receipt.json" -Force -ErrorAction SilentlyContinue
 pwsh -NoProfile -File $entry @pr -PromptFile $promptFile -StateDir $statePr -Round 1
 Assert-Eq $LASTEXITCODE 14 "replaying an already-completed pr round is refused"
 Assert-True (-not (Test-Path "$statePr\round-1-attempt-2-meta.json")) "pr mode replay consumed no attempt"
+
+# =====================================================================================
+# LOCAL-MODE COVERAGE: invoke-codex.ps1's third -Mode, 'local', reviews a LOCAL branch diff
+# (baseOid..headSha) with NO PR and NO publish -- the cheap iteration path (gauntlet-dev step 4)
+# that avoids a CI run + a full PR review round per fix. Proven to the same standard as doc/pr:
+# a real ValidateSet value, its own required-provenance gate (-BaseOid/-HeadSha, no PR metadata),
+# and its own attempt-meta field set (base_oid/head_sha only -- no PR or artifact fields).
+# =====================================================================================
+Set-TestManifest $shim2
+$loc = @{ Mode='local'; RepoRoot=$repo; BaseOid='aaa1111'; HeadSha='bbb2222'; CliPathOverride=$shim2 }
+
+# --- Golden path: mirrors the doc/pr "round 1 ok" blocks, property for property. ---
+$stateLoc = "$tmp\stateLoc"; New-Item -ItemType Directory -Force $stateLoc | Out-Null
+pwsh -NoProfile -File $entry @loc -PromptFile $promptFile -StateDir $stateLoc -Round 1
+Assert-Eq $LASTEXITCODE 0 "local mode round 1 ok"
+Assert-True (Test-Path "$stateLoc\round-1-verdict.json") "local mode: canonical normalized verdict written"
+Assert-True (Test-Path "$stateLoc\round-1-attempt-1-meta.json") "local mode: attempt-scoped immutable meta"
+Assert-True (Test-Path "$stateLoc\cli-pin.json") "local mode: pin written on round 1"
+$mLoc1 = Get-Content -Raw "$stateLoc\round-1-attempt-1-meta.json" | ConvertFrom-Json
+Assert-Eq $mLoc1.mode 'local' "meta records local mode"
+Assert-Eq $mLoc1.base_oid 'aaa1111' "local meta records base oid"
+Assert-Eq $mLoc1.head_sha 'bbb2222' "local meta records head sha"
+# local-mode meta carries ONLY the two local commits -- NOT pr mode's PR/base-ref provenance, nor
+# doc mode's artifact fields (the mutually exclusive if/elseif/else at meta assembly). PSObject
+# .Properties, not dot-access -- Set-StrictMode throws on a genuinely-absent property.
+Assert-True ($mLoc1.PSObject.Properties.Name -notcontains 'pr_number') "local-mode meta does not carry pr_number"
+Assert-True ($mLoc1.PSObject.Properties.Name -notcontains 'base_ref_name') "local-mode meta does not carry base_ref_name"
+Assert-True ($mLoc1.PSObject.Properties.Name -notcontains 'base_tip_oid') "local-mode meta does not carry base_tip_oid"
+Assert-True ($mLoc1.PSObject.Properties.Name -notcontains 'artifact_path') "local-mode meta does not carry artifact_path"
+
+# --- Missing provenance is rejected before anything runs -- each of the two required commits
+# must independently trip the gate when the other is supplied (mirrors doc/pr provenance checks). ---
+Remove-Item "$tmp\shim2\receipt.json" -Force -ErrorAction SilentlyContinue
+$stateLocNoBase = "$tmp\sLocNoBase"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocNoBase -Round 1 -RepoRoot $repo -HeadSha 'bbb2222' -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 12 "local mode without -BaseOid exits 12"
+Assert-True (-not (Test-Path "$stateLocNoBase\round-1-attempt-1-meta.json")) "no attempt record when -BaseOid is missing (local)"
+Assert-True (-not (Test-Path "$stateLocNoBase\cli-pin.json")) "provenance refusal (local -BaseOid) wrote no pin"
+Assert-True (-not (Test-Path "$tmp\shim2\receipt.json")) "provenance refusal (local -BaseOid) launched no codex process"
+
+$stateLocNoHead = "$tmp\sLocNoHead"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocNoHead -Round 1 -RepoRoot $repo -BaseOid 'aaa1111' -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 12 "local mode without -HeadSha exits 12"
+Assert-True (-not (Test-Path "$stateLocNoHead\round-1-attempt-1-meta.json")) "no attempt record when -HeadSha is missing (local)"
 Assert-True (-not (Test-Path "$tmp\shim2\receipt.json")) "pr mode replay launched no codex process"
 Assert-Eq (Get-Content -Raw "$statePr\round-1-verdict.json") $verdictBeforePr "pr mode replay did not touch the canonical verdict"
 Assert-Eq (Get-Content -Raw "$statePr\state.json") $stateJsonBeforePr "pr mode replay left state.json completely untouched"

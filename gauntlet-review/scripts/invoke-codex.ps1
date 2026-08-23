@@ -14,7 +14,7 @@
    | 13 pin changed or missing (re-invoke same round with -AcceptNewBinary)
    | 14 round cap OR attempts exhausted, state flagged | 16 carry-over ledger required/invalid #>
 param(
-    [Parameter(Mandatory)][ValidateSet('doc','pr')][string]$Mode,
+    [Parameter(Mandatory)][ValidateSet('doc','pr','local')][string]$Mode,
     [Parameter(Mandatory)][string]$PromptFile,
     [Parameter(Mandatory)][string]$StateDir,
     [Parameter(Mandatory)][ValidateRange(1, 1000)][int]$Round,
@@ -53,6 +53,9 @@ New-Item -ItemType Directory -Force $StateDir | Out-Null
 
 if ($Mode -eq 'doc' -and -not ($ArtifactPath -and $ArtifactCommit)) { Write-Error "doc mode requires -ArtifactPath and -ArtifactCommit"; exit 12 }
 if ($Mode -eq 'pr' -and -not ($PrNumber -and $BaseOid -and $HeadSha -and $BaseRefName -and $BaseTipOid)) { Write-Error "pr mode requires -PrNumber, -BaseOid, -HeadSha, -BaseRefName, -BaseTipOid"; exit 12 }
+# local mode reviews a LOCAL branch diff (baseOid..headSha) with no PR and no publish; its
+# provenance is just the two local commits, so an attempt record still identifies WHAT was reviewed.
+if ($Mode -eq 'local' -and -not ($BaseOid -and $HeadSha)) { Write-Error "local mode requires -BaseOid and -HeadSha"; exit 12 }
 
 # --- BOUNDS FIRST. Both caps are checked before any probe, pin, harness, or process work, so a
 #     refused invocation launches nothing and leaves pin/harness state untouched.
@@ -238,6 +241,7 @@ $meta = @{
     timestamp=(Get-Date -AsUTC -Format o)
 }
 if ($Mode -eq 'doc') { $meta.artifact_path = $ArtifactPath; $meta.artifact_commit = $ArtifactCommit }
+elseif ($Mode -eq 'local') { $meta.base_oid = $BaseOid; $meta.head_sha = $HeadSha }
 else {
     $meta.pr_number = $PrNumber; $meta.base_oid = $BaseOid; $meta.head_sha = $HeadSha
     $meta.base_ref_name = $BaseRefName; $meta.base_tip_oid = $BaseTipOid
