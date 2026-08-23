@@ -59,14 +59,21 @@ Assert-Throws { Get-StateDir -Mode pr -RepoRoot "$tmp\wt" -OwnerRepo 'a/b' -PrNu
 $localBranch = 'feat/phase-3'
 $localDir = Get-StateDir -Mode local -RepoRoot "$tmp\wt" -Branch $localBranch
 $digestFull = -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($localBranch)) | ForEach-Object { $_.ToString('x2') })
-$expectedLocal = [System.IO.Path]::GetFullPath((Join-Path $common "info\gauntlet-review\local\feat-phase-3.$digestFull"))
-Assert-Eq $localDir $expectedLocal "local path under COMMON dir: sanitized prefix + FULL-name digest"
+$expectedLocal = [System.IO.Path]::GetFullPath((Join-Path $common "info\gauntlet-review\local\branch-feat-phase-3.$digestFull"))
+Assert-Eq $localDir $expectedLocal "local path under COMMON dir: 'branch-' stem + sanitized prefix + FULL-name digest"
 Assert-True ($localDir -notmatch 'worktrees') "local state NOT under the per-worktree git dir"
 # Structural: the digest key is the full 64-hex SHA-256 (not a birthday-collidable truncation).
 Assert-True ((Split-Path $localDir -Leaf) -match '\.[0-9a-f]{64}$') "local dir key ends in a full 64-hex SHA-256 digest"
 # Collision resistance: 'feat/phase-3' and the lookalike 'feat-phase-3' must NOT share a dir.
 $localCollide = Get-StateDir -Mode local -RepoRoot "$tmp\wt" -Branch 'feat-phase-3'
 Assert-True ($localCollide -ne $localDir) "lookalike branch names ('feat/phase-3' vs 'feat-phase-3') get DISTINCT local state dirs"
+# Windows reserved DEVICE-name branches ('CON', 'NUL', 'COM1') must still produce a creatable dir:
+# the fixed 'branch-' stem keeps the leaf from being a device name (Get-StateDir also New-Items it).
+foreach ($rsvd in @('CON','NUL','COM1')) {
+    $rsvdDir = Get-StateDir -Mode local -RepoRoot "$tmp\wt" -Branch $rsvd
+    Assert-True ((Split-Path $rsvdDir -Leaf) -like 'branch-*') "reserved-name branch '$rsvd' gets a 'branch-'-stemmed leaf"
+    Assert-True (Test-Path $rsvdDir) "reserved-name branch '$rsvd' state dir is actually creatable"
+}
 Assert-Throws { Get-StateDir -Mode local -RepoRoot "$tmp\wt" -Branch '..\escape' } "local branch traversal ('..') rejected"
 Assert-Throws { Get-StateDir -Mode local -RepoRoot "$tmp\wt" -Branch 'has space' } "invalid local branch charset rejected"
 Assert-Throws { Get-StateDir -Mode local -RepoRoot "$tmp\wt" } "local mode without -Branch rejected"

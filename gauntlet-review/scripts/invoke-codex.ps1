@@ -149,9 +149,12 @@ if ($priorCount -gt 0) {
 
 $promptBody = Get-Content -Raw -Encoding utf8 $PromptFile
 if ($Mode -eq 'local') {
-    # The caller's PromptFile is the PREAMBLE (header + trusted context) only; append the review
-    # material generated hermetically above from the verified range, so the reviewed bytes are
-    # provably that range and its digest (recorded in meta) binds the verdict's provenance.
+    # The PromptFile is the PREAMBLE (header + trusted context) ONLY and must be ENFORCED as such:
+    # reject a caller-supplied review-material section so ALL reviewed bytes provably come from the
+    # generated, digest-bound diff -- nothing the caller could slip in alongside it.
+    if ($promptBody -match '(?m)^==\s*REVIEW MATERIAL') { Write-Error "local mode: PromptFile must be a preamble only and must NOT contain a '== REVIEW MATERIAL ==' section (the diff is generated from the verified range)"; exit 12 }
+    # Append the review material generated hermetically above from the verified range, so the
+    # reviewed bytes are provably that range and its digest (recorded in meta) binds provenance.
     $promptBody = $promptBody.TrimEnd() + "`n`n== REVIEW MATERIAL (untrusted) ==`n" + $localDiff + "`n"
 }
 $prompt = $carryText + $promptBody

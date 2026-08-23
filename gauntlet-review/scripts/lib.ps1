@@ -1090,7 +1090,10 @@ function Get-StateDir {
         if ($safe.Length -gt 40) { $safe = $safe.Substring(0, 40) }   # bound path length; digest is the key
         $digest = -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash(
             [Text.Encoding]::UTF8.GetBytes($Branch)) | ForEach-Object { $_.ToString('x2') })
-        $dir = [System.IO.Path]::GetFullPath((Join-Path $root "local\$safe.$digest"))
+        # Fixed 'branch-' stem so a leaf can never be a Windows reserved DEVICE name (CON, NUL,
+        # COM1, ...): 'CON.<digest>' is still a device name to Windows even with an extension,
+        # but 'branch-CON.<digest>' is an ordinary directory.
+        $dir = [System.IO.Path]::GetFullPath((Join-Path $root "local\branch-$safe.$digest"))
     } else {
         if ($OwnerRepo -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw "invalid owner/repo '$OwnerRepo'" }
         if ($PrNumber -lt 1) { throw "invalid PR number $PrNumber" }
