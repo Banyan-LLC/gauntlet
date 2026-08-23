@@ -59,11 +59,19 @@ if ($Mode -eq 'pr' -and -not ($PrNumber -and $BaseOid -and $HeadSha -and $BaseRe
 # is GENERATED from that exact range below (never trusted from the caller) so the verdict cannot
 # carry false provenance.
 if ($Mode -eq 'local' -and -not ($BaseOid -and $HeadSha)) { Write-Error "local mode requires -BaseOid and -HeadSha"; exit 12 }
+$canonBase = $null; $canonHead = $null
 if ($Mode -eq 'local') {
-    foreach ($c in @($BaseOid, $HeadSha)) {
-        git -C $RepoRoot rev-parse --verify --quiet "$c^{commit}" *> $null
-        if ($LASTEXITCODE -ne 0) { Write-Error "local mode: '$c' does not resolve to a commit in $RepoRoot"; exit 12 }
-    }
+    # Resolve BOTH refs to CANONICAL commit OIDs (a symbolic input like 'HEAD~2' is recorded as the
+    # commit it names, never verbatim), fail closed if either does not resolve, and require the base
+    # to be an ANCESTOR of the head so the recorded base is the true diff base -- a disconnected or
+    # diverged history is rejected rather than silently diffed against a hidden merge base.
+    $canonBase = (git -C $RepoRoot rev-parse --verify --quiet "$BaseOid^{commit}")
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($canonBase)) { Write-Error "local mode: BaseOid '$BaseOid' does not resolve to a commit in $RepoRoot"; exit 12 }
+    $canonHead = (git -C $RepoRoot rev-parse --verify --quiet "$HeadSha^{commit}")
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($canonHead)) { Write-Error "local mode: HeadSha '$HeadSha' does not resolve to a commit in $RepoRoot"; exit 12 }
+    $canonBase = $canonBase.Trim(); $canonHead = $canonHead.Trim()
+    git -C $RepoRoot merge-base --is-ancestor $canonBase $canonHead
+    if ($LASTEXITCODE -ne 0) { Write-Error "local mode: BaseOid ($canonBase) is not an ancestor of HeadSha ($canonHead) -- disconnected or diverged history"; exit 12 }
 }
 
 # --- BOUNDS FIRST. Both caps are checked before any probe, pin, harness, or process work, so a
@@ -135,7 +143,10 @@ if ($Mode -eq 'local') {
     # reviewed content is provably that range, not whatever a caller might supply. The caller's
     # PromptFile is the PREAMBLE (header + trusted context) only; the diff is appended here and
     # its digest recorded in the attempt meta, binding the verdict's provenance to the exact range.
-    $localDiff = (git -C $RepoRoot diff "$BaseOid...$HeadSha" | Out-String)
+    # Two-dot from the CANONICAL base to head (the exact recorded range, not a merge-base-relative
+    # symmetric diff), and abort if git errors rather than reviewing a silently-empty diff.
+    $localDiff = (git -C $RepoRoot diff $canonBase $canonHead | Out-String)
+    if ($LASTEXITCODE -ne 0) { Write-Error "local mode: 'git diff $canonBase $canonHead' failed (exit $LASTEXITCODE)"; exit 12 }
     $localDiffSha = -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash(
         [Text.Encoding]::UTF8.GetBytes($localDiff)) | ForEach-Object { $_.ToString('x2') })
     $promptBody = $promptBody.TrimEnd() + "`n`n== REVIEW MATERIAL (untrusted) ==`n" + $localDiff + "`n"
@@ -261,7 +272,7 @@ $meta = @{
     timestamp=(Get-Date -AsUTC -Format o)
 }
 if ($Mode -eq 'doc') { $meta.artifact_path = $ArtifactPath; $meta.artifact_commit = $ArtifactCommit }
-elseif ($Mode -eq 'local') { $meta.base_oid = $BaseOid; $meta.head_sha = $HeadSha; $meta.reviewed_diff_sha256 = $localDiffSha }
+elseif ($Mode -eq 'local') { $meta.base_oid = $canonBase; $meta.head_sha = $canonHead; $meta.reviewed_diff_sha256 = $localDiffSha }
 else {
     $meta.pr_number = $PrNumber; $meta.base_oid = $BaseOid; $meta.head_sha = $HeadSha
     $meta.base_ref_name = $BaseRefName; $meta.base_tip_oid = $BaseTipOid

@@ -1081,12 +1081,15 @@ function Get-StateDir {
         $common = (git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir).Trim()
         if ($LASTEXITCODE -ne 0) { throw "not a git repository: $RepoRoot" }
         $root = Join-Path $common 'info\gauntlet-review'
-        # Collision-resistant: a readable sanitized prefix PLUS a digest of the FULL branch name,
-        # so lookalike names ('feat/phase-3' vs 'feat-phase-3') never share a state dir. A bare
-        # separator->hyphen substitution is not injective and would mix two branches' history.
+        # Collision-resistant: a readable (bounded) sanitized prefix PLUS the FULL SHA-256 of the
+        # complete branch name, so lookalike names ('feat/phase-3' vs 'feat-phase-3') never share a
+        # state dir. A bare separator->hyphen substitution is not injective, and a truncated digest
+        # (e.g. 48 bits) is birthday-collidable from attacker-chosen branch names; the full digest
+        # is the collision-resistant key, the prefix is only for human readability.
         $safe = ($Branch -replace '[^A-Za-z0-9._-]', '-')
-        $digest = (-join ([System.Security.Cryptography.SHA256]::Create().ComputeHash(
-            [Text.Encoding]::UTF8.GetBytes($Branch)) | ForEach-Object { $_.ToString('x2') })).Substring(0, 12)
+        if ($safe.Length -gt 40) { $safe = $safe.Substring(0, 40) }   # bound path length; digest is the key
+        $digest = -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash(
+            [Text.Encoding]::UTF8.GetBytes($Branch)) | ForEach-Object { $_.ToString('x2') })
         $dir = [System.IO.Path]::GetFullPath((Join-Path $root "local\$safe.$digest"))
     } else {
         if ($OwnerRepo -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw "invalid owner/repo '$OwnerRepo'" }

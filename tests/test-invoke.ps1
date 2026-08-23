@@ -1469,6 +1469,9 @@ Remove-Item "$tmp\shim2\receipt.json" -Force -ErrorAction SilentlyContinue
 pwsh -NoProfile -File $entry @pr -PromptFile $promptFile -StateDir $statePr -Round 1
 Assert-Eq $LASTEXITCODE 14 "replaying an already-completed pr round is refused"
 Assert-True (-not (Test-Path "$statePr\round-1-attempt-2-meta.json")) "pr mode replay consumed no attempt"
+Assert-True (-not (Test-Path "$tmp\shim2\receipt.json")) "pr mode replay launched no codex process"
+Assert-Eq (Get-Content -Raw "$statePr\round-1-verdict.json") $verdictBeforePr "pr mode replay did not touch the canonical verdict"
+Assert-Eq (Get-Content -Raw "$statePr\state.json") $stateJsonBeforePr "pr mode replay left state.json completely untouched"
 
 # =====================================================================================
 # LOCAL-MODE COVERAGE: invoke-codex.ps1's third -Mode, 'local', reviews a LOCAL branch diff
@@ -1529,9 +1532,37 @@ pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stat
 Assert-Eq $LASTEXITCODE 12 "local mode with a nonexistent BaseOid exits 12 (does not resolve)"
 Assert-True (-not (Test-Path "$stateLocBadCommit\round-1-attempt-1-meta.json")) "no attempt record for an unresolvable commit"
 Assert-True (-not (Test-Path "$tmp\shim2\receipt.json")) "unresolvable-commit refusal launched no codex process"
-Assert-True (-not (Test-Path "$tmp\shim2\receipt.json")) "pr mode replay launched no codex process"
-Assert-Eq (Get-Content -Raw "$statePr\round-1-verdict.json") $verdictBeforePr "pr mode replay did not touch the canonical verdict"
-Assert-Eq (Get-Content -Raw "$statePr\state.json") $stateJsonBeforePr "pr mode replay left state.json completely untouched"
+
+# --- Non-ancestor / disconnected base fails closed. A sibling commit (same parent as head) is not
+# an ancestor of head, so it must be rejected rather than diffed against a hidden merge base. ---
+$sibTree = (git -C $repo rev-parse "$locBase^{tree}").Trim()
+$locSibling = (git -C $repo commit-tree $sibTree -p $locBase -m divergent).Trim()
+$stateLocDiverged = "$tmp\sLocDiverged"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocDiverged -Round 1 -RepoRoot $repo -BaseOid $locSibling -HeadSha $locHead -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 12 "local mode: a non-ancestor (diverged) base exits 12"
+Assert-True (-not (Test-Path "$stateLocDiverged\round-1-attempt-1-meta.json")) "no attempt record for a non-ancestor base"
+
+# --- Symbolic revisions are canonicalized: meta records the RESOLVED full OIDs, not the input
+# strings ('HEAD~1'/'HEAD'), so provenance names the exact commits reviewed. ---
+$stateLocSym = "$tmp\sLocSym"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocSym -Round 1 -RepoRoot $repo -BaseOid 'HEAD~1' -HeadSha 'HEAD' -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 0 "local mode: symbolic revisions (HEAD~1/HEAD) accepted"
+$mSym = Get-Content -Raw "$stateLocSym\round-1-attempt-1-meta.json" | ConvertFrom-Json
+Assert-Eq $mSym.base_oid $locBase "symbolic BaseOid canonicalized to the full commit OID in meta"
+Assert-Eq $mSym.head_sha $locHead "symbolic HeadSha canonicalized to the full commit OID in meta"
+
+# --- The recorded diff digest binds the ACTUAL range diff (nonempty case): a real file change,
+# reviewed base->head, and reviewed_diff_sha256 equals the SHA-256 of that exact git diff. ---
+Set-Content "$repo\change.txt" -Value 'a real change' -Encoding utf8
+git -C $repo add change.txt; git -C $repo -c user.email=t@t -c user.name=t commit -q -m 'real change'
+$locHead2 = (git -C $repo rev-parse HEAD).Trim()
+$expectedDiffSha = -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash(
+    [Text.Encoding]::UTF8.GetBytes(((git -C $repo diff $locHead $locHead2) | Out-String))) | ForEach-Object { $_.ToString('x2') })
+$stateLocNe = "$tmp\sLocNonEmpty"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocNe -Round 1 -RepoRoot $repo -BaseOid $locHead -HeadSha $locHead2 -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 0 "local mode: nonempty-diff round ok"
+$mNe = Get-Content -Raw "$stateLocNe\round-1-attempt-1-meta.json" | ConvertFrom-Json
+Assert-Eq $mNe.reviewed_diff_sha256 $expectedDiffSha "reviewed_diff_sha256 equals the digest of the ACTUAL git diff for the range"
 
 # ATOMIC CREATE-ONLY: two racing writers must not both produce a canonical artifact.
 $raceDir = Join-Path $tmp 'race'; New-Item -ItemType Directory -Force $raceDir | Out-Null

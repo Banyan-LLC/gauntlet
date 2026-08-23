@@ -58,10 +58,12 @@ Assert-Throws { Get-StateDir -Mode pr -RepoRoot "$tmp\wt" -OwnerRepo 'a/b' -PrNu
 # PLUS a digest of the FULL branch name (collision-resistant).
 $localBranch = 'feat/phase-3'
 $localDir = Get-StateDir -Mode local -RepoRoot "$tmp\wt" -Branch $localBranch
-$digest12 = (-join ([System.Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($localBranch)) | ForEach-Object { $_.ToString('x2') })).Substring(0,12)
-$expectedLocal = [System.IO.Path]::GetFullPath((Join-Path $common "info\gauntlet-review\local\feat-phase-3.$digest12"))
-Assert-Eq $localDir $expectedLocal "local path under COMMON dir: sanitized prefix + full-name digest"
+$digestFull = -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($localBranch)) | ForEach-Object { $_.ToString('x2') })
+$expectedLocal = [System.IO.Path]::GetFullPath((Join-Path $common "info\gauntlet-review\local\feat-phase-3.$digestFull"))
+Assert-Eq $localDir $expectedLocal "local path under COMMON dir: sanitized prefix + FULL-name digest"
 Assert-True ($localDir -notmatch 'worktrees') "local state NOT under the per-worktree git dir"
+# Structural: the digest key is the full 64-hex SHA-256 (not a birthday-collidable truncation).
+Assert-True ((Split-Path $localDir -Leaf) -match '\.[0-9a-f]{64}$') "local dir key ends in a full 64-hex SHA-256 digest"
 # Collision resistance: 'feat/phase-3' and the lookalike 'feat-phase-3' must NOT share a dir.
 $localCollide = Get-StateDir -Mode local -RepoRoot "$tmp\wt" -Branch 'feat-phase-3'
 Assert-True ($localCollide -ne $localDir) "lookalike branch names ('feat/phase-3' vs 'feat-phase-3') get DISTINCT local state dirs"
