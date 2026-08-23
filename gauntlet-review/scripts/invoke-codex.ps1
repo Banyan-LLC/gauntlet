@@ -54,8 +54,17 @@ New-Item -ItemType Directory -Force $StateDir | Out-Null
 if ($Mode -eq 'doc' -and -not ($ArtifactPath -and $ArtifactCommit)) { Write-Error "doc mode requires -ArtifactPath and -ArtifactCommit"; exit 12 }
 if ($Mode -eq 'pr' -and -not ($PrNumber -and $BaseOid -and $HeadSha -and $BaseRefName -and $BaseTipOid)) { Write-Error "pr mode requires -PrNumber, -BaseOid, -HeadSha, -BaseRefName, -BaseTipOid"; exit 12 }
 # local mode reviews a LOCAL branch diff (baseOid..headSha) with no PR and no publish; its
-# provenance is just the two local commits, so an attempt record still identifies WHAT was reviewed.
+# provenance is the two local commits. Unlike the hermetic pr mode (no repo access), local mode
+# CAN and MUST verify: both refs must resolve to real commits in RepoRoot, and the review material
+# is GENERATED from that exact range below (never trusted from the caller) so the verdict cannot
+# carry false provenance.
 if ($Mode -eq 'local' -and -not ($BaseOid -and $HeadSha)) { Write-Error "local mode requires -BaseOid and -HeadSha"; exit 12 }
+if ($Mode -eq 'local') {
+    foreach ($c in @($BaseOid, $HeadSha)) {
+        git -C $RepoRoot rev-parse --verify --quiet "$c^{commit}" *> $null
+        if ($LASTEXITCODE -ne 0) { Write-Error "local mode: '$c' does not resolve to a commit in $RepoRoot"; exit 12 }
+    }
+}
 
 # --- BOUNDS FIRST. Both caps are checked before any probe, pin, harness, or process work, so a
 #     refused invocation launches nothing and leaves pin/harness state untouched.
@@ -120,6 +129,17 @@ if ($priorCount -gt 0) {
 }
 
 $promptBody = Get-Content -Raw -Encoding utf8 $PromptFile
+$localDiffSha = $null
+if ($Mode -eq 'local') {
+    # local mode OWNS the review material: generate the diff from the VERIFIED range so the
+    # reviewed content is provably that range, not whatever a caller might supply. The caller's
+    # PromptFile is the PREAMBLE (header + trusted context) only; the diff is appended here and
+    # its digest recorded in the attempt meta, binding the verdict's provenance to the exact range.
+    $localDiff = (git -C $RepoRoot diff "$BaseOid...$HeadSha" | Out-String)
+    $localDiffSha = -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash(
+        [Text.Encoding]::UTF8.GetBytes($localDiff)) | ForEach-Object { $_.ToString('x2') })
+    $promptBody = $promptBody.TrimEnd() + "`n`n== REVIEW MATERIAL (untrusted) ==`n" + $localDiff + "`n"
+}
 $prompt = $carryText + $promptBody
 # This 50,000-byte preflight is an OPERATIONAL INPUT BOUND ONLY -- a cheap, local, BEFORE-the-
 # round estimate from the prompt's own byte count. It is NOT the formal guarantee (added: real-
@@ -241,7 +261,7 @@ $meta = @{
     timestamp=(Get-Date -AsUTC -Format o)
 }
 if ($Mode -eq 'doc') { $meta.artifact_path = $ArtifactPath; $meta.artifact_commit = $ArtifactCommit }
-elseif ($Mode -eq 'local') { $meta.base_oid = $BaseOid; $meta.head_sha = $HeadSha }
+elseif ($Mode -eq 'local') { $meta.base_oid = $BaseOid; $meta.head_sha = $HeadSha; $meta.reviewed_diff_sha256 = $localDiffSha }
 else {
     $meta.pr_number = $PrNumber; $meta.base_oid = $BaseOid; $meta.head_sha = $HeadSha
     $meta.base_ref_name = $BaseRefName; $meta.base_tip_oid = $BaseTipOid

@@ -54,11 +54,17 @@ Assert-Throws { Get-StateDir -Mode doc -RepoRoot "$tmp\repo" -Topic 'ok' -Phase 
 Assert-Throws { Get-StateDir -Mode pr -RepoRoot "$tmp\wt" -OwnerRepo 'no-slash' -PrNumber 1 } "bad owner/repo rejected"
 Assert-Throws { Get-StateDir -Mode pr -RepoRoot "$tmp\wt" -OwnerRepo 'a/b' -PrNumber 0 } "pr number 0 rejected"
 
-# local mode: state under the COMMON dir (survives worktree cleanup), keyed by a sanitized branch.
-$localDir = Get-StateDir -Mode local -RepoRoot "$tmp\wt" -Branch 'feat/phase-3'
-$expectedLocal = [System.IO.Path]::GetFullPath((Join-Path $common 'info\gauntlet-review\local\feat-phase-3'))
-Assert-Eq $localDir $expectedLocal "local path under COMMON dir, branch path-separators sanitized"
+# local mode: state under the COMMON dir (survives worktree cleanup), keyed by a sanitized prefix
+# PLUS a digest of the FULL branch name (collision-resistant).
+$localBranch = 'feat/phase-3'
+$localDir = Get-StateDir -Mode local -RepoRoot "$tmp\wt" -Branch $localBranch
+$digest12 = (-join ([System.Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($localBranch)) | ForEach-Object { $_.ToString('x2') })).Substring(0,12)
+$expectedLocal = [System.IO.Path]::GetFullPath((Join-Path $common "info\gauntlet-review\local\feat-phase-3.$digest12"))
+Assert-Eq $localDir $expectedLocal "local path under COMMON dir: sanitized prefix + full-name digest"
 Assert-True ($localDir -notmatch 'worktrees') "local state NOT under the per-worktree git dir"
+# Collision resistance: 'feat/phase-3' and the lookalike 'feat-phase-3' must NOT share a dir.
+$localCollide = Get-StateDir -Mode local -RepoRoot "$tmp\wt" -Branch 'feat-phase-3'
+Assert-True ($localCollide -ne $localDir) "lookalike branch names ('feat/phase-3' vs 'feat-phase-3') get DISTINCT local state dirs"
 Assert-Throws { Get-StateDir -Mode local -RepoRoot "$tmp\wt" -Branch '..\escape' } "local branch traversal ('..') rejected"
 Assert-Throws { Get-StateDir -Mode local -RepoRoot "$tmp\wt" -Branch 'has space' } "invalid local branch charset rejected"
 Assert-Throws { Get-StateDir -Mode local -RepoRoot "$tmp\wt" } "local mode without -Branch rejected"

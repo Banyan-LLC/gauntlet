@@ -1478,7 +1478,14 @@ Assert-True (-not (Test-Path "$statePr\round-1-attempt-2-meta.json")) "pr mode r
 # and its own attempt-meta field set (base_oid/head_sha only -- no PR or artifact fields).
 # =====================================================================================
 Set-TestManifest $shim2
-$loc = @{ Mode='local'; RepoRoot=$repo; BaseOid='aaa1111'; HeadSha='bbb2222'; CliPathOverride=$shim2 }
+# local mode VERIFIES both refs resolve in RepoRoot and GENERATES the reviewed diff from that
+# range itself, so the tests use REAL commits (not placeholder shas) -- two empty commits give a
+# well-formed (empty) range the fake shim still returns a canned verdict for.
+git -C $repo -c user.email=t@t -c user.name=t commit -q --allow-empty -m local-base
+$locBase = (git -C $repo rev-parse HEAD).Trim()
+git -C $repo -c user.email=t@t -c user.name=t commit -q --allow-empty -m local-head
+$locHead = (git -C $repo rev-parse HEAD).Trim()
+$loc = @{ Mode='local'; RepoRoot=$repo; BaseOid=$locBase; HeadSha=$locHead; CliPathOverride=$shim2 }
 
 # --- Golden path: mirrors the doc/pr "round 1 ok" blocks, property for property. ---
 $stateLoc = "$tmp\stateLoc"; New-Item -ItemType Directory -Force $stateLoc | Out-Null
@@ -1489,30 +1496,39 @@ Assert-True (Test-Path "$stateLoc\round-1-attempt-1-meta.json") "local mode: att
 Assert-True (Test-Path "$stateLoc\cli-pin.json") "local mode: pin written on round 1"
 $mLoc1 = Get-Content -Raw "$stateLoc\round-1-attempt-1-meta.json" | ConvertFrom-Json
 Assert-Eq $mLoc1.mode 'local' "meta records local mode"
-Assert-Eq $mLoc1.base_oid 'aaa1111' "local meta records base oid"
-Assert-Eq $mLoc1.head_sha 'bbb2222' "local meta records head sha"
-# local-mode meta carries ONLY the two local commits -- NOT pr mode's PR/base-ref provenance, nor
-# doc mode's artifact fields (the mutually exclusive if/elseif/else at meta assembly). PSObject
-# .Properties, not dot-access -- Set-StrictMode throws on a genuinely-absent property.
+Assert-Eq $mLoc1.base_oid $locBase "local meta records base oid"
+Assert-Eq $mLoc1.head_sha $locHead "local meta records head sha"
+Assert-True ($mLoc1.reviewed_diff_sha256 -match '^[0-9a-f]{64}$') "local meta records a diff digest binding provenance to the range"
+# local-mode meta carries ONLY the two local commits + the diff digest -- NOT pr mode's PR/base-ref
+# provenance, nor doc mode's artifact fields (mutually exclusive if/elseif/else). PSObject.Properties,
+# not dot-access -- Set-StrictMode throws on a genuinely-absent property.
 Assert-True ($mLoc1.PSObject.Properties.Name -notcontains 'pr_number') "local-mode meta does not carry pr_number"
 Assert-True ($mLoc1.PSObject.Properties.Name -notcontains 'base_ref_name') "local-mode meta does not carry base_ref_name"
-Assert-True ($mLoc1.PSObject.Properties.Name -notcontains 'base_tip_oid') "local-mode meta does not carry base_tip_oid"
 Assert-True ($mLoc1.PSObject.Properties.Name -notcontains 'artifact_path') "local-mode meta does not carry artifact_path"
 
-# --- Missing provenance is rejected before anything runs -- each of the two required commits
-# must independently trip the gate when the other is supplied (mirrors doc/pr provenance checks). ---
+# --- Missing provenance is rejected before anything runs -- each required commit independently
+# trips the gate when the other is supplied (mirrors doc/pr provenance checks). ---
 Remove-Item "$tmp\shim2\receipt.json" -Force -ErrorAction SilentlyContinue
 $stateLocNoBase = "$tmp\sLocNoBase"
-pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocNoBase -Round 1 -RepoRoot $repo -HeadSha 'bbb2222' -CliPathOverride $shim2
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocNoBase -Round 1 -RepoRoot $repo -HeadSha $locHead -CliPathOverride $shim2
 Assert-Eq $LASTEXITCODE 12 "local mode without -BaseOid exits 12"
 Assert-True (-not (Test-Path "$stateLocNoBase\round-1-attempt-1-meta.json")) "no attempt record when -BaseOid is missing (local)"
 Assert-True (-not (Test-Path "$stateLocNoBase\cli-pin.json")) "provenance refusal (local -BaseOid) wrote no pin"
 Assert-True (-not (Test-Path "$tmp\shim2\receipt.json")) "provenance refusal (local -BaseOid) launched no codex process"
 
 $stateLocNoHead = "$tmp\sLocNoHead"
-pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocNoHead -Round 1 -RepoRoot $repo -BaseOid 'aaa1111' -CliPathOverride $shim2
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocNoHead -Round 1 -RepoRoot $repo -BaseOid $locBase -CliPathOverride $shim2
 Assert-Eq $LASTEXITCODE 12 "local mode without -HeadSha exits 12"
 Assert-True (-not (Test-Path "$stateLocNoHead\round-1-attempt-1-meta.json")) "no attempt record when -HeadSha is missing (local)"
+
+# --- A supplied ref that does NOT resolve to a commit in RepoRoot fails closed (local mode's
+# repo-access advantage over hermetic pr mode): false provenance is impossible. ---
+Remove-Item "$tmp\shim2\receipt.json" -Force -ErrorAction SilentlyContinue
+$stateLocBadCommit = "$tmp\sLocBadCommit"
+pwsh -NoProfile -File $entry -Mode local -PromptFile $promptFile -StateDir $stateLocBadCommit -Round 1 -RepoRoot $repo -BaseOid 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef' -HeadSha $locHead -CliPathOverride $shim2
+Assert-Eq $LASTEXITCODE 12 "local mode with a nonexistent BaseOid exits 12 (does not resolve)"
+Assert-True (-not (Test-Path "$stateLocBadCommit\round-1-attempt-1-meta.json")) "no attempt record for an unresolvable commit"
+Assert-True (-not (Test-Path "$tmp\shim2\receipt.json")) "unresolvable-commit refusal launched no codex process"
 Assert-True (-not (Test-Path "$tmp\shim2\receipt.json")) "pr mode replay launched no codex process"
 Assert-Eq (Get-Content -Raw "$statePr\round-1-verdict.json") $verdictBeforePr "pr mode replay did not touch the canonical verdict"
 Assert-Eq (Get-Content -Raw "$statePr\state.json") $stateJsonBeforePr "pr mode replay left state.json completely untouched"
