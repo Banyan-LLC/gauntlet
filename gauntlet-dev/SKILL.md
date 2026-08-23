@@ -8,7 +8,7 @@ description: Gauntlet: a development pipeline with Codex peer-review gates. Use 
 Wraps the superpowers lifecycle (pinned: superpowers 6.0.2 — re-verify both insertion points on superpowers updates). This is user policy and takes precedence over brainstorming's "writing-plans is the only next skill" rule. Every superpowers user gate still happens, on Codex-approved documents.
 
 **Defaults** (project AGENTS.md/CLAUDE.md may override; in-session user instructions win):
-author `geoffroth` · reviewer `BanyanLLC` · round cap 10/phase · CI-fix cap 3 · model `gpt-5.6-sol` @ `xhigh` · embed budget 50,000 bytes (operational input bound; the acceptance-time usage gate on the real CLI's reported usage is the actual guarantee — see gauntlet-review SKILL.md).
+author `geoffroth` · reviewer `BanyanLLC` · round cap 10/phase · CI-fix cap 3 · model `gpt-5.6-sol` @ `xhigh` · embed budget 100,000 bytes default, raised to 500,000 AUTONOMOUSLY (no user prompt) as needed — a prompt over 500,000 bytes is a human flag (operational input bound; the acceptance-time usage gate on the real CLI's reported usage is the actual guarantee — see gauntlet-review SKILL.md).
 
 ## Pipeline
 
@@ -99,9 +99,12 @@ No `gh auth switch`, ever. geoffroth token for author calls, BanyanLLC token ins
 
 ## Human flags
 
-Stop; summarize state and sticking points; push notification. Triggers: exits 4/6/10/14, cap
+Stop; summarize state and sticking points; push notification. Triggers: exits 4/6/14, cap
 reached, CI-fix cap, transient-failure retry exhausted, dismissal denied, publish-argument/
-attempt-provenance mismatch (exit 6 — see gauntlet-review/SKILL.md).
+attempt-provenance mismatch (exit 6 — see gauntlet-review/SKILL.md). **Exit 10 is NOT automatically
+a human flag:** a byte-preflight overflow is retryable — raise `-BudgetBytes` up to 500,000
+AUTONOMOUSLY and re-invoke; only a prompt over 500,000 bytes, or the acceptance-time usage-gate
+exit 10 (real tokens <25% headroom), is a human flag.
 
 Exit 12 is NOT unconditional. Two self-serve manifest causes, both handled exactly as the
 gauntlet-review protocol says: stack-identity drift (absent, stale, or bound to a different

@@ -35,7 +35,7 @@ param(
     [string]$CarryOverFile,         # required for round > 1 (validated ledger; see Test-CarryOverLedger)
     [switch]$AcceptNewBinary,       # re-probe and re-pin after exit 13, same round number
     [ValidateRange(1, 100)][int]$RoundCap = 10,
-    [ValidateRange(1024, 10000000)][int]$BudgetBytes = 50000,
+    [ValidateRange(1024, 10000000)][int]$BudgetBytes = 100000,
     [ValidateRange(1, 86400)][int]$TimeoutSec = 1800,
     [string]$CliPathOverride        # TEST-ONLY; also the only way a wrapper may be pinned
 )
@@ -158,17 +158,20 @@ if ($Mode -eq 'local') {
     $promptBody = $promptBody.TrimEnd() + "`n`n== REVIEW MATERIAL (untrusted) ==`n" + $localDiff + "`n"
 }
 $prompt = $carryText + $promptBody
-# This 50,000-byte preflight is an OPERATIONAL INPUT BOUND ONLY -- a cheap, local, BEFORE-the-
-# round estimate from the prompt's own byte count. It is NOT the formal guarantee (added: real-
-# CLI evidence, see task-7-report.md) and does not promise an oversized request is never
-# attempted: bytes only bound tokens from above, and CLI-side overhead is not visible here. The
-# formal guarantee is enforced AFTER the round runs, at the acceptance-time usage gate near the
-# canonical verdict write below: a completed review is accepted and publishable only when the
-# real CLI itself reported at least 25% context headroom (see Get-RunUsage in lib.ps1).
+# This byte preflight (100,000-byte default -BudgetBytes) is an OPERATIONAL INPUT BOUND ONLY -- a
+# cheap, local, BEFORE-the-round estimate from the prompt's own byte count. It is NOT the formal
+# guarantee (added: real-CLI evidence, see task-7-report.md) and does not promise an oversized
+# request is never attempted: bytes only bound tokens from above, and CLI-side overhead is not
+# visible here. The formal guarantee is enforced AFTER the round runs, at the acceptance-time usage
+# gate near the canonical verdict write below: a completed review is accepted and publishable only
+# when the real CLI itself reported at least 25% context headroom (see Get-RunUsage in lib.ps1).
+# A preflight overflow is RETRYABLE by raising -BudgetBytes -- the caller may do so AUTONOMOUSLY up
+# to the 500,000-byte ceiling (~140k tokens, well within the usage gate); only a prompt genuinely
+# over 500,000 bytes is a human flag. (The acceptance-time usage-gate exit 10 below is NOT retryable.)
 $budget = Test-EmbedBudget -PromptText $prompt -BudgetBytes $BudgetBytes
 if (-not $budget.Ok) {
     Write-RoundState -StateDir $StateDir -Patch @{ status='flagged'; failure_reason="embed budget: $($budget.Bytes) > $BudgetBytes bytes" }
-    Write-Error "HUMAN FLAG: prompt is $($budget.Bytes) bytes (budget $BudgetBytes). No round ran. Never truncate."
+    Write-Error "prompt is $($budget.Bytes) bytes over the $BudgetBytes-byte preflight budget; No round ran. Raise -BudgetBytes and retry (autonomously up to 500000); a prompt over 500000 bytes is a human flag. Never truncate."
     exit 10
 }
 

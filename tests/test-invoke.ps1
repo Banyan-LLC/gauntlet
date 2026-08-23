@@ -1082,6 +1082,12 @@ Set-TestManifest $shim2
 $bigPrompt = "$tmp\big.txt"; Set-Content $bigPrompt -Value ('z' * 700000) -Encoding utf8 -NoNewline
 pwsh -NoProfile -File $entry @doc -PromptFile $bigPrompt -StateDir "$tmp\state5" -Round 1
 Assert-Eq $LASTEXITCODE 10 "budget overflow exits 10"
+# The DEFAULT preflight budget is 100 KB (raised from 50 KB): a ~60 KB prompt now passes with no
+# explicit -BudgetBytes (it would have exit-10'd at the old 50 KB default).
+Set-TestManifest $shim2
+$midPrompt = "$tmp\mid.txt"; Set-Content $midPrompt -Value ('z' * 60000) -Encoding utf8 -NoNewline
+pwsh -NoProfile -File $entry @doc -PromptFile $midPrompt -StateDir "$tmp\stateMid" -Round 1
+Assert-Eq $LASTEXITCODE 0 "a 60 KB prompt passes under the new 100 KB default budget"
 
 # Normalization at entry level: shim returns approve+important -> canonical file says request_changes.
 $shim3 = New-FakeCodexShim -Dir "$tmp\shim3" -Version "0.147.0" -ExecHelp $goodExecHelp -ResumeHelp $goodResumeHelp -FeaturesText $feat `
