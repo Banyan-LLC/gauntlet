@@ -152,7 +152,7 @@ Assert-True ((Get-InvocationProfileHash -DisableSet $hashDisable -Effort 'low') 
 $savedNewCodexArgsForHash = ${function:New-CodexArgs}
 try {
     ${function:New-CodexArgs} = {
-        param($HarnessDir, $SchemaPath, $VerdictPath, $DisableSet, $Model = 'gpt-5.6-sol', $Effort = 'xhigh')
+        param($HarnessDir, $SchemaPath, $VerdictPath, $DisableSet, $Model = 'gpt-6-sol', $Effort = 'xhigh')
         @('FIXED','ARRAY','FOR','HASH','TEST')
     }
     $hFixed = Get-InvocationProfileHash -DisableSet @('irrelevant-under-the-shadow')
@@ -172,7 +172,7 @@ try {
 $savedNewCodexArgsForEphemeral = ${function:New-CodexArgs}
 try {
     ${function:New-CodexArgs} = {
-        param($HarnessDir, $SchemaPath, $VerdictPath, $DisableSet, $Model = 'gpt-5.6-sol', $Effort = 'xhigh')
+        param($HarnessDir, $SchemaPath, $VerdictPath, $DisableSet, $Model = 'gpt-6-sol', $Effort = 'xhigh')
         # Identical to the real builder in lib.ps1 except --ephemeral is OMITTED.
         $a = [System.Collections.Generic.List[string]]::new()
         $a.Add('exec')
@@ -347,7 +347,7 @@ function New-ValidPremisesHashtable {
         cli_path = $pin.Path
         schema_sha256 = $premisesSchemaSha
         agents_md_sha256 = $premisesAgentsSha
-        model = 'gpt-5.6-sol'
+        model = 'gpt-6-sol'
         invocation_profile_sha256 = $premisesProfileHash
         # Binding authorization to live evidence (see task-14-report.md): a manifest also needs
         # proof a live gate actually passed against the real API, fingerprinted to the stack it
@@ -706,7 +706,7 @@ Assert-True (-not $installedThrew) "Get-WrapperFingerprint succeeds against an i
 Assert-True ($installedWrapperFp -match '^[0-9a-f]{64}$') "installed-tree wrapper fingerprint is lowercase hex SHA-256"
 
 function New-InstalledManifest([hashtable]$LiveEvidence) {
-    @{ version=1; model='gpt-5.6-sol'
+    @{ version=1; model='gpt-6-sol'
        cli_path=$pin.Path; cli_sha256=$pin.Sha256; cli_version=$pin.Version
        schema_sha256=$premisesSchemaSha; agents_md_sha256=$premisesAgentsSha
        invocation_profile_sha256=$premisesProfileHash; recorded_utc=(Get-Date -AsUTC -Format o)
@@ -827,7 +827,7 @@ Copy-Item "$PSScriptRoot\live\live-schema-gate.ps1" "$partialRoot\tests\live\liv
 # other two present: a broken/partial dev tree, never a genuinely (wholly-absent) installed one.
 $partialSkillRoot = "$partialRoot\gauntlet-review"
 $partialWrapperFp = Get-WrapperFingerprint -SkillRoot $partialSkillRoot
-(@{ version=1; model='gpt-5.6-sol'
+(@{ version=1; model='gpt-6-sol'
     cli_path=$pin.Path; cli_sha256=$pin.Sha256; cli_version=$pin.Version
     schema_sha256=$premisesSchemaSha; agents_md_sha256=$premisesAgentsSha
     invocation_profile_sha256=$premisesProfileHash; recorded_utc=(Get-Date -AsUTC -Format o)
@@ -920,7 +920,7 @@ function Set-TestManifest([string]$ShimPath) {
            schema_sha256=$schemaSha; agents_md_sha256=$agentsSha; invocation_profile_sha256=$profileHash
            wrapper_fingerprint=$wrapperFp; gate_fingerprint=$gateFp }
     }
-    @{ version=1; model='gpt-5.6-sol'
+    @{ version=1; model='gpt-6-sol'
        cli_path=$probe.Path; cli_sha256=$probe.Sha256; cli_version=$probe.Version
        schema_sha256=$schemaSha
        agents_md_sha256=$agentsSha

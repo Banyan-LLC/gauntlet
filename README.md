@@ -36,7 +36,7 @@ saying `skip codex review`.
 
 - Windows and PowerShell 7 (`pwsh`).
 - Claude Code.
-- OpenAI Codex CLI with access to `gpt-5.6-sol` and an authenticated Codex session.
+- OpenAI Codex CLI with access to `gpt-6-sol` and an authenticated Codex session.
 - Git.
 - Permission to clone this private repository.
 

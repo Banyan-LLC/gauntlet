@@ -306,7 +306,7 @@ function New-CodexArgs {
         [Parameter(Mandatory)][string]$SchemaPath,
         [Parameter(Mandatory)][string]$VerdictPath,
         [string[]]$DisableSet,
-        [string]$Model = 'gpt-5.6-sol',
+        [string]$Model = 'gpt-6-sol',
         [string]$Effort = 'xhigh'
     )
     Assert-NoEmptyStringElements -FunctionName 'New-CodexArgs' -ParameterName 'DisableSet' -Values $DisableSet
@@ -346,7 +346,7 @@ function Get-InvocationAudit {
         [Parameter(Mandatory)][string]$SchemaPath,
         [Parameter(Mandatory)][string]$VerdictPath,
         [string[]]$ExpectedDisable,
-        [string]$Model = 'gpt-5.6-sol',
+        [string]$Model = 'gpt-6-sol',
         [string]$Effort = 'xhigh'
     )
     Assert-NoEmptyStringElements -FunctionName 'Get-InvocationAudit' -ParameterName 'CodexArgs' -Values $CodexArgs
@@ -483,7 +483,7 @@ function Get-InvocationProfileHash {
        empty-string element as a non-terminating bind error instead of a clean throw — exactly
        the shape that already shipped one fail-open bug (Get-RunUsage's -EventLines). #>
     param([string[]]$DisableSet,
-          [string]$Model = 'gpt-5.6-sol', [string]$Effort = 'xhigh')
+          [string]$Model = 'gpt-6-sol', [string]$Effort = 'xhigh')
     Assert-NoEmptyStringElements -FunctionName 'Get-InvocationProfileHash' -ParameterName 'DisableSet' -Values $DisableSet
     $canon = New-CodexArgs -HarnessDir '<HARNESS>' -SchemaPath '<SCHEMA>' -VerdictPath '<VERDICT>' `
         -DisableSet $DisableSet -Model $Model -Effort $Effort
@@ -508,7 +508,9 @@ function Test-StackAcceptance {
        context_window_tokens) and enforce "BudgetBytes + base_overhead + max_output <= 0.75 x
        context_window" -- an ESTIMATE of whether a round would fit, resting on an unevidenced
        claim (tokens<=bytes, which holds only for a byte-level tokenizer and was never
-       established for gpt-5.6-sol) and a conservative-but-approximate overhead sample. The
+       established for gpt-5.6-sol, the model pinned at the time -- nor is it for gpt-6-sol,
+       pinned since 2026-09-24: its OpenAI model page names no tokenizer and tiktoken has no
+       gpt-6 mapping) and a conservative-but-approximate overhead sample. The
        live-evidence round found the real CLI's terminal turn.completed event reports the EXACT
        usage.input_tokens for the request that was just made, which subsumes the estimate
        entirely: see Get-RunUsage below and the acceptance-time usage gate in invoke-codex.ps1,
@@ -524,7 +526,7 @@ function Test-StackAcceptance {
     param([Parameter(Mandatory)][string]$SkillRoot,
           [Parameter(Mandatory)][pscustomobject]$ActualCli,
           [Parameter(Mandatory)][string]$InvocationProfileHash,
-          [string]$Model = 'gpt-5.6-sol')
+          [string]$Model = 'gpt-6-sol')
     $bad = { param($why) [pscustomobject]@{ Valid=$false; Reason=$why; Manifest=$null } }
     $path = Join-Path $SkillRoot 'premises.json'
     if (-not (Test-Path $path)) { return (& $bad "premises.json is absent") }
@@ -741,7 +743,7 @@ function Test-PremiseManifest {
     param([Parameter(Mandatory)][string]$SkillRoot,
           [Parameter(Mandatory)][pscustomobject]$ActualCli,
           [Parameter(Mandatory)][string]$InvocationProfileHash,
-          [string]$Model = 'gpt-5.6-sol',
+          [string]$Model = 'gpt-6-sol',
           [switch]$AllowProvenanceOnlyGateSources)
     $accepted = Test-StackAcceptance -SkillRoot $SkillRoot -ActualCli $ActualCli `
         -InvocationProfileHash $InvocationProfileHash -Model $Model

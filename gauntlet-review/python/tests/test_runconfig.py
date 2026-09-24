@@ -60,7 +60,7 @@ def test_argv_carries_all_codex_hermetic_flags_and_disable_set():
     for token in ["--ignore-user-config", "--ignore-rules", "--ephemeral",
                   "--skip-git-repo-check", "-s", "read-only",
                   'web_search="disabled"', 'shell_environment_policy.inherit="none"',
-                  "-m", "gpt-5.6-sol", "--output-schema", "--json"]:
+                  "-m", "gpt-6-sol", "--output-schema", "--json"]:
         assert token in argv, token
     assert argv[-1] == "-"  # prompt over stdin
     # default-deny: every feature in the set gets a --disable

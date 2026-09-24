@@ -166,8 +166,10 @@ $prompt = $carryText + $promptBody
 # gate near the canonical verdict write below: a completed review is accepted and publishable only
 # when the real CLI itself reported at least 25% context headroom (see Get-RunUsage in lib.ps1).
 # A preflight overflow is RETRYABLE by raising -BudgetBytes -- the caller may do so AUTONOMOUSLY up
-# to the 500,000-byte ceiling (~140k tokens, well within the usage gate); only a prompt genuinely
-# over 500,000 bytes is a human flag. (The acceptance-time usage-gate exit 10 below is NOT retryable.)
+# to the 500,000-byte ceiling; only a prompt genuinely over 500,000 bytes is a human flag. The
+# ceiling is in bytes and implies no token count: gpt-6-sol's tokenizer is undocumented, so the
+# usage gate below decides on the real reported count. (The acceptance-time usage-gate exit 10
+# below is NOT retryable.)
 $budget = Test-EmbedBudget -PromptText $prompt -BudgetBytes $BudgetBytes
 if (-not $budget.Ok) {
     Write-RoundState -StateDir $StateDir -Patch @{ status='flagged'; failure_reason="embed budget: $($budget.Bytes) > $BudgetBytes bytes" }
@@ -330,10 +332,11 @@ try {
     Write-Error "refusing to overwrite the usage artifact for round $Round attempt ${attempt} (another invocation won the race)"
     exit 14
 }
-# 0.75 x the documented 1,050,000-token context window, less the 128,000-token max-output
-# reserve, is 659,500: input_tokens above that leaves under 25% headroom. Retrying the SAME
-# prompt cannot change its own token count, so this is a human flag (10) -- unlike every other
-# usage-gate rejection above, which is a retryable failed attempt (11).
+# 0.75 x gpt-6-sol's documented 1,050,000-token context window, less its documented 128,000-token
+# max-output reserve (OpenAI model page, re-checked 2026-09-24 when the pin moved from gpt-5.6-sol,
+# which documents the same two limits), is 659,500: input_tokens above that leaves under 25%
+# headroom. Retrying the SAME prompt cannot change its own token count, so this is a human flag
+# (10) -- unlike every other usage-gate rejection above, which is a retryable failed attempt (11).
 if (($usage.InputTokens + 128000) -gt 787500) {
     Write-RoundState -StateDir $StateDir -Patch @{ status='flagged'; failure_reason="round $Round attempt ${attempt}: usage over budget: input_tokens=$($usage.InputTokens) (max 659500 for >=25% headroom)" }
     Write-Error "HUMAN FLAG: input_tokens $($usage.InputTokens) leaves under 25% context headroom (limit 659500). Retrying the same prompt cannot help."

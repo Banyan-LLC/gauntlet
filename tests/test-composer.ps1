@@ -80,7 +80,7 @@ try {
             [Parameter(Mandatory)][string]$SchemaPath,
             [Parameter(Mandatory)][string]$VerdictPath,
             [Parameter(Mandatory)][string[]]$DisableSet,
-            [string]$Model = 'gpt-5.6-sol',
+            [string]$Model = 'gpt-6-sol',
             [string]$Effort = 'xhigh'
         )
         # Same shape as the real builder in lib.ps1, except the sandbox value is forbidden.
