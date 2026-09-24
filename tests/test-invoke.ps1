@@ -1,8 +1,20 @@
 . "$PSScriptRoot\helpers.ps1"
 . "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1"
+# Run the fake Codex through its .ps1 entry point, never shim.cmd. Norton 360 (seen 2026-09)
+# creates an empty _norton_ directory in the working directory of any cmd.exe started with neither
+# TMP nor TEMP set, which is exactly the hermetic child env Invoke-CodexProcess builds. A
+# cmd-launched fake therefore leaves residue in every harness it runs in, and the next round's or
+# retry's Assert-HarnessSafe (correctly) refuses that harness. Production launches codex.exe
+# directly, so the fake must not add a cmd.exe hop production never has. Shadowing (same technique
+# as the New-CodexArgs shadows below) keeps every call site unchanged; helpers.ps1 is a live-gate
+# fingerprint source (Get-GateFingerprint), so it is deliberately not edited for this. The .cmd
+# launch path keeps its own coverage through slow.cmd below.
+$script:NewFakeCodexShimCmd = ${function:New-FakeCodexShim}
+${function:New-FakeCodexShim} = { (& $script:NewFakeCodexShimCmd @args) -replace '\.cmd$', '.ps1' }
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "codexinv-$([guid]::NewGuid())"
 New-Item -ItemType Directory -Force $tmp | Out-Null
 $shim = New-FakeCodexShim -Dir "$tmp\shim" -Version "0.147.0" -ExecHelp 'x' -ResumeHelp 'x' -FeaturesText 'x stable true'
+Assert-True ((Resolve-CliInvocation -Path $shim).FileName -notmatch '(?i)\\cmd\.exe$') "the fake Codex is launched directly, never through cmd.exe (production has no cmd.exe hop)"
 
 # Hostile >32 KiB prompt over stdin, PATH-less child env, canary invisible.
 $hostile = ('A' * 33000) + "`n`"quotes`" 'single' ``backtick`` `$(Get-Date) `r`n|;&<>%PATH%"
