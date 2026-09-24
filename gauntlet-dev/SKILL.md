@@ -8,7 +8,7 @@ description: Gauntlet: a development pipeline with Codex peer-review gates. Use 
 Wraps the superpowers lifecycle (pinned: superpowers 6.0.2 — re-verify both insertion points on superpowers updates). This is user policy and takes precedence over brainstorming's "writing-plans is the only next skill" rule. Every superpowers user gate still happens, on Codex-approved documents.
 
 **Defaults** (project AGENTS.md/CLAUDE.md may override; in-session user instructions win):
-author `geoffroth` · reviewer `BanyanLLC` · round cap 10/phase · CI-fix cap 3 · model `gpt-5.6-sol` @ `xhigh` · embed budget 100,000 bytes default, raised to 500,000 AUTONOMOUSLY (no user prompt) as needed — a prompt over 500,000 bytes is a human flag (operational input bound; the acceptance-time usage gate on the real CLI's reported usage is the actual guarantee — see gauntlet-review SKILL.md).
+author `geoffroth` · reviewer `BanyanLLC` · round cap 10/phase · CI-fix cap 3 · model `gpt-6-sol` @ `xhigh` · embed budget 100,000 bytes default, raised to 500,000 AUTONOMOUSLY (no user prompt) as needed; a prompt over 500,000 bytes is a human flag (operational input bound; the acceptance-time usage gate on the real CLI's reported usage is the actual guarantee, see gauntlet-review SKILL.md).
 
 ## Pipeline
 

@@ -50,7 +50,7 @@ $schemaPath = "$skillRoot\schemas\verdict.schema.json"
 
 $agentsPath = "$env:USERPROFILE\.codex\AGENTS.md"
 @{
-    version = 1; model = 'gpt-5.6-sol'
+    version = 1; model = 'gpt-6-sol'
     cli_path = $cli.Path; cli_sha256 = $cli.Sha256; cli_version = $cli.Version
     schema_sha256 = (Get-FileHash -Algorithm SHA256 $schemaPath).Hash.ToLowerInvariant()
     agents_md_sha256 = $(if (Test-Path $agentsPath) { (Get-FileHash -Algorithm SHA256 $agentsPath).Hash.ToLowerInvariant() } else { 'absent' })

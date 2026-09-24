@@ -1,7 +1,8 @@
 # Review lenses (anti-churn)
 
-The Gauntlet reviewer (gpt-5.6-sol xhigh) is adversarial and deep. Left to a bare "review this
-diff" prompt it surfaces defects a **layer at a time**: it fixes attention on whatever the last
+The Gauntlet reviewer (gpt-6-sol xhigh) is adversarial and deep. The PR #2 evidence below was
+gathered on its predecessor, gpt-5.6-sol. Left to a bare "review this diff" prompt it surfaces
+defects a **layer at a time**: it fixes attention on whatever the last
 change touched, reports the shallowest defect there, and only on the *next* round — after your fix
 exposes the next layer — reports the one beneath it. PR #2 took **7 rounds** this way; a single
 defect *class* — bounded-runner stream/process safety — drew a new finding in **six** of them

@@ -22,7 +22,7 @@ class RunConfig:
     pids_limit: int = 256
     memory: str = "2g"
     cpus: str = "2"
-    model: str = "gpt-5.6-sol"
+    model: str = "gpt-6-sol"
     effort: str = "xhigh"
     network: str = "bridge"  # v1: open egress (documented); Phase-5+ may add an allowlist proxy
 
