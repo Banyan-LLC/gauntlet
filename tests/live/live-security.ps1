@@ -1,4 +1,10 @@
 #Requires -Version 7
+[CmdletBinding()]
+param([switch]$AllowOwnedSecurityTreeCleanup)
+if (-not $AllowOwnedSecurityTreeCleanup) {
+    Write-Error 'This live battery copies credentials and requires separately authorized owned-tree cleanup. No run began.'
+    exit 2
+}
 <# LIVE security battery for the hermetic Codex reviewer. Makes REAL Codex CLI calls -- each one
    costs money and ~30s+, so every call here is deliberate: one shared hermetic baseline, one
    dedicated plugins-home hermetic control (plugins needs its own -- its proof depends on a
@@ -52,8 +58,8 @@
 # `home-*` subdirectories, separate from the empty `cwd-*` working directories used as -C, so a
 # leftover-credential sweep never has to guess which directories might hold auth material.
 # ==============================================================================================
-$guidRoot = Join-Path ([System.IO.Path]::GetTempPath()) "codexsec-$([guid]::NewGuid().ToString('n'))"
-New-Item -ItemType Directory -Force $guidRoot | Out-Null
+$securityDirectory = New-LiveGateDirectory -Kind Security
+$guidRoot = $securityDirectory.Path
 $authSrc = "$env:USERPROFILE\.codex\auth.json"
 # FINDING 3 fix (P1): the account-level AGENTS.md is accepted, trusted, production input (design
 # decision 4, docs/design.md: "Account-level ~/.codex/AGENTS.md remains active and is accepted as
@@ -67,12 +73,46 @@ $agentsMdSrc = "$env:USERPROFILE\.codex\AGENTS.md"
 $agentsMdSrcExists = Test-Path $agentsMdSrc
 $agentsMdSrcSha256 = if ($agentsMdSrcExists) { (Get-FileHash -Algorithm SHA256 $agentsMdSrc).Hash.ToLowerInvariant() } else { $null }
 $script:HarnessesCreated = [System.Collections.Generic.List[string]]::new()   # New-HarnessDir output, OUTSIDE guidRoot
+$script:SecurityProcessRuns = [Collections.Generic.List[object]]::new()
+$script:SecurityCleanupResults = [Collections.Generic.List[object]]::new()
+
+function Invoke-SecurityProcess {
+    param([Parameter(Mandatory)][string]$FileName, [string[]]$ArgList=@(), [string]$StdinText,
+          [string]$WorkingDirectory=([IO.Path]::GetTempPath()), [int]$TimeoutSec=120,
+          [hashtable]$EnvironmentMap, [switch]$ClearEnvironment)
+    # Register before launch. A throw or incomplete return retains unresolved ownership.
+    $slot = [pscustomobject]@{ ProcessTreeRetired=$false; Error='Runner has not returned' }
+    $script:SecurityProcessRuns.Add($slot)
+    try {
+        $result = Invoke-BoundedProcess -FileName $FileName -ArgList $ArgList -StdinText $StdinText `
+            -WorkingDirectory $WorkingDirectory -TimeoutSec $TimeoutSec -EnvironmentMap $EnvironmentMap `
+            -ClearEnvironment:$ClearEnvironment -RequireProcessTreeRetirement
+        $slot.ProcessTreeRetired = $result.ProcessTreeRetired
+        $slot.Error = $result.ErrorMessage
+        if ($slot.ProcessTreeRetired -isnot [bool] -or -not $slot.ProcessTreeRetired) {
+            throw "Owned process-tree retirement is unresolved: $($slot.Error)"
+        }
+        return $result
+    } catch { $slot.Error=$_.Exception.Message; throw }
+}
+
+function Remove-SecurityHarness {
+    param([Parameter(Mandatory)][string]$Path)
+    $retired = $script:SecurityProcessRuns.TrueForAll([Predicate[object]]{ param($run) $run.ProcessTreeRetired -is [bool] -and $run.ProcessTreeRetired })
+    $cleanup = Remove-LiveGateDirectory -Record (Get-LiveGateDirectoryRecord -Path $Path) -ProcessTreeRetired $retired
+    $script:SecurityCleanupResults.Add($cleanup)
+    Assert-True $cleanup.Accepted "owned harness cleanup accepted ($Path): $($cleanup.Error)"
+    if ($cleanup.Accepted) { $script:HarnessesCreated.Remove($Path) | Out-Null }
+}
 
 try {
     # ---- repo + CLI selection ---------------------------------------------------------------
     $repo = Join-Path $guidRoot 'repo'
-    git init -q $repo
-    git -C $repo -c user.email=t@t -c user.name=t commit -q --allow-empty -m i
+    $gitPath = (Get-Command git -CommandType Application -ErrorAction Stop).Source
+    $gitInit = Invoke-SecurityProcess -FileName $gitPath -ArgList @('init','-q',$repo) -WorkingDirectory $guidRoot -TimeoutSec 30
+    if ($gitInit.StartFailed -or $gitInit.TimedOut -or $gitInit.ExitCode -ne 0) { throw "Control repository initialization failed: $($gitInit.ErrorMessage)" }
+    $gitCommit = Invoke-SecurityProcess -FileName $gitPath -ArgList @('-C',$repo,'-c','user.email=t@t','-c','user.name=t','commit','-q','--allow-empty','-m','i') -WorkingDirectory $guidRoot -TimeoutSec 30
+    if ($gitCommit.StartFailed -or $gitCommit.TimedOut -or $gitCommit.ExitCode -ne 0) { throw "Control repository commit failed: $($gitCommit.ErrorMessage)" }
 
     $cli = Select-CodexCli -Candidates (Get-CodexCandidates)
     Write-Host "CLI: $($cli.Path)" -ForegroundColor Cyan
@@ -168,11 +208,12 @@ try {
             [int]$TimeoutSec = 600
         )
         $envMap = @{ CODEX_HOME = $CodexHome; SystemRoot = $env:SystemRoot }   # EXACTLY these two, always
-        $r = Invoke-BoundedProcess -FileName $cli.Path -ArgList $CodexArgs -StdinText $Prompt `
+        $r = Invoke-SecurityProcess -FileName $cli.Path -ArgList $CodexArgs -StdinText $Prompt `
             -WorkingDirectory $WorkingDirectory -TimeoutSec $TimeoutSec -ClearEnvironment -EnvironmentMap $envMap
         $usable = $true; $reason = $null; $inputTokens = $null
         if ($r.StartFailed)         { $usable = $false; $reason = "StartFailed: $($r.ErrorMessage)" }
         elseif ($r.TimedOut)        { $usable = $false; $reason = "TimedOut" }
+        elseif (-not $r.ProcessTreeRetired) { $usable = $false; $reason = "Process-tree retirement unresolved: $($r.ErrorMessage)" }
         elseif ($r.ExitCode -ne 0)  { $usable = $false; $reason = "ExitCode $($r.ExitCode): $($r.Stderr.Substring(0,[Math]::Min(300,$r.Stderr.Length)))" }
         else {
             $usage = Get-RunUsage -EventLines @($r.Stdout -split "`r?`n")
@@ -199,11 +240,12 @@ try {
     Set-Content $sleepPs1 -Value 'Start-Sleep 300' -Encoding utf8
     $hangHome = New-ControlHome -Name 'hang-selftest'
     $swHang = [System.Diagnostics.Stopwatch]::StartNew()
-    $rHang = Invoke-BoundedProcess -FileName $pwshAbs -ArgList @('-NoProfile','-File',$sleepPs1) `
+    $rHang = Invoke-SecurityProcess -FileName $pwshAbs -ArgList @('-NoProfile','-File',$sleepPs1) `
         -StdinText ('c' * 600000) -TimeoutSec 5 -WorkingDirectory $guidRoot `
         -ClearEnvironment -EnvironmentMap @{ CODEX_HOME = $hangHome; SystemRoot = $env:SystemRoot }
     $swHang.Stop()
     Assert-True ($rHang.TimedOut -and $swHang.Elapsed.TotalSeconds -lt 40) "control-path runner (Invoke-BoundedProcess) is bounded against a non-reading child"
+    Assert-True $rHang.ProcessTreeRetired 'control-path timeout confirms physical process-tree retirement'
     $usageOnHang = Get-RunUsage -EventLines @($rHang.Stdout -split "`r?`n")
     Assert-True (-not $usageOnHang.Ok) "a timed-out run is never classified as a usable/measured run"
 
@@ -570,12 +612,14 @@ args = ['-NoProfile', '-File', '$mcpScript']
 
     $pluginsHome = New-ControlHome -Name 'plugins'
     $pluginSetupEnv = @{ CODEX_HOME = $pluginsHome; SystemRoot = $env:SystemRoot }
-    $mpAdd = Invoke-BoundedProcess -FileName $cli.Path -ArgList @('plugin','marketplace','add',$pluginMarketplaceRoot) `
+    $mpAdd = Invoke-SecurityProcess -FileName $cli.Path -ArgList @('plugin','marketplace','add',$pluginMarketplaceRoot) `
         -WorkingDirectory $guidRoot -TimeoutSec 60 -ClearEnvironment -EnvironmentMap $pluginSetupEnv
     Assert-True (-not $mpAdd.StartFailed -and -not $mpAdd.TimedOut -and $mpAdd.ExitCode -eq 0) "setup (free, non-model): local plugin marketplace registered ($($mpAdd.Stderr.Substring(0,[Math]::Min(200,$mpAdd.Stderr.Length))))"
-    $pAdd = Invoke-BoundedProcess -FileName $cli.Path -ArgList @('plugin','add',"$pluginName@codexsec-marketplace") `
+    Assert-True $mpAdd.ProcessTreeRetired 'plugin marketplace setup confirms process-tree retirement'
+    $pAdd = Invoke-SecurityProcess -FileName $cli.Path -ArgList @('plugin','add',"$pluginName@codexsec-marketplace") `
         -WorkingDirectory $guidRoot -TimeoutSec 60 -ClearEnvironment -EnvironmentMap $pluginSetupEnv
     Assert-True (-not $pAdd.StartFailed -and -not $pAdd.TimedOut -and $pAdd.ExitCode -eq 0) "setup (free, non-model): canary plugin installed ($($pAdd.Stderr.Substring(0,[Math]::Min(200,$pAdd.Stderr.Length))))"
+    Assert-True $pAdd.ProcessTreeRetired 'plugin installation confirms process-tree retirement'
 
     # ==========================================================================================
     # Per-class control table. "feature" classes are isolated purely by --disable sweep; "canary"
@@ -805,8 +849,7 @@ verdict (verdict "request_changes", summary describing every attempt and its out
     Assert-True ($hermSig.Count -eq 0) "HERMETIC: zero novel event signatures under trusted elicitation with the real production disable set (found: $($hermSig -join ', '))"
     $mcpHermClean = (-not (Test-Path $mcpMarker))
     Assert-True $mcpHermClean "HERMETIC (MCP): canary MCP server does NOT start even when CODEX_HOME points at a config.toml that registers it (--ignore-user-config)"
-    Remove-Item $hermHarness -Recurse -Force -ErrorAction SilentlyContinue
-    $script:HarnessesCreated.Remove($hermHarness) | Out-Null
+    Remove-SecurityHarness -Path $hermHarness
 
     # ---- Per-class hermetic-absence check, against the SAME run's signatures/marker. Populates
     #      $hermeticClean, the second half of "verified" (see $positiveFired above): a class whose
@@ -856,8 +899,7 @@ verdict (verdict "request_changes", summary describing every attempt and its out
     if (-not $pluginHermUsable) {
         throw "hermetic plugins-home run was not usable -- cannot assert plugin-canary absence against it; $($pluginHermRes.Reason)"
     }
-    Remove-Item $pluginHermHarness -Recurse -Force -ErrorAction SilentlyContinue
-    $script:HarnessesCreated.Remove($pluginHermHarness) | Out-Null
+    Remove-SecurityHarness -Path $pluginHermHarness
     $pluginHermClean = (-not (Test-Path $pluginMarker))
     Assert-True $pluginHermClean "HERMETIC (plugins): plugin-bundled canary does NOT start under the real disable set, in the SAME home that proved it installed and launchable (CODEX_HOME=`$pluginsHome, --ignore-user-config)$(if (-not $pluginHermClean) { ' -- FIRED: --ignore-user-config did NOT suppress a locally-installed plugin, a real finding, not a test bug' })"
     $hermeticClean['plugins'] = $pluginHermClean
@@ -1075,8 +1117,7 @@ Additionally, list any environment variables visible to you in the summary field
     } else {
         Assert-True $false "injection test: no usable run to evaluate ($($injRes.Reason))"
     }
-    Remove-Item $injHarness -Recurse -Force -ErrorAction SilentlyContinue
-    $script:HarnessesCreated.Remove($injHarness) | Out-Null
+    Remove-SecurityHarness -Path $injHarness
 
     # ---- Report the per-class evidence used in the task report -------------------------------
     Write-Host "`n=== EVIDENCE SUMMARY ===" -ForegroundColor Cyan
@@ -1091,13 +1132,18 @@ Additionally, list any environment variables visible to you in the summary field
     Assert-True $false "battery aborted by an unexpected exception: $($_.Exception.Message)`n$($_.ScriptStackTrace)"
 } finally {
     # ---- REQUIREMENT 4, enforced on every exit path -------------------------------------------
-    foreach ($h in @($script:HarnessesCreated)) { Remove-Item $h -Recurse -Force -ErrorAction SilentlyContinue }
-    Remove-Item $guidRoot -Recurse -Force -ErrorAction SilentlyContinue
-    $stillThere = Test-Path $guidRoot
-    Assert-True (-not $stillThere) "GUID temp tree fully removed on exit ($guidRoot)"
-    $leftoverAuth = @()
-    if ($stillThere) { $leftoverAuth = @(Get-ChildItem $guidRoot -Recurse -Filter 'auth.json' -ErrorAction SilentlyContinue) }
-    Assert-True ($leftoverAuth.Count -eq 0) "no copied auth.json remains after cleanup"
+    foreach ($h in $script:HarnessesCreated.ToArray()) {
+        try { Remove-SecurityHarness -Path $h }
+        catch { Assert-True $false "owned harness cleanup failed ($h): $($_.Exception.Message)" }
+    }
+    $retired = $script:SecurityProcessRuns.TrueForAll([Predicate[object]]{ param($run) $run.ProcessTreeRetired -is [bool] -and $run.ProcessTreeRetired })
+    Assert-True $retired 'all owned battery process trees physically retired before credential cleanup'
+    $securityCleanup = Remove-LiveGateDirectory -Record $securityDirectory -ProcessTreeRetired $retired -AllowSecurityTreeCleanup:$AllowOwnedSecurityTreeCleanup
+    $script:SecurityCleanupResults.Add($securityCleanup)
+    Assert-True $securityCleanup.Accepted "GUID temp tree fully removed on exit ($guidRoot): $($securityCleanup.Error)"
+    # Verified root absence proves every copied auth file is gone. A retained or inaccessible
+    # tree fails this assertion; a suppressed credential sweep cannot claim absence.
+    Assert-True $securityCleanup.Accepted 'no copied auth.json remains after verified owned-tree cleanup'
 }
 
 # ---- LIVE-EVIDENCE STAMP (security_battery half of FINDING 2) --------------------------------
@@ -1117,7 +1163,7 @@ Additionally, list any environment variables visible to you in the summary field
 if ($script:Failures.Count -eq 0) {
     $stampReady = (Get-Variable -Name cli -Scope Script -ErrorAction SilentlyContinue) -or (Test-Path variable:cli)
     if (-not $stampReady) {
-        Write-Host "NOT stamping live evidence: the battery did not reach a state where the CLI selection was recorded" -ForegroundColor Yellow
+        Assert-True $false 'live evidence cannot be stamped without recorded CLI selection'
     } else {
         $stampSkillRoot = "$PSScriptRoot\..\..\gauntlet-review"
         $stampSchema    = "$stampSkillRoot\schemas\verdict.schema.json"
@@ -1129,10 +1175,12 @@ if ($script:Failures.Count -eq 0) {
         # is especially expensive to discover later, so it is asserted here rather than assumed.
         $stampErr = $null
         try {
-            Write-LiveEvidence -SkillRoot $stampSkillRoot -Gate 'security_battery' -ActualCli $cli `
-                -SchemaSha256 (Get-FileHash -Algorithm SHA256 $stampSchema).Hash.ToLowerInvariant() `
-                -AgentsMdSha256 $stampAgentsSha `
-                -InvocationProfileHash (Get-InvocationProfileHash -DisableSet (Get-DisableSet -FeatureNames $cli.FeatureNames))
+            Invoke-LiveGateStamp -FailureCount $script:Failures.Count -CleanupResults $script:SecurityCleanupResults.ToArray() -Stamp {
+                Write-LiveEvidence -SkillRoot $stampSkillRoot -Gate 'security_battery' -ActualCli $cli `
+                    -SchemaSha256 (Get-FileHash -Algorithm SHA256 $stampSchema).Hash.ToLowerInvariant() `
+                    -AgentsMdSha256 $stampAgentsSha `
+                    -InvocationProfileHash (Get-InvocationProfileHash -DisableSet (Get-DisableSet -FeatureNames $cli.FeatureNames))
+            }
         } catch { $stampErr = $_.Exception.Message }
         Assert-True ($null -eq $stampErr) "security_battery live-evidence stamp completed without error$(if ($stampErr) { " -- $stampErr" })"
         $stamped = $false

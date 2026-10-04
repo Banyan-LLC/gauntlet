@@ -90,6 +90,20 @@ try {
     $result = Remove-LiveGateDirectory -Record $security -ProcessTreeRetired $true
     Assert-True (-not $result.Accepted) 'security tree cleanup requires explicit run-level authorization'
     Assert-True ([IO.Directory]::Exists($security.Path)) 'missing authorization never deletes even an empty security root'
+    Assert-True ($null -ne (Get-Command Assert-LiveGateTreeSafe -ErrorAction SilentlyContinue)) 'security tree has a read-only bounded validator'
+    if ($script:Failures.Count -gt 0) { Write-TestResult }
+    $nested = Join-Path $security.Path 'fixture'
+    [IO.Directory]::CreateDirectory($nested) | Out-Null
+    $dummy = Join-Path $nested 'dummy.txt'
+    [IO.File]::WriteAllText($dummy, 'not a credential')
+    try {
+        Assert-True (Assert-LiveGateTreeSafe -Path $security.Path) 'regular owned security fixture passes read-only inventory'
+        Assert-Throws { Assert-LiveGateTreeSafe -Path $security.Path -MaxEntries 1 } 'tree inventory refuses an exceeded aggregate entry budget'
+        $link = Join-Path $nested 'linked'
+        New-Item -ItemType Junction -Path $link -Target $booleanProbe.Path -ErrorAction Stop | Out-Null
+        try { Assert-Throws { Assert-LiveGateTreeSafe -Path $security.Path } 'tree inventory refuses a nested reparse entry before any disposal' }
+        finally { [IO.Directory]::Delete($link, $false) }
+    } finally { [IO.File]::Delete($dummy); [IO.Directory]::Delete($nested, $false) }
     # This fixture deliberately never exercises the recursive code path.
     [IO.Directory]::Delete($security.Path, $false)
 
@@ -111,9 +125,17 @@ try {
     Assert-Eq $job.Stderr 'err' 'contained runner captures stderr'
     Assert-True $job.ProcessTreeRetired 'normal completion confirms an empty job'
     Assert-True (-not $job.StartFailed) 'contained local executable starts'
-    $job = Invoke-BoundedProcess -FileName $pwsh -ArgList @('-NoProfile','-Command','[Console]::Write($env:GATE_OFFLINE); [Console]::Error.Write($env:UNSET_GATE_CANARY)') -ClearEnvironment -EnvironmentMap @{SystemRoot=$env:SystemRoot;GATE_OFFLINE='fixture'} -TimeoutSec 10 -RequireProcessTreeRetirement
-    Assert-Eq $job.Stdout 'fixture' 'contained runner uses its exact explicit child environment'
-    Assert-Eq $job.Stderr '' 'contained runner does not inherit unspecified environment values'
+    $cmd = Join-Path $env:SystemRoot 'System32/cmd.exe'
+    $job = Invoke-BoundedProcess -FileName $cmd -ArgList @('/d','/c','echo','contained') -TimeoutSec 10 -RequireProcessTreeRetirement
+    Assert-Eq $job.ExitCode 0 'contained runner retains command-wrapper compatibility'
+    Assert-Eq $job.Stdout.Trim() 'contained' 'command-wrapper switches keep their native syntax'
+    $previousGateCanary = $env:GATE_PARENT_ONLY
+    try {
+        $env:GATE_PARENT_ONLY = 'offline-canary'
+        $job = Invoke-BoundedProcess -FileName $pwsh -ArgList @('-NoProfile','-Command','[Console]::Write($env:GATE_OFFLINE); [Console]::Error.Write($env:GATE_PARENT_ONLY)') -ClearEnvironment -EnvironmentMap @{SystemRoot=$env:SystemRoot;GATE_OFFLINE='fixture'} -TimeoutSec 10 -RequireProcessTreeRetirement
+        Assert-Eq $job.Stdout 'fixture' 'contained runner uses its exact explicit child environment'
+        Assert-Eq $job.Stderr '' 'contained runner does not inherit an existing parent canary'
+    } finally { $env:GATE_PARENT_ONLY = $previousGateCanary }
 
     $quoteArgs = @('space value','quote"value','trailing\','')
     # -File retains raw argument values while -Command interprets its suffix as source.
@@ -142,6 +164,23 @@ try {
     $job = Invoke-BoundedProcess -FileName 'C:\does-not-exist\never.exe' -TimeoutSec 2 -RequireProcessTreeRetirement
     Assert-True $job.StartFailed 'contained launch failure is structured'
     Assert-True $job.ProcessTreeRetired 'a launch that created no process leaves no credential consumer'
+
+    # Load only the production tracker function AST, never the live gate's top-level body.
+    $tokens = $null; $errors = $null
+    $securityAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'live/live-security.ps1'), [ref]$tokens, [ref]$errors)
+    $tracker = $securityAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-SecurityProcess' }, $true)
+    Assert-True ($null -ne $tracker) 'security gate tracks every owned process before launching it'
+    if ($null -ne $tracker) {
+        . ([scriptblock]::Create($tracker.Extent.Text))
+        $script:SecurityProcessRuns = [Collections.Generic.List[object]]::new()
+        $job = Invoke-SecurityProcess -FileName $pwsh -ArgList @('-NoProfile','-Command','exit 0') -TimeoutSec 10 -ClearEnvironment -EnvironmentMap @{SystemRoot=$env:SystemRoot}
+        Assert-Eq $script:SecurityProcessRuns.Count 1 'real tracked local launch creates one ownership entry'
+        Assert-True $script:SecurityProcessRuns[0].ProcessTreeRetired 'tracker records only the runner confirmed retirement'
+        Assert-True $job.ProcessTreeRetired 'tracker preserves the physical runner result'
+        Assert-Throws { Invoke-SecurityProcess -FileName $pwsh -TimeoutSec 0 -ClearEnvironment -EnvironmentMap @{SystemRoot=$env:SystemRoot} } 'tracker propagates a real runner binding failure'
+        Assert-Eq $script:SecurityProcessRuns.Count 2 'failed launch still has a preexisting ownership entry'
+        Assert-True (-not $script:SecurityProcessRuns[1].ProcessTreeRetired) 'incomplete runner cannot acquire retirement proof'
+    }
 } catch {
     Assert-True $false "offline cleanup acceptance aborted: $($_.Exception.Message)"
 } finally {

@@ -97,6 +97,8 @@ namespace GauntletLive {
         static void Require(bool success) { if (!success) throw new Win32Exception(Marshal.GetLastWin32Error()); }
         static void Close(ref IntPtr handle) { if (handle != IntPtr.Zero) { CloseHandle(handle); handle = IntPtr.Zero; } }
         static string Quote(string value) {
+            if (value.IndexOf('\0') >= 0) throw new ArgumentException("Child argument contains a null character");
+            if (value.Length != 0 && value.IndexOfAny(new char[] { ' ', '\t', '"' }) < 0) return value;
             var output = new StringBuilder("\"");
             int slashes = 0;
             foreach (char c in value) {
@@ -317,6 +319,28 @@ function Get-LiveGateDirectoryRecord {
     throw "Directory has no creation record in this run: $abs"
 }
 
+function Assert-LiveGateTreeSafe {
+    # Read-only, bounded inventory. Never follow a link into another cleanup target.
+    param([Parameter(Mandatory)][string]$Path, [ValidateRange(1,10000)][int]$MaxEntries=10000)
+    Assert-LiveGatePathComponents -Path $Path
+    $pending = [Collections.Generic.Stack[string]]::new()
+    $pending.Push($Path)
+    $count = 0
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    while ($pending.Count -gt 0) {
+        $directory = $pending.Pop()
+        Assert-LiveGatePathComponents -Path $directory
+        foreach ($entry in [IO.Directory]::EnumerateFileSystemEntries($directory)) {
+            if ([DateTime]::UtcNow -gt $deadline) { throw 'Security-tree validation exceeded its deadline' }
+            if (++$count -gt $MaxEntries) { throw 'Security-tree validation exceeded its entry budget' }
+            $attributes = [IO.File]::GetAttributes($entry)
+            if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Security tree contains a reparse entry; cleanup is refused' }
+            if (($attributes -band [IO.FileAttributes]::Directory) -ne 0) { $pending.Push($entry) }
+        }
+    }
+    return $true
+}
+
 function Remove-LiveGateDirectory {
     param([Parameter(Mandatory)]$Record, [Parameter(Mandatory)]$ProcessTreeRetired, [switch]$AllowSecurityTreeCleanup)
     $result = [pscustomobject]@{ Accepted=$false; Path=$null; Error=$null }
@@ -336,32 +360,26 @@ function Remove-LiveGateDirectory {
         if ($exists) {
             Assert-LiveGatePathComponents -Path $owner.Path
             if ([GauntletLive.Native]::DirectoryIdentity($owner.Path) -cne $owner.Identity) { throw 'Cleanup directory identity differs from its creation record' }
-            $entries = @(Get-ChildItem -LiteralPath $owner.Path -Force -ErrorAction Stop)
-            if ($owner.Kind -eq 'Harness' -and $entries.Count -ne 0) { throw 'Owned harness is not empty; residue must be inspected' }
-            if ($owner.Kind -eq 'Schema') {
-                foreach ($entry in $entries) {
-                    if ($entry.PSIsContainer -or $entry.Name -cnotin @('events.jsonl','verdict.json') -or
-                        ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Unexpected entry in owned schema result directory' }
+            $entries = [Collections.Generic.List[string]]::new()
+            if ($owner.Kind -ne 'Security') {
+                foreach ($entry in [IO.Directory]::EnumerateFileSystemEntries($owner.Path)) {
+                    if ($owner.Kind -eq 'Harness') { throw 'Owned harness is not empty; residue must be inspected' }
+                    if ($entries.Count -ge 2) { throw 'Unexpected entry in owned schema result directory' }
+                    $attributes = [IO.File]::GetAttributes($entry)
+                    if (($attributes -band ([IO.FileAttributes]::Directory -bor [IO.FileAttributes]::ReparsePoint)) -ne 0 -or
+                        [IO.Path]::GetFileName($entry) -cnotin @('events.jsonl','verdict.json')) { throw 'Unexpected entry in owned schema result directory' }
+                    $entries.Add($entry)
                 }
-                foreach ($entry in $entries) { Remove-Item -LiteralPath $entry.FullName -Force -ErrorAction Stop }
+            }
+            if ($owner.Kind -eq 'Schema') {
+                foreach ($entry in $entries) { Remove-Item -LiteralPath $entry -Force -ErrorAction Stop }
                 [IO.Directory]::Delete($owner.Path, $false)
             } elseif ($owner.Kind -eq 'Harness') {
                 [IO.Directory]::Delete($owner.Path, $false)
             } else {
                 # Only an explicitly authorized, exact registered Security target reaches this
                 # one recursive remover. No parent, wildcard or caller-selected tree is accepted.
-                $pending = [Collections.Generic.Stack[string]]::new()
-                $pending.Push($owner.Path)
-                $count = 0
-                $deadline = [DateTime]::UtcNow.AddSeconds(10)
-                while ($pending.Count -gt 0) {
-                    if ([DateTime]::UtcNow -gt $deadline) { throw 'Security-tree validation exceeded its deadline' }
-                    foreach ($entry in @(Get-ChildItem -LiteralPath $pending.Pop() -Force -ErrorAction Stop)) {
-                        if (++$count -gt 10000) { throw 'Security-tree validation exceeded its entry budget' }
-                        if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Security tree contains a reparse entry; cleanup is refused' }
-                        if ($entry.PSIsContainer) { $pending.Push($entry.FullName) }
-                    }
-                }
+                $null = Assert-LiveGateTreeSafe -Path $owner.Path
                 Assert-LiveGatePathComponents -Path $owner.Path
                 if ([GauntletLive.Native]::DirectoryIdentity($owner.Path) -cne $owner.Identity) { throw 'Security root identity changed during validation' }
                 Write-Host "Authorized owned security cleanup target: $($owner.Path)"

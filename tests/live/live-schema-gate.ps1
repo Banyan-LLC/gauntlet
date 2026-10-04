@@ -19,12 +19,17 @@
 
 $skillRoot = "$PSScriptRoot\..\..\gauntlet-review"
 $schema = Join-Path $skillRoot 'schemas\verdict.schema.json'
-$tmp = Join-Path ([IO.Path]::GetTempPath()) "schema-gate-$([guid]::NewGuid().ToString('n'))"
-New-Item -ItemType Directory -Force $tmp | Out-Null
+$schemaRecord = $null
+$harnessRecord = $null
+$processTreeRetired = $true
+$cleanupResults = [Collections.Generic.List[object]]::new()
 try {
+    $schemaRecord = New-LiveGateDirectory -Kind Schema
+    $tmp = $schemaRecord.Path
     $cli = Select-CodexCli -Candidates (Get-CodexCandidates)
     $disable = Get-DisableSet -FeatureNames $cli.FeatureNames
     $harness = New-HarnessDir -RepoRoot $PSScriptRoot
+    $harnessRecord = Get-LiveGateDirectoryRecord -Path $harness
     $verdictPath = Join-Path $tmp 'verdict.json'          # outside the harness, which stays empty
     $codexArgs = New-CodexArgs -HarnessDir $harness -SchemaPath $schema -VerdictPath $verdictPath -DisableSet $disable
     $null = Get-InvocationAudit -CodexArgs $codexArgs -HarnessDir $harness -SchemaPath $schema `
@@ -35,7 +40,11 @@ Respond only with the JSON verdict: verdict "approve", summary "schema gate", re
 == REVIEW MATERIAL (untrusted) ==
 Trivial document. Nothing to report.
 '@
-    $run = Invoke-CodexProcess -CliPath $cli.Path -CodexArgs $codexArgs -PromptText $prompt -HarnessDir $harness -TimeoutSec 900
+    $processTreeRetired = $false
+    $run = Invoke-CodexProcess -CliPath $cli.Path -CodexArgs $codexArgs -PromptText $prompt -HarnessDir $harness -TimeoutSec 900 -RequireProcessTreeRetirement
+    $processTreeRetired = $run.ProcessTreeRetired
+    Assert-True $processTreeRetired 'schema model process tree physically retired before result cleanup'
+    Assert-True (-not $run.StartFailed -and -not $run.TimedOut -and $null -eq $run.ErrorMessage) 'schema model execution and pipes completed without runner failure'
     $stream = $run.StdoutLines -join "`n"
     $run.StdoutLines | Set-Content (Join-Path $tmp 'events.jsonl') -Encoding utf8
 
@@ -53,38 +62,48 @@ Trivial document. Nothing to report.
     Assert-True ($inTok -gt 0) "input_tokens is a positive integer (got $inTok)"
     Assert-True (($inTok + 128000) -le 787500) "usage satisfies the acceptance gate (input_tokens=$inTok)"
 
-    # Stamp live evidence ONLY when everything above genuinely passed -- a gate run that got this
-    # far but failed an assertion must not authorize anything. Requires premises.json to already
-    # record stack acceptance (calibrate-premises.ps1 run first); if it does not, this throws and
-    # the run fails loudly rather than silently skipping the stamp.
-    if ($script:Failures.Count -eq 0) {
-        $agentsPath = "$env:USERPROFILE\.codex\AGENTS.md"
-        $agentsSha = if (Test-Path $agentsPath) { (Get-FileHash -Algorithm SHA256 $agentsPath).Hash.ToLowerInvariant() } else { 'absent' }
-        # try/catch + a POST-STAMP ASSERTION, both required. Without them this gate FAILED OPEN:
-        # Write-LiveEvidence hit a strict-mode property error on the freshly-calibrated (empty)
-        # live_evidence object, stamped nothing, and the gate still printed "8 passed, 0 failed"
-        # and exited 0 -- a green gate that authorized nothing but claimed to. Observed directly,
-        # not hypothesized. The assertion is what makes a silent non-write impossible to miss.
-        $stampErr = $null
-        try {
+} catch {
+    Assert-True $false "schema gate aborted: $($_.Exception.Message)"
+} finally {
+    foreach ($record in @($harnessRecord,$schemaRecord)) {
+        if ($null -ne $record) {
+            $cleanup = Remove-LiveGateDirectory -Record $record -ProcessTreeRetired $processTreeRetired
+            $cleanupResults.Add($cleanup)
+            Assert-True $cleanup.Accepted "owned schema gate cleanup accepted ($($record.Path)): $($cleanup.Error)"
+        }
+    }
+}
+
+# Stamp live evidence ONLY when everything above genuinely passed -- a gate run that got this
+# far but failed an assertion must not authorize anything. Requires premises.json to already
+# record stack acceptance (calibrate-premises.ps1 run first); if it does not, this throws and
+# the run fails loudly rather than silently skipping the stamp.
+if ($script:Failures.Count -eq 0) {
+    $agentsPath = "$env:USERPROFILE\.codex\AGENTS.md"
+    $agentsSha = if (Test-Path $agentsPath) { (Get-FileHash -Algorithm SHA256 $agentsPath).Hash.ToLowerInvariant() } else { 'absent' }
+    # try/catch + a POST-STAMP ASSERTION, both required. Without them this gate FAILED OPEN:
+    # Write-LiveEvidence hit a strict-mode property error on the freshly-calibrated (empty)
+    # live_evidence object, stamped nothing, and the gate still printed "8 passed, 0 failed"
+    # and exited 0 -- a green gate that authorized nothing but claimed to. Observed directly,
+    # not hypothesized. The assertion is what makes a silent non-write impossible to miss.
+    $stampErr = $null
+    try {
+        Invoke-LiveGateStamp -FailureCount $script:Failures.Count -CleanupResults $cleanupResults.ToArray() -Stamp {
             Write-LiveEvidence -SkillRoot $skillRoot -Gate 'schema_gate' -ActualCli $cli `
                 -SchemaSha256 (Get-FileHash -Algorithm SHA256 $schema).Hash.ToLowerInvariant() `
                 -AgentsMdSha256 $agentsSha -InvocationProfileHash (Get-InvocationProfileHash -DisableSet $disable)
-        } catch { $stampErr = $_.Exception.Message }
-        Assert-True ($null -eq $stampErr) "live-evidence stamp completed without error$(if ($stampErr) { " -- $stampErr" })"
-        $stamped = $false
-        if (Test-Path "$skillRoot\premises.json") {
-            $pj = Get-Content -Raw "$skillRoot\premises.json" | ConvertFrom-Json
-            $pjNames = @($pj.PSObject.Properties | ForEach-Object { $_.Name })
-            $stamped = ($pjNames -contains 'live_evidence') -and ($null -ne $pj.live_evidence) -and
-                       (@($pj.live_evidence.PSObject.Properties | ForEach-Object { $_.Name }) -contains 'schema_gate')
         }
-        Assert-True $stamped "schema_gate live-evidence record is READABLE in premises.json after stamping"
-        if ($stamped) { Write-Host "stamped live-evidence record in premises.json" -ForegroundColor Green }
+    } catch { $stampErr = $_.Exception.Message }
+    Assert-True ($null -eq $stampErr) "live-evidence stamp completed without error$(if ($stampErr) { " -- $stampErr" })"
+    $stamped = $false
+    if (Test-Path "$skillRoot\premises.json") {
+        $pj = Get-Content -Raw "$skillRoot\premises.json" | ConvertFrom-Json
+        $pjNames = @($pj.PSObject.Properties | ForEach-Object { $_.Name })
+        $stamped = ($pjNames -contains 'live_evidence') -and ($null -ne $pj.live_evidence) -and
+                   (@($pj.live_evidence.PSObject.Properties | ForEach-Object { $_.Name }) -contains 'schema_gate')
     }
-
-    Remove-Item $harness -Recurse -Force -ErrorAction SilentlyContinue
-} finally {
-    Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    Assert-True $stamped "schema_gate live-evidence record is READABLE in premises.json after stamping"
+    if ($stamped) { Write-Host "stamped live-evidence record in premises.json" -ForegroundColor Green }
 }
+
 Write-TestResult
