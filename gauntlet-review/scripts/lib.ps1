@@ -17,8 +17,7 @@ $script:LiveGateDirectories = [Collections.Generic.Dictionary[string,object]]::n
 
 function Initialize-LiveGateNative {
     if (-not $IsWindows) { throw 'Live gate ownership and process containment require Windows' }
-    if ('GauntletLive.Native' -as [type]) { return }
-    Add-Type -TypeDefinition @'
+    $source = @'
 using System;
 using System.ComponentModel;
 using System.Collections.Generic;
@@ -32,6 +31,7 @@ using System.Threading.Tasks;
 using Microsoft.Win32.SafeHandles;
 namespace GauntletLive {
     public static class Native {
+        public static string SourceIdentity { get { return "__GAUNTLET_NATIVE_SOURCE_IDENTITY__"; } }
         public sealed class RunResult {
             public int? ExitCode;
             public string Stdout = "", Stderr = "", ErrorMessage;
@@ -261,7 +261,15 @@ namespace GauntletLive {
         }
     }
 }
-'@ -ErrorAction Stop
+'@
+    $sourceIdentity = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($source))).ToLowerInvariant()
+    $loaded = 'GauntletLive.Native' -as [type]
+    if ($loaded) {
+        $identityProperty = $loaded.GetProperty('SourceIdentity')
+        if ($identityProperty -and $identityProperty.GetValue($null) -ceq $sourceIdentity) { return }
+        throw 'Loaded live-gate native helper differs from current source; use a fresh PowerShell process'
+    }
+    Add-Type -TypeDefinition $source.Replace('__GAUNTLET_NATIVE_SOURCE_IDENTITY__', $sourceIdentity) -ErrorAction Stop
 }
 
 function Assert-LiveGatePathComponents {

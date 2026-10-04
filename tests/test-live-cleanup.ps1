@@ -8,6 +8,9 @@ if ($script:Failures.Count -gt 0) { Write-TestResult }
 
 $owned = [System.Collections.Generic.List[object]]::new()
 try {
+    Initialize-LiveGateNative
+    $changedInitializer = (Get-Command Initialize-LiveGateNative).ScriptBlock.ToString().Replace('limits.Basic.Flags = 0x2000;', 'limits.Basic.Flags = 0x3000;')
+    Assert-Throws { & ([scriptblock]::Create($changedInitializer)) } 'loaded native helper refuses a different source identity before reuse'
     $booleanProbe = New-LiveGateDirectory -Kind Schema
     $owned.Add($booleanProbe)
     Assert-True (-not (Remove-LiveGateDirectory -Record $booleanProbe -ProcessTreeRetired 1).Accepted) 'numeric truth cannot substitute for retirement proof'
