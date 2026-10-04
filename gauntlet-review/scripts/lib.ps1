@@ -12,6 +12,383 @@ $script:FeatureAllowlist = @('enable_request_compression','remote_compaction_v2'
 # reason, rather than silently running non-ephemeral.
 $script:RequiredExecFlags = @('--output-schema','--output-last-message','--json','--ignore-user-config','--ignore-rules','--skip-git-repo-check','--ephemeral','--disable','-s','-C','-m','-c')
 
+# Run-local ownership. Public records contain a token and path, never editable authority.
+$script:LiveGateDirectories = [Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
+
+function Initialize-LiveGateNative {
+    if (-not $IsWindows) { throw 'Live gate ownership and process containment require Windows' }
+    if ('GauntletLive.Native' -as [type]) { return }
+    Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Win32.SafeHandles;
+namespace GauntletLive {
+    public static class Native {
+        public sealed class RunResult {
+            public int? ExitCode;
+            public string Stdout = "", Stderr = "", ErrorMessage;
+            public bool TimedOut, StartFailed, ProcessTreeRetired;
+        }
+        [StructLayout(LayoutKind.Sequential)] struct SecurityAttributes {
+            public int Length;
+            public IntPtr Descriptor;
+            [MarshalAs(UnmanagedType.Bool)] public bool Inherit;
+        }
+        [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] struct StartupInfo {
+            public int Size;
+            public string Reserved, Desktop, Title;
+            public uint X, Y, XSize, YSize, XCount, YCount, Fill, Flags;
+            public ushort Show, ReservedSize;
+            public IntPtr ReservedBytes, Input, Output, Error;
+        }
+        [StructLayout(LayoutKind.Sequential)] struct StartupInfoEx {
+            public StartupInfo Info;
+            public IntPtr Attributes;
+        }
+        [StructLayout(LayoutKind.Sequential)] struct ProcessInfo {
+            public IntPtr Process, Thread;
+            public uint ProcessId, ThreadId;
+        }
+        [StructLayout(LayoutKind.Sequential)] struct BasicLimits {
+            public long ProcessTime, JobTime;
+            public uint Flags;
+            public UIntPtr MinWorkingSet, MaxWorkingSet;
+            public uint ActiveLimit;
+            public UIntPtr Affinity;
+            public uint Priority, Scheduling;
+        }
+        [StructLayout(LayoutKind.Sequential)] struct IoCounters { public ulong ReadOps, WriteOps, OtherOps, ReadBytes, WriteBytes, OtherBytes; }
+        [StructLayout(LayoutKind.Sequential)] struct ExtendedLimits {
+            public BasicLimits Basic;
+            public IoCounters Io;
+            public UIntPtr ProcessMemory, JobMemory, PeakProcessMemory, PeakJobMemory;
+        }
+        [StructLayout(LayoutKind.Sequential)] struct Accounting {
+            public long UserTime, KernelTime, PeriodUserTime, PeriodKernelTime;
+            public uint PageFaults, TotalProcesses, ActiveProcesses, TerminatedProcesses;
+        }
+        [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr CreateJobObjectW(IntPtr security, IntPtr name);
+        [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetInformationJobObject(IntPtr job, int kind, ref ExtendedLimits limits, int size);
+        [DllImport("kernel32.dll", SetLastError=true)] static extern bool QueryInformationJobObject(IntPtr job, int kind, out Accounting info, int size, IntPtr returned);
+        [DllImport("kernel32.dll", SetLastError=true)] static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+        [DllImport("kernel32.dll", SetLastError=true)] static extern bool TerminateJobObject(IntPtr job, uint exitCode);
+        [DllImport("kernel32.dll", SetLastError=true)] static extern bool TerminateProcess(IntPtr process, uint exitCode);
+        [DllImport("kernel32.dll", SetLastError=true)] static extern uint ResumeThread(IntPtr thread);
+        [DllImport("kernel32.dll", SetLastError=true)] static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
+        [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetExitCodeProcess(IntPtr process, out uint exitCode);
+        [DllImport("kernel32.dll", SetLastError=true)] static extern bool CloseHandle(IntPtr handle);
+        [DllImport("kernel32.dll", SetLastError=true)] static extern bool CreatePipe(out IntPtr read, out IntPtr write, ref SecurityAttributes security, uint size);
+        [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetHandleInformation(IntPtr handle, uint mask, uint flags);
+        [DllImport("kernel32.dll", SetLastError=true)] static extern bool InitializeProcThreadAttributeList(IntPtr list, int count, int flags, ref IntPtr size);
+        [DllImport("kernel32.dll", SetLastError=true)] static extern bool UpdateProcThreadAttribute(IntPtr list, uint flags, UIntPtr attribute, IntPtr value, IntPtr size, IntPtr previous, IntPtr returned);
+        [DllImport("kernel32.dll")] static extern void DeleteProcThreadAttributeList(IntPtr list);
+        [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+        static extern bool CreateProcessW(string app, StringBuilder command, IntPtr processSecurity, IntPtr threadSecurity,
+            bool inherit, uint flags, IntPtr environment, string cwd, ref StartupInfoEx startup, out ProcessInfo process);
+
+        static void Require(bool success) { if (!success) throw new Win32Exception(Marshal.GetLastWin32Error()); }
+        static void Close(ref IntPtr handle) { if (handle != IntPtr.Zero) { CloseHandle(handle); handle = IntPtr.Zero; } }
+        static string Quote(string value) {
+            var output = new StringBuilder("\"");
+            int slashes = 0;
+            foreach (char c in value) {
+                if (c == '\\') { slashes++; continue; }
+                if (c == '"') { output.Append('\\', 2 * slashes + 1); output.Append('"'); }
+                else { output.Append('\\', slashes); output.Append(c); }
+                slashes = 0;
+            }
+            output.Append('\\', 2 * slashes); output.Append('"');
+            return output.ToString();
+        }
+        static uint ActiveCount(IntPtr job) {
+            Accounting accounting;
+            Require(QueryInformationJobObject(job, 1, out accounting, Marshal.SizeOf<Accounting>(), IntPtr.Zero));
+            return accounting.ActiveProcesses;
+        }
+        public static RunResult Run(ProcessStartInfo start, string input, int seconds) {
+            var result = new RunResult();
+            var clock = Stopwatch.StartNew();
+            long totalMs = (long)seconds * 1000;
+            long reserveMs = Math.Min(5000, totalMs / 4);
+            Func<int> remaining = () => (int)Math.Max(0, totalMs - clock.ElapsedMilliseconds);
+            Func<int> executionRemaining = () => (int)Math.Max(0, totalMs - reserveMs - clock.ElapsedMilliseconds);
+            IntPtr job=IntPtr.Zero, stdinRead=IntPtr.Zero, stdinWrite=IntPtr.Zero, stdoutRead=IntPtr.Zero,
+                stdoutWrite=IntPtr.Zero, stderrRead=IntPtr.Zero, stderrWrite=IntPtr.Zero;
+            IntPtr attributes=IntPtr.Zero, handles=IntPtr.Zero, environment=IntPtr.Zero;
+            bool attributesReady=false, assigned=false, created=false;
+            ProcessInfo process = new ProcessInfo();
+            FileStream inputStream=null, outputStream=null, errorStream=null;
+            StreamReader outputReader=null, errorReader=null;
+            Task<string> outputTask=null, errorTask=null;
+            try {
+                job = CreateJobObjectW(IntPtr.Zero, IntPtr.Zero);
+                if (job == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
+                var limits = new ExtendedLimits();
+                limits.Basic.Flags = 0x2000; // KILL_ON_JOB_CLOSE, without either breakaway flag.
+                Require(SetInformationJobObject(job, 9, ref limits, Marshal.SizeOf<ExtendedLimits>()));
+                var security = new SecurityAttributes { Length=Marshal.SizeOf<SecurityAttributes>(), Inherit=true };
+                Require(CreatePipe(out stdinRead, out stdinWrite, ref security, 0));
+                Require(CreatePipe(out stdoutRead, out stdoutWrite, ref security, 0));
+                Require(CreatePipe(out stderrRead, out stderrWrite, ref security, 0));
+                Require(SetHandleInformation(stdinWrite, 1, 0));
+                Require(SetHandleInformation(stdoutRead, 1, 0));
+                Require(SetHandleInformation(stderrRead, 1, 0));
+                IntPtr size = IntPtr.Zero;
+                InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref size);
+                attributes = Marshal.AllocHGlobal(size);
+                Require(InitializeProcThreadAttributeList(attributes, 1, 0, ref size));
+                attributesReady = true;
+                handles = Marshal.AllocHGlobal(IntPtr.Size * 3);
+                Marshal.WriteIntPtr(handles, 0, stdinRead);
+                Marshal.WriteIntPtr(handles, IntPtr.Size, stdoutWrite);
+                Marshal.WriteIntPtr(handles, IntPtr.Size * 2, stderrWrite);
+                Require(UpdateProcThreadAttribute(attributes, 0, new UIntPtr(0x20002), handles,
+                    new IntPtr(IntPtr.Size * 3), IntPtr.Zero, IntPtr.Zero));
+                var envText = new StringBuilder();
+                foreach (var entry in start.Environment.OrderBy(e => e.Key, StringComparer.OrdinalIgnoreCase)) {
+                    if (entry.Key.Contains('=') || entry.Key.Contains('\0') || (entry.Value ?? "").Contains('\0')) throw new ArgumentException("Invalid child environment entry");
+                    envText.Append(entry.Key).Append('=').Append(entry.Value).Append('\0');
+                }
+                envText.Append('\0');
+                if (start.Environment.Count == 0) envText.Append('\0');
+                environment = Marshal.StringToHGlobalUni(envText.ToString());
+                var startup = new StartupInfoEx();
+                startup.Info.Size = Marshal.SizeOf<StartupInfoEx>();
+                startup.Info.Flags = 0x100;
+                startup.Info.Input=stdinRead; startup.Info.Output=stdoutWrite; startup.Info.Error=stderrWrite;
+                startup.Attributes=attributes;
+                var command = new StringBuilder(Quote(start.FileName));
+                foreach (var argument in start.ArgumentList) command.Append(' ').Append(Quote(argument));
+                // No executable instruction runs until assignment to the non-breakaway job.
+                Require(CreateProcessW(start.FileName, command, IntPtr.Zero, IntPtr.Zero, true,
+                    0x08080404, environment, start.WorkingDirectory, ref startup, out process));
+                created = true;
+                Require(AssignProcessToJobObject(job, process.Process));
+                assigned = true;
+                Close(ref stdinRead); Close(ref stdoutWrite); Close(ref stderrWrite);
+                inputStream = new FileStream(new SafeFileHandle(stdinWrite, true), FileAccess.Write, 4096, false); stdinWrite=IntPtr.Zero;
+                outputStream = new FileStream(new SafeFileHandle(stdoutRead, true), FileAccess.Read, 4096, false); stdoutRead=IntPtr.Zero;
+                errorStream = new FileStream(new SafeFileHandle(stderrRead, true), FileAccess.Read, 4096, false); stderrRead=IntPtr.Zero;
+                outputReader = new StreamReader(outputStream, Encoding.UTF8);
+                errorReader = new StreamReader(errorStream, Encoding.UTF8);
+                outputTask=outputReader.ReadToEndAsync(); errorTask=errorReader.ReadToEndAsync();
+                if (ResumeThread(process.Thread) == uint.MaxValue) throw new Win32Exception(Marshal.GetLastWin32Error());
+                Close(ref process.Thread);
+                var bytes = Encoding.UTF8.GetBytes(input ?? "");
+                var writeTask = inputStream.WriteAsync(bytes, 0, bytes.Length);
+                bool stdinDone = false;
+                try { stdinDone = writeTask.Wait(executionRemaining()); }
+                catch (AggregateException) { stdinDone = WaitForSingleObject(process.Process, 0) == 0; }
+                if (stdinDone) { inputStream.Dispose(); inputStream=null; }
+                bool exited = stdinDone && WaitForSingleObject(process.Process, (uint)executionRemaining()) == 0;
+                result.TimedOut = !exited;
+                uint exitCode;
+                if (exited) { Require(GetExitCodeProcess(process.Process, out exitCode)); result.ExitCode=unchecked((int)exitCode); }
+                else { result.ExitCode=-1; }
+                // Parent exit is insufficient: terminate and query the entire owned job.
+                if (ActiveCount(job) != 0) Require(TerminateJobObject(job, 1));
+                while (ActiveCount(job) != 0 && remaining() > 0) Thread.Sleep(Math.Min(10, remaining()));
+                result.ProcessTreeRetired = ActiveCount(job) == 0;
+                if (!result.ProcessTreeRetired) result.ErrorMessage="Owned process job did not retire before the shared deadline";
+                try { Task.WaitAll(new Task[] { outputTask, errorTask }, remaining()); } catch (AggregateException) { }
+                if (outputTask.IsCompletedSuccessfully) result.Stdout=outputTask.Result;
+                if (errorTask.IsCompletedSuccessfully) result.Stderr=errorTask.Result;
+                if (!outputTask.IsCompletedSuccessfully || !errorTask.IsCompletedSuccessfully) {
+                    result.TimedOut=true; result.ErrorMessage="Owned process pipes did not complete before the shared deadline";
+                }
+            } catch (Exception error) {
+                result.StartFailed = !assigned;
+                result.ErrorMessage=error.Message;
+                result.ExitCode=-1;
+            } finally {
+                // Closing a job requests termination but is never itself retirement evidence.
+                if (created && !result.ProcessTreeRetired) {
+                    try {
+                        if (assigned) {
+                            Require(TerminateJobObject(job, 1));
+                            while (ActiveCount(job) != 0 && remaining() > 0) Thread.Sleep(Math.Min(10, remaining()));
+                            result.ProcessTreeRetired=ActiveCount(job) == 0;
+                        } else {
+                            Require(TerminateProcess(process.Process, 1));
+                            result.ProcessTreeRetired=WaitForSingleObject(process.Process, (uint)remaining()) == 0;
+                        }
+                    } catch (Exception cleanupError) { result.ProcessTreeRetired=false; result.ErrorMessage += "; retirement: " + cleanupError.Message; }
+                } else if (!created) { result.ProcessTreeRetired=true; }
+                Close(ref job); Close(ref process.Thread); Close(ref process.Process);
+                Close(ref stdinRead); Close(ref stdinWrite); Close(ref stdoutRead); Close(ref stdoutWrite); Close(ref stderrRead); Close(ref stderrWrite);
+                if (attributesReady) DeleteProcThreadAttributeList(attributes);
+                if (attributes != IntPtr.Zero) Marshal.FreeHGlobal(attributes);
+                if (handles != IntPtr.Zero) Marshal.FreeHGlobal(handles);
+                if (environment != IntPtr.Zero) Marshal.FreeHGlobal(environment);
+                if (inputStream != null) inputStream.Dispose();
+                if (outputReader != null) outputReader.Dispose();
+                if (errorReader != null) errorReader.Dispose();
+            }
+            return result;
+        }
+        [StructLayout(LayoutKind.Sequential)] struct FileInfo {
+            public uint Attributes;
+            public System.Runtime.InteropServices.ComTypes.FILETIME Creation, Access, Write;
+            public uint Volume, SizeHigh, SizeLow, Links, IndexHigh, IndexLow;
+        }
+        [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+        static extern SafeFileHandle CreateFileW(string path, uint access, uint share, IntPtr security, uint mode, uint flags, IntPtr template);
+        [DllImport("kernel32.dll", SetLastError=true)]
+        static extern bool GetFileInformationByHandle(SafeFileHandle handle, out FileInfo info);
+        [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+        static extern bool CreateDirectoryW(string path, IntPtr security);
+        public static void CreateExclusiveDirectory(string path) {
+            if (!CreateDirectoryW(path, IntPtr.Zero)) throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+        public static string DirectoryIdentity(string path) {
+            using (var handle = CreateFileW(path, 0x80, 7, IntPtr.Zero, 3, 0x02200000, IntPtr.Zero)) {
+                if (handle.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
+                FileInfo info;
+                if (!GetFileInformationByHandle(handle, out info)) throw new Win32Exception(Marshal.GetLastWin32Error());
+                if ((info.Attributes & 0x400) != 0 || (info.Attributes & 0x10) == 0) throw new InvalidOperationException("Owned target is not a regular directory");
+                return info.Volume.ToString("x8") + ":" + info.IndexHigh.ToString("x8") + info.IndexLow.ToString("x8") + ":" + info.Creation.dwHighDateTime.ToString("x8") + info.Creation.dwLowDateTime.ToString("x8");
+            }
+        }
+    }
+}
+'@ -ErrorAction Stop
+}
+
+function Assert-LiveGatePathComponents {
+    param([Parameter(Mandatory)][string]$Path)
+    $current = [IO.Path]::GetFullPath($Path)
+    while ($current) {
+        $item = Get-Item -LiteralPath $current -Force -ErrorAction Stop
+        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or -not $item.PSIsContainer) {
+            throw "Live gate path component is not a regular directory: $current"
+        }
+        $parent = [IO.Path]::GetDirectoryName($current)
+        if ($parent -eq $current) { break }
+        $current = $parent
+    }
+}
+
+function New-OwnedLiveGateDirectory {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][ValidateSet('Schema','Security','Harness')][string]$Kind)
+    Initialize-LiveGateNative
+    $root = if ($Kind -eq 'Harness') { Join-Path $env:LOCALAPPDATA 'gauntlet-review\harness' } else { [IO.Path]::GetTempPath() }
+    $root = [IO.Path]::GetFullPath($root).TrimEnd('\','/')
+    $pathAbs = [IO.Path]::GetFullPath($Path)
+    $pattern = switch ($Kind) { 'Schema' { '^schema-gate-[0-9a-f]{32}$' }; 'Security' { '^codexsec-[0-9a-f]{32}$' }; 'Harness' { '^[0-9a-f]{32}$' } }
+    if (-not [StringComparer]::OrdinalIgnoreCase.Equals([IO.Path]::GetDirectoryName($pathAbs), $root) -or
+        [IO.Path]::GetFileName($pathAbs) -cnotmatch $pattern) { throw 'Live gate target is not an exact generated direct child of its managed root' }
+    Assert-LiveGatePathComponents -Path $root
+    [GauntletLive.Native]::CreateExclusiveDirectory($pathAbs)
+    Assert-LiveGatePathComponents -Path $pathAbs
+    $token = [guid]::NewGuid().ToString('n')
+    $script:LiveGateDirectories.Add($token, [pscustomobject]@{
+        Path=$pathAbs; Root=$root; Kind=$Kind; Identity=[GauntletLive.Native]::DirectoryIdentity($pathAbs)
+    })
+    return [pscustomobject]@{ Token=$token; Path=$pathAbs }
+}
+
+function New-LiveGateDirectory {
+    param([Parameter(Mandatory)][ValidateSet('Schema','Security')][string]$Kind)
+    Initialize-LiveGateNative
+    $root = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+    Assert-LiveGatePathComponents -Path $root
+    $prefix = if ($Kind -eq 'Schema') { 'schema-gate-' } else { 'codexsec-' }
+    $path = Join-Path $root ($prefix + [guid]::NewGuid().ToString('n'))
+    # The owner factory performs atomic creation and registration together.
+    return (New-OwnedLiveGateDirectory -Path $path -Kind $Kind)
+}
+
+function Get-LiveGateDirectoryRecord {
+    param([Parameter(Mandatory)][string]$Path)
+    $abs = [IO.Path]::GetFullPath($Path)
+    foreach ($entry in $script:LiveGateDirectories.GetEnumerator()) {
+        if ([StringComparer]::OrdinalIgnoreCase.Equals($entry.Value.Path, $abs)) {
+            return [pscustomobject]@{ Token=$entry.Key; Path=$entry.Value.Path }
+        }
+    }
+    throw "Directory has no creation record in this run: $abs"
+}
+
+function Remove-LiveGateDirectory {
+    param([Parameter(Mandatory)]$Record, [Parameter(Mandatory)]$ProcessTreeRetired, [switch]$AllowSecurityTreeCleanup)
+    $result = [pscustomobject]@{ Accepted=$false; Path=$null; Error=$null }
+    try {
+        if ($ProcessTreeRetired -isnot [bool] -or -not $ProcessTreeRetired) { throw 'Process-tree retirement is unresolved; cleanup is refused' }
+        if ($null -eq $Record -or -not $script:LiveGateDirectories.ContainsKey([string]$Record.Token)) { throw 'Unknown or consumed cleanup ownership token' }
+        $owner = $script:LiveGateDirectories[[string]$Record.Token]
+        $result.Path = $owner.Path
+        if (-not [StringComparer]::OrdinalIgnoreCase.Equals([string]$Record.Path, $owner.Path)) { throw 'Cleanup path differs from its exclusive creation record' }
+        Assert-LiveGatePathComponents -Path $owner.Root
+        if ($owner.Kind -eq 'Security' -and -not $AllowSecurityTreeCleanup) { throw 'Security-tree cleanup requires explicit run-level authorization' }
+        # Missing is distinct from access/IO errors. No Test-Path suppression authorizes deletion.
+        $exists = $true
+        try { $attributes = [IO.File]::GetAttributes($owner.Path) }
+        catch [IO.FileNotFoundException] { $exists = $false }
+        catch [IO.DirectoryNotFoundException] { $exists = $false }
+        if ($exists) {
+            Assert-LiveGatePathComponents -Path $owner.Path
+            if ([GauntletLive.Native]::DirectoryIdentity($owner.Path) -cne $owner.Identity) { throw 'Cleanup directory identity differs from its creation record' }
+            $entries = @(Get-ChildItem -LiteralPath $owner.Path -Force -ErrorAction Stop)
+            if ($owner.Kind -eq 'Harness' -and $entries.Count -ne 0) { throw 'Owned harness is not empty; residue must be inspected' }
+            if ($owner.Kind -eq 'Schema') {
+                foreach ($entry in $entries) {
+                    if ($entry.PSIsContainer -or $entry.Name -cnotin @('events.jsonl','verdict.json') -or
+                        ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Unexpected entry in owned schema result directory' }
+                }
+                foreach ($entry in $entries) { Remove-Item -LiteralPath $entry.FullName -Force -ErrorAction Stop }
+                [IO.Directory]::Delete($owner.Path, $false)
+            } elseif ($owner.Kind -eq 'Harness') {
+                [IO.Directory]::Delete($owner.Path, $false)
+            } else {
+                # Only an explicitly authorized, exact registered Security target reaches this
+                # one recursive remover. No parent, wildcard or caller-selected tree is accepted.
+                $pending = [Collections.Generic.Stack[string]]::new()
+                $pending.Push($owner.Path)
+                $count = 0
+                $deadline = [DateTime]::UtcNow.AddSeconds(10)
+                while ($pending.Count -gt 0) {
+                    if ([DateTime]::UtcNow -gt $deadline) { throw 'Security-tree validation exceeded its deadline' }
+                    foreach ($entry in @(Get-ChildItem -LiteralPath $pending.Pop() -Force -ErrorAction Stop)) {
+                        if (++$count -gt 10000) { throw 'Security-tree validation exceeded its entry budget' }
+                        if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Security tree contains a reparse entry; cleanup is refused' }
+                        if ($entry.PSIsContainer) { $pending.Push($entry.FullName) }
+                    }
+                }
+                Assert-LiveGatePathComponents -Path $owner.Path
+                if ([GauntletLive.Native]::DirectoryIdentity($owner.Path) -cne $owner.Identity) { throw 'Security root identity changed during validation' }
+                Write-Host "Authorized owned security cleanup target: $($owner.Path)"
+                Remove-Item -LiteralPath $owner.Path -Recurse -Force -ErrorAction Stop
+            }
+        }
+        # Verify absence, without treating permission/stat errors as proof.
+        $absent = $false
+        try { $null = [IO.File]::GetAttributes($owner.Path) }
+        catch [IO.FileNotFoundException] { $absent = $true }
+        catch [IO.DirectoryNotFoundException] { $absent = $true }
+        if (-not $absent) { throw 'Owned directory remains after cleanup' }
+        $script:LiveGateDirectories.Remove([string]$Record.Token) | Out-Null
+        $result.Accepted = $true
+    } catch { $result.Error = $_.Exception.Message }
+    return $result
+}
+
+function Invoke-LiveGateStamp {
+    param([Parameter(Mandatory)][int]$FailureCount, [AllowEmptyCollection()][object[]]$CleanupResults, [Parameter(Mandatory)][scriptblock]$Stamp)
+    if ($FailureCount -ne 0 -or @($CleanupResults).Count -eq 0) { throw 'Live evidence requires zero failures and explicit cleanup acceptance' }
+    foreach ($result in $CleanupResults) {
+        if ($null -eq $result -or $result.Accepted -isnot [bool] -or -not $result.Accepted) { throw 'Live evidence is refused after failed or unresolved cleanup' }
+    }
+    & $Stamp
+}
+
 function Invoke-BoundedProcess {
     <# THE process runner. Every external command in this skill goes through it: the Codex
        review, the compatibility probes, and gh. Guarantees:
@@ -28,9 +405,10 @@ function Invoke-BoundedProcess {
         [string]$WorkingDirectory = ([System.IO.Path]::GetTempPath()),
         [ValidateRange(1, 86400)][int]$TimeoutSec = 120,
         [hashtable]$EnvironmentMap,
-        [switch]$ClearEnvironment
+        [switch]$ClearEnvironment,
+        [switch]$RequireProcessTreeRetirement
     )
-    $r = [pscustomobject]@{ ExitCode=$null; Stdout=''; Stderr=''; TimedOut=$false; StartFailed=$false; ErrorMessage=$null }
+    $r = [pscustomobject]@{ ExitCode=$null; Stdout=''; Stderr=''; TimedOut=$false; StartFailed=$false; ErrorMessage=$null; ProcessTreeRetired=$false }
     try {
         $psi = [System.Diagnostics.ProcessStartInfo]::new()
         $psi.FileName = $FileName
@@ -39,6 +417,10 @@ function Invoke-BoundedProcess {
         $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
         if ($ClearEnvironment) { $psi.EnvironmentVariables.Clear() }
         if ($EnvironmentMap) { foreach ($k in $EnvironmentMap.Keys) { $psi.EnvironmentVariables[$k] = $EnvironmentMap[$k] } }
+        if ($RequireProcessTreeRetirement) {
+            Initialize-LiveGateNative
+            return [GauntletLive.Native]::Run($psi, $StdinText, $TimeoutSec)
+        }
         $proc = [System.Diagnostics.Process]::Start($psi)
     } catch {
         $r.StartFailed = $true; $r.ErrorMessage = $_.Exception.Message; return $r
@@ -906,7 +1288,8 @@ function Invoke-CodexProcess {
         [string[]]$CodexArgs,
         [Parameter(Mandatory)][string]$PromptText,
         [Parameter(Mandatory)][string]$HarnessDir,
-        [ValidateRange(1, 86400)][int]$TimeoutSec = 1800
+        [ValidateRange(1, 86400)][int]$TimeoutSec = 1800,
+        [switch]$RequireProcessTreeRetirement
     )
     Assert-NoEmptyStringElements -FunctionName 'Invoke-CodexProcess' -ParameterName 'CodexArgs' -Values $CodexArgs
     $inv = Resolve-CliInvocation -Path $CliPath
@@ -914,10 +1297,11 @@ function Invoke-CodexProcess {
     foreach ($k in $script:RequiredChildEnv.Keys) { $childEnv[$k] = $script:RequiredChildEnv[$k] }
     $res = Invoke-BoundedProcess -FileName $inv.FileName -ArgList ($inv.PrefixArgs + $CodexArgs) `
         -StdinText $PromptText -WorkingDirectory $HarnessDir -TimeoutSec $TimeoutSec `
-        -EnvironmentMap $childEnv -ClearEnvironment
+        -EnvironmentMap $childEnv -ClearEnvironment -RequireProcessTreeRetirement:$RequireProcessTreeRetirement
     [pscustomobject]@{
         ExitCode = $res.ExitCode; StdoutLines = ($res.Stdout -split "`r?`n"); StderrText = $res.Stderr
         TimedOut = $res.TimedOut; StartFailed = $res.StartFailed; ErrorMessage = $res.ErrorMessage
+        ProcessTreeRetired = $res.ProcessTreeRetired
     }
 }
 
@@ -1050,14 +1434,24 @@ function New-HarnessDir {
     # Unpredictable name, generated on first use, must not already exist. A caller-chosen or
     # reusable id could point at a pre-existing directory holding a planted AGENTS.md.
     param([Parameter(Mandatory)][string]$RepoRoot)
-    $root = Join-Path $env:LOCALAPPDATA 'gauntlet-review\harness'
-    New-Item -ItemType Directory -Force $root | Out-Null
+    Initialize-LiveGateNative
+    $root = [IO.Path]::GetFullPath($env:LOCALAPPDATA)
+    Assert-LiveGatePathComponents -Path $root
+    foreach ($part in @('gauntlet-review','harness')) {
+        $root = Join-Path $root $part
+        $missing = $false
+        try { $null = [IO.File]::GetAttributes($root) }
+        catch [IO.FileNotFoundException] { $missing = $true }
+        catch [IO.DirectoryNotFoundException] { $missing = $true }
+        if ($missing) { [GauntletLive.Native]::CreateExclusiveDirectory($root) }
+        Assert-LiveGatePathComponents -Path $root
+    }
     $bytes = [byte[]]::new(16)
     [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
     $name = (-join ($bytes | ForEach-Object { $_.ToString('x2') }))
     $dir = Join-Path $root $name
     if (Test-Path $dir) { throw "harness collision on $name — refusing to reuse an existing directory" }
-    New-Item -ItemType Directory $dir | Out-Null          # no -Force: creation must be fresh
+    $null = New-OwnedLiveGateDirectory -Path $dir -Kind Harness
     return (Assert-HarnessSafe -Dir $dir -RepoRoot $RepoRoot)
 }
 
