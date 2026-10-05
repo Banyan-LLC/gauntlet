@@ -116,12 +116,20 @@ The offline suite does not call GitHub or make model requests.
 
 ### 3. Bind the installation to the local reviewer stack
 
-Run these commands in this exact order:
+Before calibration or either live gate, provide an existing trusted account-level Codex
+`AGENTS.md` at `%USERPROFILE%\.codex\AGENTS.md`. Both live gates refuse certification if
+this file is absent. If you intentionally use no account instructions, an empty trusted file
+is an explicit operator setup choice. These commands never create or fabricate that file.
+
+The security battery prepares temporary credential copies and requires explicit authorization
+to clean up its owned security tree for the actual live invocation. Only after authorizing that
+invocation and its cleanup, run these commands in this exact order. The
+`-AllowOwnedSecurityTreeCleanup` switch records that opt-in; omitting it refuses startup.
 
 ```powershell
 pwsh -File .\gauntlet-review\scripts\calibrate-premises.ps1
 pwsh -File .\tests\live\live-schema-gate.ps1
-pwsh -File .\tests\live\live-security.ps1
+pwsh -File .\tests\live\live-security.ps1 -AllowOwnedSecurityTreeCleanup
 ```
 
 Calibration verifies the selected CLI, schema, account-level Codex `AGENTS.md`, and invocation
@@ -262,13 +270,16 @@ provenance mismatch. See [`gauntlet-review/SKILL.md`](gauntlet-review/SKILL.md) 
 ## Update or reinstall
 
 After pulling changes to this repository, run the offline suite and `install.ps1` again. If the
-installer reports stale stack identity or live evidence—commonly after a Codex CLI, schema,
-invocation-policy, or account-level `~/.codex/AGENTS.md` change—repeat the complete sequence:
+installer reports stale stack identity or live evidence (commonly after a Codex CLI, schema,
+invocation-policy, or account-level `~/.codex/AGENTS.md` change), repeat the complete sequence.
+First verify the existing trusted `%USERPROFILE%\.codex\AGENTS.md` prerequisite above and
+explicitly authorize the actual security invocation and its owned-tree cleanup again. Missing
+instructions or an omitted cleanup opt-in still refuse certification; do not bypass either check.
 
 ```powershell
 pwsh -File .\gauntlet-review\scripts\calibrate-premises.ps1
 pwsh -File .\tests\live\live-schema-gate.ps1
-pwsh -File .\tests\live\live-security.ps1
+pwsh -File .\tests\live\live-security.ps1 -AllowOwnedSecurityTreeCleanup
 pwsh -File .\install.ps1
 ```
 
