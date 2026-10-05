@@ -31,6 +31,7 @@ try {
     $tmp = $schemaRecord.Path
     $cli = Select-CodexCli -Candidates (Get-CodexCandidates)
     $disable = Get-DisableSet -FeatureNames $cli.FeatureNames
+    # Live certification requires an existing account AGENTS.md; never create it implicitly.
     $gateInputs=New-LiveGateInputs -SkillRoot $skillRoot -Gate 'schema_gate' -ActualCli $cli -DisableSet $disable -LoadedGateText $gateLoadedText
     $harness = New-HarnessDir -RepoRoot $PSScriptRoot -RequireLiveGateOwnership
     $harnessRecord = Get-LiveGateDirectoryRecord -Path $harness

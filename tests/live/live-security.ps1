@@ -128,6 +128,7 @@ try {
     Write-Host "Version: $($cli.Version)  SHA256: $($cli.Sha256)" -ForegroundColor Cyan
     $allFeatures = @($cli.FeatureNames)
     $inputSkillRoot="$PSScriptRoot\..\..\gauntlet-review"
+    # Live certification requires an existing account AGENTS.md; never create it implicitly.
     $gateInputs=New-LiveGateInputs -SkillRoot $inputSkillRoot -Gate 'security_battery' -ActualCli $cli -DisableSet (Get-DisableSet -FeatureNames $cli.FeatureNames) -LoadedGateText $gateLoadedText
     $initialAgentsHash=if ($agentsMdSrcExists) { $agentsMdSrcSha256 } else { 'absent' }
     if ($initialAgentsHash -cne $gateInputs.AgentsMdSha256) { throw 'Account instructions changed before execution identity capture' }

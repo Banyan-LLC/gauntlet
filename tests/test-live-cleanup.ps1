@@ -351,9 +351,63 @@ try {
                 [IO.File]::Delete($fakeAgents)
                 $absentInputs=New-LiveGateInputs -SkillRoot $fakeSkill -Gate 'schema_gate' -ActualCli $fakeSelection -DisableSet @('apps') -AgentsPath $fakeAgents
                 $inputRecords.Add($absentInputs)
-                Assert-Eq $absentInputs.AgentsMdSha256 'absent' 'optional instructions remain explicitly absent without fabricating or requiring account setup'
+                Assert-Eq $absentInputs.AgentsMdSha256 'absent' 'isolated fixtures retain explicit absence without requiring account setup'
                 Complete-LiveGateInputs -Inputs $absentInputs -ProcessTreeRetired $true
             } finally { [IO.File]::WriteAllBytes($fakeAgents,$optionalAgents) }
+            # Exercise the actual executing-root branch in a copied source process only.
+            # USERPROFILE names a nonexistent dummy account. No gate body or CLI is run.
+            $absenceProbePath=Join-Path $inputFixture.Path 'offline-absence-probe.ps1'
+            $fixtureFiles.Add($absenceProbePath)
+            [IO.File]::WriteAllText($absenceProbePath,@'
+$ErrorActionPreference='Stop'
+$env:USERPROFILE=Join-Path $PSScriptRoot 'nonexistent-offline-account'
+. (Join-Path $PSScriptRoot 'tests/helpers.ps1')
+. (Join-Path $PSScriptRoot 'gauntlet-review/scripts/lib.ps1')
+$offlineSkill=Join-Path $PSScriptRoot 'gauntlet-review'
+$offlineCli=Join-Path $PSScriptRoot 'offline-cli.txt'
+$offlineSchemaHash=(Get-FileHash -LiteralPath (Join-Path $offlineSkill 'schemas/verdict.schema.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+$offlineSelection=[pscustomobject]@{Path=$offlineCli;Version='offline-only';Sha256=(Get-FileHash -LiteralPath $offlineCli -Algorithm SHA256).Hash.ToLowerInvariant()}
+function Test-StackAcceptance {
+    $script:OfflineAcceptanceCalls++
+    return [pscustomobject]@{Valid=$true;Manifest=[pscustomobject]@{schema_sha256=$offlineSchemaHash;agents_md_sha256='absent'}}
+}
+$offlineReports=@()
+foreach ($offlineGate in @('schema_gate','security_battery')) {
+    $script:OfflineAcceptanceCalls=0
+    $offlineInputs=$null; $offlineMessage=''; $offlineContinuation=$false
+    $offlineGateName=if ($offlineGate -eq 'schema_gate') { 'live-schema-gate.ps1' } else { 'live-security.ps1' }
+    try {
+        $offlineInputs=New-LiveGateInputs -SkillRoot $offlineSkill -Gate $offlineGate -ActualCli $offlineSelection -LoadedGateText ([IO.File]::ReadAllText((Join-Path $PSScriptRoot ('tests/live/'+$offlineGateName))))
+        $offlineContinuation=$true
+    } catch { $offlineMessage=$_.Exception.Message }
+    $offlineTokenCount=$script:LiveGateInputs.Count
+    if ($null -ne $offlineInputs) {
+        Complete-LiveGateInputs -Inputs $offlineInputs -ProcessTreeRetired $true
+        $script:LiveGateInputs.Remove($offlineInputs.Token) | Out-Null
+    }
+    $offlineLeasesReleased=$true
+    foreach ($offlinePath in @($offlineCli)+@(Get-ChildItem -LiteralPath (Join-Path $offlineSkill 'scripts') -File)+@((Join-Path $offlineSkill 'schemas/verdict.schema.json'),(Join-Path $PSScriptRoot 'tests/helpers.ps1'),(Join-Path $PSScriptRoot 'tests/live/live-schema-gate.ps1'),(Join-Path $PSScriptRoot 'tests/live/live-security.ps1'))) {
+        $offlineStream=$null
+        try { $offlineStream=[IO.FileStream]::new([string]$offlinePath,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::Read) }
+        catch { $offlineLeasesReleased=$false }
+        finally { if ($null -ne $offlineStream) { $offlineStream.Dispose() } }
+    }
+    $offlineReports += [pscustomobject]@{Gate=$offlineGate;Message=$offlineMessage;AcceptanceCalls=$script:OfflineAcceptanceCalls;Continuation=$offlineContinuation;TokenCount=$offlineTokenCount;LeasesReleased=$offlineLeasesReleased;AccountCreated=[IO.Directory]::Exists($env:USERPROFILE)}
+}
+ConvertTo-Json -InputObject $offlineReports -Compress
+'@)
+            $absenceProbe=Invoke-BoundedProcess -FileName ([Environment]::ProcessPath) -ArgList @('-NoProfile','-NonInteractive','-File',$absenceProbePath) -TimeoutSec 15
+            Assert-Eq $absenceProbe.ExitCode 0 'copied-source absence probe completes without a model invocation'
+            $absenceReports=@($absenceProbe.Stdout | ConvertFrom-Json)
+            Assert-Eq $absenceReports.Count 2 'absence refusal covers both actual-root gate kinds'
+            foreach ($absenceReport in $absenceReports) {
+                Assert-Eq $absenceReport.Message 'Account instructions were absent. This live run cannot certify stable instruction input.' "actual-root certification refuses absent instructions ($($absenceReport.Gate))"
+                Assert-Eq $absenceReport.AcceptanceCalls 0 'absence refusal precedes even inert stack acceptance'
+                Assert-True (-not $absenceReport.Continuation) 'absence refusal never reaches the inert prelaunch continuation'
+                Assert-Eq $absenceReport.TokenCount 0 'absence refusal publishes no execution input token'
+                Assert-True $absenceReport.LeasesReleased 'absence refusal releases all partially acquired source leases'
+                Assert-True (-not $absenceReport.AccountCreated) 'absence refusal fabricates no account directory or instruction file'
+            }
             $unknownInputs=[pscustomobject]@{Token=[guid]::NewGuid().ToString('n')}
             Assert-Throws { Invoke-LiveGateStamp -FailureCount 0 -CleanupResults @([pscustomobject]@{Accepted=$true}) -Inputs $unknownInputs -Stamp { throw 'must not enter writer' } } 'caller supplied input tokens cannot authorize a stamp'
         } finally {

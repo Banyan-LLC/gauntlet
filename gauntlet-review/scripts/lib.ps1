@@ -641,8 +641,11 @@ function New-LiveGateInputs {
             $agentsHash=(Get-FileHash -LiteralPath $AgentsPath -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
         }
         catch [IO.FileNotFoundException] { } catch [IO.DirectoryNotFoundException] { }
-        # Optional absence remains a declared input. Polling it does not prove that no transient
-        # account instruction file appeared during a real invocation; that behavior is unresolved.
+        # Actual certification requires present account instructions before any model call.
+        # Nonexecuting isolated fixtures may retain explicit absence without account setup.
+        if ($runtimeRoot -and $agentsHash -eq 'absent') {
+            throw 'Account instructions were absent. This live run cannot certify stable instruction input.'
+        }
         $profileHash=Get-InvocationProfileHash -DisableSet $DisableSet
         $captured=[pscustomobject]@{
             Root=$root; Gate=$Gate; Cli=[pscustomobject]@{Path=$ActualCli.Path;Version=$ActualCli.Version;Sha256=$cliHash}
