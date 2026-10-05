@@ -138,6 +138,9 @@ try {
         Assert-Throws { Write-LiveGateChildFile -Record $producer -Directory $offlineHome -Name 'auth.json' -Bytes ([byte[]]@(0)) } 'existing credential destinations are never reused or overwritten'
         Assert-Throws { [IO.Directory]::Move($offlineHome, ($offlineHome + '-moved')) } 'credential home stays pinned through producer writes'
         Assert-Throws { [IO.File]::Move($auth, (Join-Path $producer.Path 'moved-auth.json')) } 'copied credential object cannot be renamed outside its registered home'
+        $offlineInstructions=Join-Path $offlineHome 'AGENTS.md'
+        Write-LiveGateChildFile -Record $producer -Directory $offlineHome -Name 'AGENTS.md' -Bytes $dummyCredential
+        Assert-Throws { [IO.File]::AppendAllText($offlineInstructions,'changed') } 'copied trusted instructions cannot change while their owned consumer is active'
         Assert-Throws { New-LiveGateChildDirectory -Record $producer -Name 'home-offline' } 'an existing child cannot become a new credential destination'
         Assert-Throws { Write-LiveGateChildFile -Record $producer -Directory ([IO.Path]::GetTempPath()) -Name 'auth.json' -Bytes $dummyCredential } 'owned writer refuses a directory outside its private creation records'
         Assert-Throws { Write-LiveGateChildFile -Record $producer -Directory $offlineHome -Name '../escape' -Bytes $dummyCredential } 'owned writer refuses child path traversal'
@@ -154,6 +157,7 @@ try {
         $script:LiveGateDirectories[$producer.Token].Custody.Dispose()
         [IO.File]::Delete($auth)
         [IO.File]::Delete((Join-Path $offlineHome 'config.toml'))
+        [IO.File]::Delete($offlineInstructions)
         [IO.File]::Delete($linkedConfig)
         [IO.Directory]::Delete($offlineHome,$false)
         [IO.Directory]::Delete($offlineCwd,$false)
@@ -267,6 +271,71 @@ try {
     $job = Invoke-BoundedProcess -FileName 'C:\does-not-exist\never.exe' -TimeoutSec 2 -RequireProcessTreeRetirement
     Assert-True $job.StartFailed 'contained launch failure is structured'
     Assert-True $job.ProcessTreeRetired 'a launch that created no process leaves no credential consumer'
+
+    $hasInputBinding = $null -ne (Get-Command New-LiveGateInputs -ErrorAction SilentlyContinue) -and $null -ne (Get-Command Complete-LiveGateInputs -ErrorAction SilentlyContinue) -and (Get-Command Invoke-LiveGateStamp).Parameters.ContainsKey('Inputs')
+    Assert-True $hasInputBinding 'live stamps require a captured input identity and reject untested drift'
+    if ($hasInputBinding) {
+        $inputFixture=New-LiveGateDirectory -Kind Schema
+        $owned.Add($inputFixture)
+        $fixtureDirectories=@('gauntlet-review','gauntlet-review/scripts','gauntlet-review/schemas','tests','tests/live')
+        $fixtureFiles=[Collections.Generic.List[string]]::new()
+        $inputRecords=[Collections.Generic.List[object]]::new()
+        try {
+            foreach ($relative in $fixtureDirectories) { [IO.Directory]::CreateDirectory((Join-Path $inputFixture.Path $relative)) | Out-Null }
+            $publicSources=@('gauntlet-review/scripts/lib.ps1','gauntlet-review/scripts/invoke-codex.ps1','gauntlet-review/scripts/publish-review.ps1','gauntlet-review/scripts/calibrate-premises.ps1','gauntlet-review/schemas/verdict.schema.json','tests/helpers.ps1','tests/live/live-schema-gate.ps1','tests/live/live-security.ps1')
+            foreach ($relative in $publicSources) {
+                $destination=Join-Path $inputFixture.Path $relative
+                [IO.File]::Copy((Join-Path (Split-Path $PSScriptRoot -Parent) $relative),$destination)
+                $fixtureFiles.Add($destination)
+            }
+            $fakeCli=Join-Path $inputFixture.Path 'offline-cli.txt'
+            $fakeAgents=Join-Path $inputFixture.Path 'offline-agents.md'
+            $fakeSkill=Join-Path $inputFixture.Path 'gauntlet-review'
+            $fakePremises=Join-Path $fakeSkill 'premises.json'
+            [IO.File]::WriteAllText($fakeCli,'offline identity, never executed')
+            [IO.File]::WriteAllText($fakeAgents,'offline trusted instructions')
+            [IO.File]::WriteAllText($fakePremises,'{"offline_fixture":true}')
+            foreach ($path in @($fakeCli,$fakeAgents,$fakePremises)) { $fixtureFiles.Add($path) }
+            $fakeSelection=[pscustomobject]@{Path=$fakeCli;Version='offline-only';Sha256=(Get-FileHash -LiteralPath $fakeCli -Algorithm SHA256).Hash.ToLowerInvariant()}
+            $bound=New-LiveGateInputs -SkillRoot $fakeSkill -Gate 'schema_gate' -ActualCli $fakeSelection -DisableSet @('apps') -AgentsPath $fakeAgents
+            $inputRecords.Add($bound)
+            Assert-Throws { [IO.File]::AppendAllText((Join-Path $fakeSkill 'schemas/verdict.schema.json'),'changed') } 'tested schema stays read-only until process retirement is confirmed'
+            Assert-Throws { Complete-LiveGateInputs -Inputs $bound -ProcessTreeRetired 1 } 'numeric truth cannot release execution input leases'
+            Complete-LiveGateInputs -Inputs $bound -ProcessTreeRetired $true
+            $manifestLease=[IO.FileStream]::new($fakePremises,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::Read)
+            try {
+                $script:LiveGateInputs[$bound.Token] | Add-Member -NotePropertyName ManifestWriter -NotePropertyValue $manifestLease -Force
+                Assert-Throws { [IO.File]::AppendAllText($fakePremises,'changed') } 'evidence transaction excludes a concurrent calibration writer'
+                $manifestBindingAccepted=$false
+                try { Assert-LiveGateInputs -Inputs $bound -RequireReleased; $manifestBindingAccepted=$true } catch { }
+                Assert-True $manifestBindingAccepted 'evidence checks the captured manifest through its held transaction stream'
+            } finally {
+                $script:LiveGateInputs[$bound.Token].ManifestWriter=$null
+                $manifestLease.Dispose()
+            }
+            $inputStampProbe=[Collections.Generic.List[string]]::new()
+            Invoke-LiveGateStamp -FailureCount 0 -CleanupResults @([pscustomobject]@{Accepted=$true}) -Inputs $bound -Stamp { $inputStampProbe.Add('accepted') }
+            Assert-Eq $inputStampProbe.Count 1 'unchanged captured inputs permit the inert stamp callback'
+            foreach ($driftPath in @($fakeCli,$fakeAgents,(Join-Path $fakeSkill 'schemas/verdict.schema.json'),(Join-Path $fakeSkill 'scripts/publish-review.ps1'),(Join-Path $inputFixture.Path 'tests/live/live-schema-gate.ps1'),$fakePremises)) {
+                $bound=New-LiveGateInputs -SkillRoot $fakeSkill -Gate 'schema_gate' -ActualCli $fakeSelection -DisableSet @('apps') -AgentsPath $fakeAgents
+                $inputRecords.Add($bound)
+                Complete-LiveGateInputs -Inputs $bound -ProcessTreeRetired $true
+                $original=[IO.File]::ReadAllBytes($driftPath)
+                try {
+                    [IO.File]::AppendAllText($driftPath,"`nchanged")
+                    $inputStampProbe.Clear()
+                    Assert-Throws { Invoke-LiveGateStamp -FailureCount 0 -CleanupResults @([pscustomobject]@{Accepted=$true}) -Inputs $bound -Stamp { $inputStampProbe.Add('accepted') } } "changed captured input refuses evidence ($([IO.Path]::GetFileName($driftPath)))"
+                    Assert-Eq $inputStampProbe.Count 0 'input drift never invokes the inert evidence callback'
+                } finally { [IO.File]::WriteAllBytes($driftPath,$original) }
+            }
+            $unknownInputs=[pscustomobject]@{Token=[guid]::NewGuid().ToString('n')}
+            Assert-Throws { Invoke-LiveGateStamp -FailureCount 0 -CleanupResults @([pscustomobject]@{Accepted=$true}) -Inputs $unknownInputs -Stamp { throw 'must not enter writer' } } 'caller supplied input tokens cannot authorize a stamp'
+        } finally {
+            foreach ($bound in $inputRecords) { Complete-LiveGateInputs -Inputs $bound -ProcessTreeRetired $true }
+            foreach ($path in $fixtureFiles) { [IO.File]::Delete($path) }
+            for ($directoryIndex=$fixtureDirectories.Count-1; $directoryIndex -ge 0; $directoryIndex--) { [IO.Directory]::Delete((Join-Path $inputFixture.Path $fixtureDirectories[$directoryIndex]),$false) }
+        }
+    }
 
     # Load only the production tracker function AST, never the live gate's top-level body.
     $tokens = $null; $errors = $null

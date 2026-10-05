@@ -45,6 +45,7 @@ if (-not $AllowOwnedSecurityTreeCleanup) {
      documented, evidence-based narrowing decided BEFORE any live call, per the task's own
      instruction to check --help/features-list shape first, not a silent drop.
 #>
+$gateLoadedText=$MyInvocation.MyCommand.ScriptBlock.Ast.Extent.Text
 . "$PSScriptRoot\..\helpers.ps1"
 . "$PSScriptRoot\..\..\gauntlet-review\scripts\lib.ps1"
 $ErrorActionPreference = 'Stop'
@@ -60,6 +61,7 @@ $ErrorActionPreference = 'Stop'
 # leftover-credential sweep never has to guess which directories might hold auth material.
 # ==============================================================================================
 $securityDirectory = $null
+$gateInputs = $null
 $guidRoot = '<not-created>'
 $authSrc = "$env:USERPROFILE\.codex\auth.json"
 # FINDING 3 fix (P1): the account-level AGENTS.md is accepted, trusted, production input (design
@@ -81,6 +83,8 @@ function Invoke-SecurityProcess {
     param([Parameter(Mandatory)][string]$FileName, [string[]]$ArgList=@(), [string]$StdinText,
           [string]$WorkingDirectory=([IO.Path]::GetTempPath()), [int]$TimeoutSec=120,
           [hashtable]$EnvironmentMap, [switch]$ClearEnvironment)
+    $inputState=Get-Variable -Name gateInputs -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+    if ($null -ne $inputState) { Assert-LiveGateInputs -Inputs $inputState }
     # Register before launch. A throw or incomplete return retains unresolved ownership.
     $slot = [pscustomobject]@{ ProcessTreeRetired=$false; Error='Runner has not returned' }
     $script:SecurityProcessRuns.Add($slot)
@@ -123,6 +127,10 @@ try {
     Write-Host "CLI: $($cli.Path)" -ForegroundColor Cyan
     Write-Host "Version: $($cli.Version)  SHA256: $($cli.Sha256)" -ForegroundColor Cyan
     $allFeatures = @($cli.FeatureNames)
+    $inputSkillRoot="$PSScriptRoot\..\..\gauntlet-review"
+    $gateInputs=New-LiveGateInputs -SkillRoot $inputSkillRoot -Gate 'security_battery' -ActualCli $cli -DisableSet (Get-DisableSet -FeatureNames $cli.FeatureNames) -LoadedGateText $gateLoadedText
+    $initialAgentsHash=if ($agentsMdSrcExists) { $agentsMdSrcSha256 } else { 'absent' }
+    if ($initialAgentsHash -cne $gateInputs.AgentsMdSha256) { throw 'Account instructions changed before execution identity capture' }
     $pwshAbs = [System.Environment]::ProcessPath
 
     function New-ControlHome {
@@ -1140,6 +1148,10 @@ Additionally, list any environment variables visible to you in the summary field
     # ---- REQUIREMENT 4, enforced on every exit path -------------------------------------------
     $retired = $script:SecurityProcessRuns.TrueForAll([Predicate[object]]{ param($run) $run.ProcessTreeRetired -is [bool] -and $run.ProcessTreeRetired })
     Assert-True $retired 'all owned battery process trees physically retired before credential cleanup'
+    if ($null -ne $gateInputs) {
+        try { Complete-LiveGateInputs -Inputs $gateInputs -ProcessTreeRetired $retired }
+        catch { Assert-True $false "execution input release failed: $($_.Exception.Message)" }
+    }
     foreach ($cleanup in @(Complete-LiveGateDirectories -Kinds @('Harness','Security') -ProcessTreeRetired $retired -AllowSecurityTreeCleanup:$AllowOwnedSecurityTreeCleanup)) {
         $script:SecurityCleanupResults.Add($cleanup)
         Assert-True $cleanup.Accepted "owned battery cleanup accepted ($($cleanup.Path)): $($cleanup.Error)"
@@ -1171,19 +1183,16 @@ if ($script:Failures.Count -eq 0) {
     } else {
         $stampSkillRoot = "$PSScriptRoot\..\..\gauntlet-review"
         $stampSchema    = "$stampSkillRoot\schemas\verdict.schema.json"
-        $stampAgents    = "$env:USERPROFILE\.codex\AGENTS.md"
-        $stampAgentsSha = if (Test-Path $stampAgents) { (Get-FileHash -Algorithm SHA256 $stampAgents).Hash.ToLowerInvariant() } else { 'absent' }
         # try/catch + POST-STAMP ASSERTION for the same reason live-schema-gate.ps1 has them: a
         # strict-mode error inside Write-LiveEvidence previously stamped nothing while the gate
         # still reported all-green and exited 0. After a ~4.5-minute battery, a silent non-stamp
         # is especially expensive to discover later, so it is asserted here rather than assumed.
         $stampErr = $null
         try {
-            Invoke-LiveGateStamp -FailureCount $script:Failures.Count -CleanupResults $script:SecurityCleanupResults.ToArray() -Stamp {
+            Invoke-LiveGateStamp -FailureCount $script:Failures.Count -CleanupResults $script:SecurityCleanupResults.ToArray() -Inputs $gateInputs -Stamp {
                 Write-LiveEvidence -SkillRoot $stampSkillRoot -Gate 'security_battery' -ActualCli $cli `
-                    -SchemaSha256 (Get-FileHash -Algorithm SHA256 $stampSchema).Hash.ToLowerInvariant() `
-                    -AgentsMdSha256 $stampAgentsSha `
-                    -InvocationProfileHash (Get-InvocationProfileHash -DisableSet (Get-DisableSet -FeatureNames $cli.FeatureNames))
+                    -SchemaSha256 $gateInputs.SchemaSha256 -AgentsMdSha256 $gateInputs.AgentsMdSha256 `
+                    -InvocationProfileHash $gateInputs.InvocationProfileHash -Inputs $gateInputs
             }
         } catch { $stampErr = $_.Exception.Message }
         Assert-True ($null -eq $stampErr) "security_battery live-evidence stamp completed without error$(if ($stampErr) { " -- $stampErr" })"

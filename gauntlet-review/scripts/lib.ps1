@@ -14,6 +14,7 @@ $script:RequiredExecFlags = @('--output-schema','--output-last-message','--json'
 
 # Run-local ownership. Public records contain a token and path, never editable authority.
 $script:LiveGateDirectories = [Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
+$script:LiveGateInputs = [Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
 
 function Initialize-LiveGateNative {
     if (-not $IsWindows) { throw 'Live gate ownership and process containment require Windows' }
@@ -284,7 +285,7 @@ namespace GauntletLive {
             if (String.IsNullOrEmpty(name) || name.Length > 255 || name == "." || name == ".." || name.EndsWith(".") || name.EndsWith(" ") ||
                 name.IndexOfAny(new char[] {'\\','/',':','\0','*','?','"','<','>','|'}) >= 0) throw new ArgumentException("Invalid owned child name");
         }
-        static SafeFileHandle Relative(SafeFileHandle parent, string name, bool create, bool directory, bool deleteAccess) {
+        static SafeFileHandle Relative(SafeFileHandle parent, string name, bool create, bool directory, bool deleteAccess, uint sharing=3) {
             Leaf(name);
             IntPtr text=Marshal.StringToHGlobalUni(name), unicode=IntPtr.Zero;
             try {
@@ -295,7 +296,7 @@ namespace GauntletLive {
                 uint options=0x00200020u | (directory ? 1u : (create ? 0x40u : 0u));
                 SafeFileHandle handle; IoStatus status;
                 int code=NtCreateFile(out handle, access, ref attributes, out status, IntPtr.Zero, directory ? 0x10u : 0x80u,
-                    3, create ? 2u : 1u, options, IntPtr.Zero, 0);
+                    sharing, create ? 2u : 1u, options, IntPtr.Zero, 0);
                 if (code < 0) { handle?.Dispose(); throw new Win32Exception((int)RtlNtStatusToDosError(code)); }
                 return handle;
             } finally { if (unicode != IntPtr.Zero) Marshal.FreeHGlobal(unicode); Marshal.FreeHGlobal(text); }
@@ -353,7 +354,7 @@ namespace GauntletLive {
             public void WriteFile(string parent, string name, byte[] bytes) {
                 var owner=DirectoryEntry(parent); Leaf(name);
                 var child=new Entry {Path=System.IO.Path.Combine(owner.Path,name)};
-                child.Handle=Relative(owner.Handle,name,true,false,true);
+                child.Handle=Relative(owner.Handle,name,true,false,true,String.Equals(name,"AGENTS.md",StringComparison.OrdinalIgnoreCase) ? 1u : 3u);
                 produced.Add(child.Path,child); Regular(child.Handle);
                 using (var stream=new FileStream(new SafeFileHandle(child.Handle.DangerousGetHandle(),false),FileAccess.Write)) {
                     stream.Write(bytes,0,bytes.Length); stream.Flush(true);
@@ -597,12 +598,101 @@ function Remove-LiveGateDirectory {
     return $result
 }
 
+function New-LiveGateInputs {
+    param([Parameter(Mandatory)][string]$SkillRoot, [Parameter(Mandatory)][ValidateSet('schema_gate','security_battery')][string]$Gate,
+          [Parameter(Mandatory)][pscustomobject]$ActualCli, [string[]]$DisableSet=@(),
+          [string]$AgentsPath="$env:USERPROFILE\.codex\AGENTS.md", [string]$LoadedGateText)
+    $root=[IO.Path]::GetFullPath($SkillRoot).TrimEnd('\','/')
+    $definition=(Get-Command New-LiveGateInputs).ScriptBlock
+    $executingRoot=[IO.Path]::GetFullPath((Split-Path (Split-Path $definition.File -Parent) -Parent)).TrimEnd('\','/')
+    $runtimeRoot=[StringComparer]::OrdinalIgnoreCase.Equals($root,$executingRoot)
+    $schemaPath=Join-Path $root 'schemas/verdict.schema.json'
+    $gatePath=Join-Path (Split-Path $root -Parent) $(if ($Gate -eq 'schema_gate') { 'tests/live/live-schema-gate.ps1' } else { 'tests/live/live-security.ps1' })
+    $libraryPath=Join-Path $root 'scripts/lib.ps1'
+    $ast=$definition.Ast
+    while ($ast.Parent) { $ast=$ast.Parent }
+    if ($ast.Extent.Text -cne [IO.File]::ReadAllText($libraryPath)) { throw 'Loaded library differs from the source being tested' }
+    if ($runtimeRoot) {
+        if ([IO.Path]::GetFullPath($AgentsPath) -cne [IO.Path]::GetFullPath("$env:USERPROFILE\.codex\AGENTS.md")) { throw 'Live source inputs must name the production account instructions' }
+        if ([string]::IsNullOrEmpty($LoadedGateText) -or $LoadedGateText -cne [IO.File]::ReadAllText($gatePath)) { throw 'Loaded live gate differs from the source being tested' }
+    }
+    $leases=[Collections.Generic.List[IDisposable]]::new()
+    $token=[guid]::NewGuid().ToString('n')
+    try {
+        # The executable and submitted schema cannot be replaced or edited during model calls.
+        foreach ($inputPath in @($ActualCli.Path,$schemaPath)) { $leases.Add([IO.FileStream]::new($inputPath,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)) }
+        $cliHash=(Get-FileHash -LiteralPath $ActualCli.Path -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
+        if ($cliHash -cne $ActualCli.Sha256) { throw 'Selected CLI identity changed before execution' }
+        $agentsHash='absent'
+        try { $null=[IO.File]::GetAttributes($AgentsPath); $agentsHash=(Get-FileHash -LiteralPath $AgentsPath -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant() }
+        catch [IO.FileNotFoundException] { } catch [IO.DirectoryNotFoundException] { }
+        $profileHash=Get-InvocationProfileHash -DisableSet $DisableSet
+        $captured=[pscustomobject]@{
+            Root=$root; Gate=$Gate; Cli=[pscustomobject]@{Path=$ActualCli.Path;Version=$ActualCli.Version;Sha256=$cliHash}
+            SchemaPath=$schemaPath; SchemaSha256=(Get-FileHash -LiteralPath $schemaPath -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
+            AgentsPath=[IO.Path]::GetFullPath($AgentsPath); AgentsMdSha256=$agentsHash; DisableSet=@($DisableSet); InvocationProfileHash=$profileHash
+            WrapperFingerprint=(Get-WrapperFingerprint -SkillRoot $root); GateFingerprint=(Get-GateFingerprint -RepoRoot (Split-Path $root -Parent))
+            ManifestPath=(Join-Path $root 'premises.json'); ManifestSha256=(Get-FileHash -LiteralPath (Join-Path $root 'premises.json') -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
+            Leases=$leases; Released=$false; RuntimeRoot=$runtimeRoot; ManifestWriter=$null
+        }
+        if ($runtimeRoot) {
+            $accepted=Test-StackAcceptance -SkillRoot $root -ActualCli $captured.Cli -InvocationProfileHash $profileHash
+            if (-not $accepted.Valid) { throw "Live inputs lack current stack acceptance: $($accepted.Reason)" }
+            if ($accepted.Manifest.schema_sha256 -cne $captured.SchemaSha256 -or $accepted.Manifest.agents_md_sha256 -cne $agentsHash) { throw 'Inputs changed during stack acceptance' }
+        }
+        $script:LiveGateInputs.Add($token,$captured)
+        $record=[pscustomobject]@{Token=$token;SchemaSha256=$captured.SchemaSha256;AgentsMdSha256=$agentsHash;InvocationProfileHash=$profileHash}
+        Assert-LiveGateInputs -Inputs $record
+        return $record
+    } catch {
+        $script:LiveGateInputs.Remove($token) | Out-Null
+        foreach ($lease in $leases) { $lease.Dispose() }
+        throw
+    }
+}
+
+function Assert-LiveGateInputs {
+    param([Parameter(Mandatory)]$Inputs, [switch]$RequireReleased)
+    if (-not $script:LiveGateInputs.ContainsKey([string]$Inputs.Token)) { throw 'Unknown execution input ownership token' }
+    $captured=$script:LiveGateInputs[[string]$Inputs.Token]
+    if ($RequireReleased -and -not $captured.Released) { throw 'Execution input consumers have not confirmed retirement' }
+    foreach ($pair in @(@($captured.Cli.Path,$captured.Cli.Sha256),@($captured.SchemaPath,$captured.SchemaSha256))) {
+        if ((Get-FileHash -LiteralPath $pair[0] -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant() -cne $pair[1]) { throw "Tested input changed: $($pair[0])" }
+    }
+    if ($null -ne $captured.ManifestWriter) {
+        $manifestPosition=$captured.ManifestWriter.Position
+        $manifestHasher=[Security.Cryptography.SHA256]::Create()
+        try {
+            $captured.ManifestWriter.Position=0
+            $manifestHash=[Convert]::ToHexString($manifestHasher.ComputeHash($captured.ManifestWriter)).ToLowerInvariant()
+        } finally { $captured.ManifestWriter.Position=$manifestPosition; $manifestHasher.Dispose() }
+    } else { $manifestHash=(Get-FileHash -LiteralPath $captured.ManifestPath -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant() }
+    if ($manifestHash -cne $captured.ManifestSha256) { throw 'Tested acceptance manifest changed during the gate' }
+    $agentsHash='absent'
+    try { $null=[IO.File]::GetAttributes($captured.AgentsPath); $agentsHash=(Get-FileHash -LiteralPath $captured.AgentsPath -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant() }
+    catch [IO.FileNotFoundException] { } catch [IO.DirectoryNotFoundException] { }
+    if ($agentsHash -cne $captured.AgentsMdSha256 -or
+        (Get-InvocationProfileHash -DisableSet $captured.DisableSet) -cne $captured.InvocationProfileHash -or
+        (Get-WrapperFingerprint -SkillRoot $captured.Root) -cne $captured.WrapperFingerprint -or
+        (Get-GateFingerprint -RepoRoot (Split-Path $captured.Root -Parent)) -cne $captured.GateFingerprint) { throw 'Tested instructions, invocation profile or source changed during the gate' }
+}
+
+function Complete-LiveGateInputs {
+    param([Parameter(Mandatory)]$Inputs, [Parameter(Mandatory)]$ProcessTreeRetired)
+    if ($ProcessTreeRetired -isnot [bool] -or -not $ProcessTreeRetired) { throw 'Input consumers have unresolved process-tree retirement' }
+    if (-not $script:LiveGateInputs.ContainsKey([string]$Inputs.Token)) { throw 'Unknown execution input ownership token' }
+    $captured=$script:LiveGateInputs[[string]$Inputs.Token]
+    foreach ($lease in $captured.Leases) { $lease.Dispose() }
+    $captured.Released=$true
+}
+
 function Invoke-LiveGateStamp {
-    param([Parameter(Mandatory)][int]$FailureCount, [AllowEmptyCollection()][object[]]$CleanupResults, [Parameter(Mandatory)][scriptblock]$Stamp)
+    param([Parameter(Mandatory)][int]$FailureCount, [AllowEmptyCollection()][object[]]$CleanupResults, [Parameter(Mandatory)][scriptblock]$Stamp, $Inputs)
     if ($FailureCount -ne 0 -or @($CleanupResults).Count -eq 0) { throw 'Live evidence requires zero failures and explicit cleanup acceptance' }
     foreach ($result in $CleanupResults) {
         if ($null -eq $result -or $result.Accepted -isnot [bool] -or -not $result.Accepted) { throw 'Live evidence is refused after failed or unresolved cleanup' }
     }
+    if ($null -ne $Inputs) { Assert-LiveGateInputs -Inputs $Inputs -RequireReleased }
     & $Stamp
 }
 
@@ -1447,50 +1537,94 @@ function Write-LiveEvidence {
        to -SkillRoot) and `gate_fingerprint` (Get-GateFingerprint, relative to -SkillRoot's
        parent) -- this script always runs in the dev repo (its only two callers each live next to
        a real tests/live/), so both are always genuinely computable here. Neither is ever
-       accepted as a caller-supplied value, so a stamp always reflects what is genuinely on disk
-       at stamping time. #>
+       accepted as caller-supplied source hashes. Executing source gates must supply their
+       private run-start input token; isolated nonexecuting roots retain low-level serialization
+       compatibility. Captured live identities are checked again and never replaced by late hashes. #>
     param([Parameter(Mandatory)][string]$SkillRoot,
           [Parameter(Mandatory)][ValidateSet('schema_gate','security_battery')][string]$Gate,
           [Parameter(Mandatory)][pscustomobject]$ActualCli,
           [Parameter(Mandatory)][string]$SchemaSha256,
           [Parameter(Mandatory)][string]$AgentsMdSha256,
-          [Parameter(Mandatory)][string]$InvocationProfileHash)
-    $path = Join-Path $SkillRoot 'premises.json'
-    if (-not (Test-Path $path)) { throw "premises.json is absent; run calibrate-premises.ps1 before stamping live evidence" }
-    $m = Get-Content -Raw $path | ConvertFrom-Json
-    $repoRoot = Split-Path $SkillRoot -Parent
-    $record = [pscustomobject]@{
-        gate = $Gate; utc = (Get-Date -AsUTC -Format o)
-        cli_path = $ActualCli.Path; cli_version = $ActualCli.Version; cli_sha256 = $ActualCli.Sha256
-        schema_sha256 = $SchemaSha256; agents_md_sha256 = $AgentsMdSha256
-        invocation_profile_sha256 = $InvocationProfileHash
-        wrapper_fingerprint = (Get-WrapperFingerprint -SkillRoot $SkillRoot)
-        gate_fingerprint = (Get-GateFingerprint -RepoRoot $repoRoot)
+          [Parameter(Mandatory)][string]$InvocationProfileHash, $Inputs)
+    $root=[IO.Path]::GetFullPath($SkillRoot).TrimEnd('\','/')
+    $definition=(Get-Command Write-LiveEvidence).ScriptBlock.File
+    $executingRoot=[IO.Path]::GetFullPath((Split-Path (Split-Path $definition -Parent) -Parent)).TrimEnd('\','/')
+    $captured=$null
+    if ($null -ne $Inputs) {
+        Assert-LiveGateInputs -Inputs $Inputs -RequireReleased
+        $captured=$script:LiveGateInputs[[string]$Inputs.Token]
+        if ($captured.Root -cne $root -or $captured.Gate -cne $Gate -or
+            $captured.Cli.Path -cne $ActualCli.Path -or $captured.Cli.Version -cne $ActualCli.Version -or $captured.Cli.Sha256 -cne $ActualCli.Sha256 -or
+            $captured.SchemaSha256 -cne $SchemaSha256 -or $captured.AgentsMdSha256 -cne $AgentsMdSha256 -or $captured.InvocationProfileHash -cne $InvocationProfileHash) {
+            throw 'Live stamp metadata differs from its tested private input record'
+        }
+    } elseif ([StringComparer]::OrdinalIgnoreCase.Equals($root,$executingRoot)) {
+        throw 'Executing source gates require a captured, retired execution input record'
     }
-    # `$x.PSObject.Properties.Name` is UNSAFE on an EMPTY pscustomobject under
-    # Set-StrictMode -Version Latest -- see Get-PropertyNames's own docstring (above, near the top
-    # of this file) for the full mechanism. The empty case is not exotic here: it is the NORMAL
-    # state of a freshly calibrated manifest (calibration deliberately drops the whole
-    # live_evidence object), so this fired on EVERY first stamp. Worse, it surfaced as a
-    # statement-terminating error that live-schema-gate.ps1 did not notice: the gate still printed
-    # "8 passed, 0 failed" and exited 0 while having stamped NOTHING (observed directly). This was
-    # the FIRST fix for this hazard (originally an inline local scriptblock, before
-    # Get-PropertyNames existed as a shared helper); it now calls that shared helper like every
-    # other site in this file does (see docs/build-log/task-14-report.md, FINDING 3).
-    $evidence = if (((Get-PropertyNames -InputObject $m) -contains 'live_evidence') -and ($null -ne $m.live_evidence)) { $m.live_evidence } else { [pscustomobject]@{} }
-    if ((Get-PropertyNames -InputObject $evidence) -contains $Gate) { $evidence.$Gate = $record }
-    else { $evidence | Add-Member -NotePropertyName $Gate -NotePropertyValue $record }
-    if ((Get-PropertyNames -InputObject $m) -contains 'live_evidence') { $m.live_evidence = $evidence }
-    else { $m | Add-Member -NotePropertyName 'live_evidence' -NotePropertyValue $evidence }
-    $m | ConvertTo-Json -Depth 6 | Set-Content -Path $path -Encoding utf8
+    $path = Join-Path $SkillRoot 'premises.json'
+    $manifestWriter=$null
+    try {
+        if ($captured) {
+            # Hold the tested manifest while validating, reading, writing and reading back. A
+            # concurrent calibration cannot replace or edit the object between those steps.
+            $manifestWriter=[IO.FileStream]::new($path,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::Read)
+            $captured.ManifestWriter=$manifestWriter
+            Assert-LiveGateInputs -Inputs $Inputs -RequireReleased
+        }
+        if (-not (Test-Path $path)) { throw "premises.json is absent; run calibrate-premises.ps1 before stamping live evidence" }
+        $readManifest={
+            if ($manifestWriter) {
+                $manifestWriter.Position=0
+                $reader=[IO.StreamReader]::new($manifestWriter,[Text.Encoding]::UTF8,$true,1024,$true)
+                try { $reader.ReadToEnd() } finally { $reader.Dispose() }
+            } else { Get-Content -Raw $path }
+        }
+        $m = (& $readManifest) | ConvertFrom-Json
+        $repoRoot = Split-Path $SkillRoot -Parent
+        $record = [pscustomobject]@{
+            gate = $Gate; utc = (Get-Date -AsUTC -Format o)
+            cli_path = $ActualCli.Path; cli_version = $ActualCli.Version; cli_sha256 = $ActualCli.Sha256
+            schema_sha256 = $SchemaSha256; agents_md_sha256 = $AgentsMdSha256
+            invocation_profile_sha256 = $InvocationProfileHash
+            wrapper_fingerprint = $(if ($captured) { $captured.WrapperFingerprint } else { Get-WrapperFingerprint -SkillRoot $SkillRoot })
+            gate_fingerprint = $(if ($captured) { $captured.GateFingerprint } else { Get-GateFingerprint -RepoRoot $repoRoot })
+        }
+        # `$x.PSObject.Properties.Name` is UNSAFE on an EMPTY pscustomobject under
+        # Set-StrictMode -Version Latest -- see Get-PropertyNames's own docstring (above, near the top
+        # of this file) for the full mechanism. The empty case is not exotic here: it is the NORMAL
+        # state of a freshly calibrated manifest (calibration deliberately drops the whole
+        # live_evidence object), so this fired on EVERY first stamp. Worse, it surfaced as a
+        # statement-terminating error that live-schema-gate.ps1 did not notice: the gate still printed
+        # "8 passed, 0 failed" and exited 0 while having stamped NOTHING (observed directly). This was
+        # the FIRST fix for this hazard (originally an inline local scriptblock, before
+        # Get-PropertyNames existed as a shared helper); it now calls that shared helper like every
+        # other site in this file does (see docs/build-log/task-14-report.md, FINDING 3).
+        $evidence = if (((Get-PropertyNames -InputObject $m) -contains 'live_evidence') -and ($null -ne $m.live_evidence)) { $m.live_evidence } else { [pscustomobject]@{} }
+        if ((Get-PropertyNames -InputObject $evidence) -contains $Gate) { $evidence.$Gate = $record }
+        else { $evidence | Add-Member -NotePropertyName $Gate -NotePropertyValue $record }
+        if ((Get-PropertyNames -InputObject $m) -contains 'live_evidence') { $m.live_evidence = $evidence }
+        else { $m | Add-Member -NotePropertyName 'live_evidence' -NotePropertyValue $evidence }
+        if ($manifestWriter) {
+            Assert-LiveGateInputs -Inputs $Inputs -RequireReleased
+            $manifestBytes=[Text.Encoding]::UTF8.GetBytes(($m | ConvertTo-Json -Depth 6) + [Environment]::NewLine)
+            $manifestWriter.Position=0
+            $manifestWriter.Write($manifestBytes,0,$manifestBytes.Length)
+            $manifestWriter.SetLength($manifestBytes.Length)
+            $manifestWriter.Flush($true)
+        } else { $m | ConvertTo-Json -Depth 6 | Set-Content -Path $path -Encoding utf8 }
 
-    # Read back and PROVE the record landed. A stamp is an authorization: "I wrote it" is not
-    # good enough when the failure mode we just fixed was a silent non-write. Throwing here is
-    # what converts a future silent-stamp regression into a loud gate failure.
-    $verify = Get-Content -Raw $path | ConvertFrom-Json
-    if (((Get-PropertyNames -InputObject $verify) -notcontains 'live_evidence') -or ($null -eq $verify.live_evidence) -or
-        ((Get-PropertyNames -InputObject $verify.live_evidence) -notcontains $Gate)) {
-        throw "live-evidence stamp for '$Gate' did not persist to $path"
+        # Read back and PROVE the record landed. A stamp is an authorization: "I wrote it" is not
+        # good enough when the failure mode we just fixed was a silent non-write. Throwing here is
+        # what converts a future silent-stamp regression into a loud gate failure.
+        $verify = (& $readManifest) | ConvertFrom-Json
+        if (((Get-PropertyNames -InputObject $verify) -notcontains 'live_evidence') -or ($null -eq $verify.live_evidence) -or
+            ((Get-PropertyNames -InputObject $verify.live_evidence) -notcontains $Gate)) {
+            throw "live-evidence stamp for '$Gate' did not persist to $path"
+        }
+        if ($captured) { $script:LiveGateInputs.Remove([string]$Inputs.Token) | Out-Null }
+    } finally {
+        if ($captured) { $captured.ManifestWriter=$null }
+        if ($manifestWriter) { $manifestWriter.Dispose() }
     }
 }
 

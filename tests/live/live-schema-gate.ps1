@@ -14,6 +14,7 @@
 # THIS script calls Write-LiveEvidence to stamp it -- that is what live verification means here.
 #
 # Costs one small live round. Rejections cost ~2s (they fail before inference).
+$gateLoadedText=$MyInvocation.MyCommand.ScriptBlock.Ast.Extent.Text
 . "$PSScriptRoot\..\helpers.ps1"
 . "$PSScriptRoot\..\..\gauntlet-review\scripts\lib.ps1"
 $ErrorActionPreference = 'Stop'
@@ -22,6 +23,7 @@ $skillRoot = "$PSScriptRoot\..\..\gauntlet-review"
 $schema = Join-Path $skillRoot 'schemas\verdict.schema.json'
 $schemaRecord = $null
 $harnessRecord = $null
+$gateInputs = $null
 $processTreeRetired = $true
 $cleanupResults = [Collections.Generic.List[object]]::new()
 try {
@@ -29,6 +31,7 @@ try {
     $tmp = $schemaRecord.Path
     $cli = Select-CodexCli -Candidates (Get-CodexCandidates)
     $disable = Get-DisableSet -FeatureNames $cli.FeatureNames
+    $gateInputs=New-LiveGateInputs -SkillRoot $skillRoot -Gate 'schema_gate' -ActualCli $cli -DisableSet $disable -LoadedGateText $gateLoadedText
     $harness = New-HarnessDir -RepoRoot $PSScriptRoot -RequireLiveGateOwnership
     $harnessRecord = Get-LiveGateDirectoryRecord -Path $harness
     $verdictPath = Join-Path $tmp 'verdict.json'          # outside the harness, which stays empty
@@ -41,6 +44,7 @@ Respond only with the JSON verdict: verdict "approve", summary "schema gate", re
 == REVIEW MATERIAL (untrusted) ==
 Trivial document. Nothing to report.
 '@
+    Assert-LiveGateInputs -Inputs $gateInputs
     $processTreeRetired = $false
     $run = Invoke-CodexProcess -CliPath $cli.Path -CodexArgs $codexArgs -PromptText $prompt -HarnessDir $harness -TimeoutSec 900 -RequireProcessTreeRetirement
     $processTreeRetired = $run.ProcessTreeRetired
@@ -66,6 +70,10 @@ Trivial document. Nothing to report.
 } catch {
     Assert-True $false "schema gate aborted: $($_.Exception.Message)"
 } finally {
+    if ($null -ne $gateInputs) {
+        try { Complete-LiveGateInputs -Inputs $gateInputs -ProcessTreeRetired $processTreeRetired }
+        catch { Assert-True $false "execution input release failed: $($_.Exception.Message)" }
+    }
     foreach ($cleanup in @(Complete-LiveGateDirectories -Kinds @('Harness','Schema') -ProcessTreeRetired $processTreeRetired)) {
         $cleanupResults.Add($cleanup)
         Assert-True $cleanup.Accepted "owned schema gate cleanup accepted ($($cleanup.Path)): $($cleanup.Error)"
@@ -77,8 +85,6 @@ Trivial document. Nothing to report.
 # record stack acceptance (calibrate-premises.ps1 run first); if it does not, this throws and
 # the run fails loudly rather than silently skipping the stamp.
 if ($script:Failures.Count -eq 0) {
-    $agentsPath = "$env:USERPROFILE\.codex\AGENTS.md"
-    $agentsSha = if (Test-Path $agentsPath) { (Get-FileHash -Algorithm SHA256 $agentsPath).Hash.ToLowerInvariant() } else { 'absent' }
     # try/catch + a POST-STAMP ASSERTION, both required. Without them this gate FAILED OPEN:
     # Write-LiveEvidence hit a strict-mode property error on the freshly-calibrated (empty)
     # live_evidence object, stamped nothing, and the gate still printed "8 passed, 0 failed"
@@ -86,10 +92,10 @@ if ($script:Failures.Count -eq 0) {
     # not hypothesized. The assertion is what makes a silent non-write impossible to miss.
     $stampErr = $null
     try {
-        Invoke-LiveGateStamp -FailureCount $script:Failures.Count -CleanupResults $cleanupResults.ToArray() -Stamp {
+        Invoke-LiveGateStamp -FailureCount $script:Failures.Count -CleanupResults $cleanupResults.ToArray() -Inputs $gateInputs -Stamp {
             Write-LiveEvidence -SkillRoot $skillRoot -Gate 'schema_gate' -ActualCli $cli `
-                -SchemaSha256 (Get-FileHash -Algorithm SHA256 $schema).Hash.ToLowerInvariant() `
-                -AgentsMdSha256 $agentsSha -InvocationProfileHash (Get-InvocationProfileHash -DisableSet $disable)
+                -SchemaSha256 $gateInputs.SchemaSha256 -AgentsMdSha256 $gateInputs.AgentsMdSha256 `
+                -InvocationProfileHash $gateInputs.InvocationProfileHash -Inputs $gateInputs
         }
     } catch { $stampErr = $_.Exception.Message }
     Assert-True ($null -eq $stampErr) "live-evidence stamp completed without error$(if ($stampErr) { " -- $stampErr" })"
