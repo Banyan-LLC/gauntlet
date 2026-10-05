@@ -1175,6 +1175,17 @@ function Test-EmbedBudget {
     [pscustomobject]@{ Ok = ($bytes -le $BudgetBytes); Bytes = $bytes }
 }
 
+function Test-PromptCharacterLimit {
+    # The upstream turn/start limit is fixed, independent of the byte estimate
+    # and the acceptance-time token gate. Count Unicode scalars, as the actual
+    # CLI reports: a valid UTF-16 surrogate pair is one character. UTF-8 replaces
+    # each unpaired surrogate with one replacement character. Regex.Count does
+    # not materialize a match collection or another copy of the complete prompt.
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$PromptText)
+    $characters = $PromptText.Length - [regex]::Count($PromptText, '[\uD800-\uDBFF][\uDC00-\uDFFF]')
+    [pscustomobject]@{ Ok = ($characters -le 1048576); Characters = $characters; Limit = 1048576 }
+}
+
 function Write-NewFileExclusive {
     # Atomic create-only. A Test-Path check followed by Set-Content is not create-only: two
     # concurrent invocations can both pass the check and the second silently wins. FileMode
@@ -1908,6 +1919,42 @@ function Write-AttemptMeta {
     # Atomic create-only, same reasoning as the canonical verdict: a check-then-write races.
     try { Write-NewFileExclusive -Path $file -Text ($Meta | ConvertTo-Json -Depth 6) }
     catch [System.IO.IOException] { throw "attempt meta already exists (immutable): $file" }
+}
+
+function Write-AttemptProcessResult {
+    # Keep the process diagnostic channel even when no verdict or usage event
+    # exists. Project explicit fields only: never serialize the prompt, stdout,
+    # environment, or arbitrary properties from the process or metadata object.
+    param([Parameter(Mandatory)][string]$StateDir,
+          [Parameter(Mandatory)][ValidateRange(1, 1000)][int]$Round,
+          [Parameter(Mandatory)][ValidateRange(1, 2)][int]$Attempt,
+          [Parameter(Mandatory)][hashtable]$Meta,
+          [Parameter(Mandatory)][object]$Run,
+          [Parameter(Mandatory)][AllowEmptyString()][string]$PromptText)
+    $receipt = [ordered]@{
+        round=$Round; attempt=$Attempt; timestamp=(Get-Date -AsUTC -Format o)
+        prompt_sha256=$Meta.prompt_sha256; cli_sha256=$Meta.cli_sha256; cli_version=$Meta.cli_version
+        ExitCode=$Run.ExitCode; StartFailed=$Run.StartFailed; TimedOut=$Run.TimedOut
+        ErrorMessage=$Run.ErrorMessage; StderrText=$Run.StderrText
+        ProcessTreeRetired=$(if ($Run.PSObject.Properties['ProcessTreeRetired']) { $Run.ProcessTreeRetired } else { $null })
+    }
+    # Preserve ordinary CLI errors literally. Suppress only a diagnostic that
+    # includes the complete supplied prompt, retaining its original digest and
+    # byte length. This is a full-prompt echo guard, not general secret detection.
+    foreach ($field in @('ErrorMessage', 'StderrText')) {
+        $diagnostic = $receipt[$field]
+        if ($PromptText.Length -gt 0 -and $null -ne $diagnostic -and
+            $diagnostic.Contains($PromptText, [StringComparison]::Ordinal)) {
+            $receipt[$field] = $null
+            $receipt[$field + 'Suppression'] = [ordered]@{
+                reason = 'complete_prompt_echo'
+                utf8_bytes = [Text.Encoding]::UTF8.GetByteCount($diagnostic)
+                sha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($diagnostic))).ToLowerInvariant()
+            }
+        }
+    }
+    Write-NewFileExclusive -Path (Join-Path $StateDir "round-$Round-attempt-$Attempt-process.json") `
+        -Text ($receipt | ConvertTo-Json -Depth 4)
 }
 
 function Read-RoundState {

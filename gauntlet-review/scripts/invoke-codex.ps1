@@ -2,7 +2,8 @@
 <# gauntlet-review: run ONE hermetic review round (one ATTEMPT of one logical round).
    Exit codes are defined once in the plan's contracts section; this comment is the short form.
    0 ok
-   | 10 budget -- EITHER the preflight byte estimate is over budget BEFORE anything runs, OR
+   | 10 budget -- the fixed upstream character limit or preflight byte budget refuses
+     BEFORE an attempt runs, OR
      (acceptance-time usage gate, added: real-CLI evidence, see task-7-report.md) the CLI's OWN
      reported usage.input_tokens leaves under 25% context headroom after a round completed.
      Retrying the identical prompt cannot change its own token count, so this is a human flag,
@@ -158,6 +159,15 @@ if ($Mode -eq 'local') {
     $promptBody = $promptBody.TrimEnd() + "`n`n== REVIEW MATERIAL (untrusted) ==`n" + $localDiff + "`n"
 }
 $prompt = $carryText + $promptBody
+# Check the fully rendered payload, including carry-over and generated review
+# material, before any CLI probe, harness, attempt metadata or dispatch. This
+# upstream limit is not configurable and raising BudgetBytes cannot bypass it.
+$characters = Test-PromptCharacterLimit -PromptText $prompt
+if (-not $characters.Ok) {
+    Write-RoundState -StateDir $StateDir -Patch @{ status='flagged'; failure_reason="prompt character limit: $($characters.Characters) > $($characters.Limit) characters" }
+    Write-Error "Prompt contains $($characters.Characters) Unicode characters; the fixed upstream limit is $($characters.Limit). No attempt ran. Raising BudgetBytes cannot change this limit. Never truncate review material."
+    exit 10
+}
 # This byte preflight (100,000-byte default -BudgetBytes) is an OPERATIONAL INPUT BOUND ONLY -- a
 # cheap, local, BEFORE-the-round estimate from the prompt's own byte count. It is NOT the formal
 # guarantee (added: real-CLI evidence, see task-7-report.md) and does not promise an oversized
@@ -302,6 +312,12 @@ if ($carryText) {
 }
 
 $run = Invoke-CodexProcess -CliPath $cli.Path -CodexArgs $codexArgs -PromptText $prompt -HarnessDir $harness -TimeoutSec $TimeoutSec
+try { Write-AttemptProcessResult -StateDir $StateDir -Round $Round -Attempt $attempt -Meta $meta -Run $run -PromptText $prompt }
+catch {
+    Write-RoundState -StateDir $StateDir -Patch @{ status='failed_attempt'; failure_reason="round $Round attempt ${attempt}: process diagnostic receipt could not be persisted" }
+    Write-Error "Process diagnostic receipt could not be persisted: $($_.Exception.Message)"
+    exit 11
+}
 $run.StdoutLines | Set-Content -Path (Join-Path $StateDir "$stem-events.jsonl") -Encoding utf8
 if ($run.StartFailed -or $run.TimedOut -or $run.ExitCode -ne 0 -or -not (Test-Path $rawPath)) {
     $reason = if ($run.StartFailed) { "codex failed to start: $($run.ErrorMessage)" }
