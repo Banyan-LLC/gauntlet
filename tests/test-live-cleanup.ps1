@@ -122,6 +122,18 @@ try {
     Assert-True ((Get-Command Invoke-BoundedProcess).Parameters.ContainsKey('RequireProcessTreeRetirement')) 'bounded runner can require physical process-tree retirement'
     if ($script:Failures.Count -gt 0) { Write-TestResult }
     $pwsh = [Environment]::ProcessPath
+    $runnerTimer = [Diagnostics.Stopwatch]::StartNew()
+    $noisy = Invoke-BoundedProcess -FileName $pwsh -ArgList @('-NoProfile','-Command','[Console]::Write("o" * 3000000); [Console]::Error.Write("e" * 3000000); Start-Sleep 60') -TimeoutSec 12 -RequireProcessTreeRetirement
+    $runnerTimer.Stop()
+    Assert-True ($noisy.ErrorMessage -match 'output.*budget') 'aggregate output overflow remains a typed execution failure'
+    Assert-True ($noisy.ExitCode -ne 0) 'incomplete output never retains a successful execution code'
+    Assert-True $noisy.ProcessTreeRetired 'output overflow physically retires its owned job'
+    Assert-True (($noisy.Stdout.Length + $noisy.Stderr.Length) -le 4194304) 'stdout and stderr share one retained-output budget'
+    Assert-True ($runnerTimer.Elapsed.TotalSeconds -lt 8) 'output overflow ends execution promptly within its remaining deadline'
+    $rejectedInput = Invoke-BoundedProcess -FileName (Join-Path $env:SystemRoot 'System32/cmd.exe') -ArgList @('/d','/c','exit','0') -StdinText ('x' * 6000000) -TimeoutSec 10 -RequireProcessTreeRetirement
+    Assert-True ($rejectedInput.ErrorMessage -match 'stdin') 'zero parent exit cannot erase failed prompt delivery'
+    Assert-True ($rejectedInput.ExitCode -ne 0) 'failed prompt delivery never reports execution success'
+    Assert-True $rejectedInput.ProcessTreeRetired 'failed input still retires the entire owned job'
     $job = Invoke-BoundedProcess -FileName $pwsh -ArgList @('-NoProfile','-Command','[Console]::Write("out"); [Console]::Error.Write("err"); exit 7') -TimeoutSec 10 -RequireProcessTreeRetirement
     Assert-Eq $job.ExitCode 7 'contained runner preserves child exit code'
     Assert-Eq $job.Stdout 'out' 'contained runner captures stdout'

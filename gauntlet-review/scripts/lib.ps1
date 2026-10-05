@@ -115,6 +115,24 @@ namespace GauntletLive {
             Require(QueryInformationJobObject(job, 1, out accounting, Marshal.SizeOf<Accounting>(), IntPtr.Zero));
             return accounting.ActiveProcesses;
         }
+        sealed class CaptureBudget {
+            public int Used, Exceeded;
+            public const int MaximumBytes = 4 * 1024 * 1024;
+        }
+        static async Task<string> Capture(FileStream stream, CaptureBudget budget) {
+            var buffer = new byte[4096];
+            using (var retained = new MemoryStream()) {
+                int count;
+                while ((count = await stream.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) != 0) {
+                    if (Interlocked.Add(ref budget.Used, count) > CaptureBudget.MaximumBytes) {
+                        Interlocked.Exchange(ref budget.Exceeded, 1);
+                        throw new InvalidOperationException("Aggregate process output exceeded its retention budget");
+                    }
+                    retained.Write(buffer, 0, count);
+                }
+                return Encoding.UTF8.GetString(retained.ToArray());
+            }
+        }
         public static RunResult Run(ProcessStartInfo start, string input, int seconds) {
             var result = new RunResult();
             var clock = Stopwatch.StartNew();
@@ -128,8 +146,8 @@ namespace GauntletLive {
             bool attributesReady=false, assigned=false, created=false;
             ProcessInfo process = new ProcessInfo();
             FileStream inputStream=null, outputStream=null, errorStream=null;
-            StreamReader outputReader=null, errorReader=null;
             Task<string> outputTask=null, errorTask=null;
+            var budget = new CaptureBudget();
             try {
                 job = CreateJobObjectW(IntPtr.Zero, IntPtr.Zero);
                 if (job == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
@@ -179,19 +197,22 @@ namespace GauntletLive {
                 inputStream = new FileStream(new SafeFileHandle(stdinWrite, true), FileAccess.Write, 4096, false); stdinWrite=IntPtr.Zero;
                 outputStream = new FileStream(new SafeFileHandle(stdoutRead, true), FileAccess.Read, 4096, false); stdoutRead=IntPtr.Zero;
                 errorStream = new FileStream(new SafeFileHandle(stderrRead, true), FileAccess.Read, 4096, false); stderrRead=IntPtr.Zero;
-                outputReader = new StreamReader(outputStream, Encoding.UTF8);
-                errorReader = new StreamReader(errorStream, Encoding.UTF8);
-                outputTask=outputReader.ReadToEndAsync(); errorTask=errorReader.ReadToEndAsync();
+                outputTask=Capture(outputStream, budget); errorTask=Capture(errorStream, budget);
                 if (ResumeThread(process.Thread) == uint.MaxValue) throw new Win32Exception(Marshal.GetLastWin32Error());
                 Close(ref process.Thread);
                 var bytes = Encoding.UTF8.GetBytes(input ?? "");
                 var writeTask = inputStream.WriteAsync(bytes, 0, bytes.Length);
-                bool stdinDone = false;
-                try { stdinDone = writeTask.Wait(executionRemaining()); }
-                catch (AggregateException) { stdinDone = WaitForSingleObject(process.Process, 0) == 0; }
+                while (!writeTask.IsCompleted && executionRemaining() > 0 && Volatile.Read(ref budget.Exceeded) == 0)
+                    Thread.Sleep(Math.Min(10, executionRemaining()));
+                bool stdinDone = writeTask.IsCompletedSuccessfully;
+                if (writeTask.IsFaulted || writeTask.IsCanceled)
+                    result.ErrorMessage="stdin transport failed before the complete prompt was delivered: " + writeTask.Exception?.GetBaseException().Message;
                 if (stdinDone) { inputStream.Dispose(); inputStream=null; }
-                bool exited = stdinDone && WaitForSingleObject(process.Process, (uint)executionRemaining()) == 0;
-                result.TimedOut = !exited;
+                bool exited = false;
+                while (stdinDone && result.ErrorMessage == null && executionRemaining() > 0 && Volatile.Read(ref budget.Exceeded) == 0) {
+                    if (WaitForSingleObject(process.Process, (uint)Math.Min(20, executionRemaining())) == 0) { exited=true; break; }
+                }
+                result.TimedOut = !exited && executionRemaining() == 0;
                 uint exitCode;
                 if (exited) { Require(GetExitCodeProcess(process.Process, out exitCode)); result.ExitCode=unchecked((int)exitCode); }
                 else { result.ExitCode=-1; }
@@ -203,9 +224,14 @@ namespace GauntletLive {
                 try { Task.WaitAll(new Task[] { outputTask, errorTask }, remaining()); } catch (AggregateException) { }
                 if (outputTask.IsCompletedSuccessfully) result.Stdout=outputTask.Result;
                 if (errorTask.IsCompletedSuccessfully) result.Stderr=errorTask.Result;
-                if (!outputTask.IsCompletedSuccessfully || !errorTask.IsCompletedSuccessfully) {
+                if (Volatile.Read(ref budget.Exceeded) != 0) {
+                    result.ErrorMessage="Aggregate process output exceeded its retention budget";
+                } else if (outputTask.IsFaulted || errorTask.IsFaulted) {
+                    result.ErrorMessage="Owned process output transport failed: " + (outputTask.Exception ?? errorTask.Exception)?.GetBaseException().Message;
+                } else if (!outputTask.IsCompletedSuccessfully || !errorTask.IsCompletedSuccessfully) {
                     result.TimedOut=true; result.ErrorMessage="Owned process pipes did not complete before the shared deadline";
                 }
+                if (result.ErrorMessage != null) result.ExitCode=-1;
             } catch (Exception error) {
                 result.StartFailed = !assigned;
                 result.ErrorMessage=error.Message;
@@ -231,8 +257,8 @@ namespace GauntletLive {
                 if (handles != IntPtr.Zero) Marshal.FreeHGlobal(handles);
                 if (environment != IntPtr.Zero) Marshal.FreeHGlobal(environment);
                 if (inputStream != null) inputStream.Dispose();
-                if (outputReader != null) outputReader.Dispose();
-                if (errorReader != null) errorReader.Dispose();
+                if (outputStream != null) outputStream.Dispose();
+                if (errorStream != null) errorStream.Dispose();
             }
             return result;
         }
