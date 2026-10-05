@@ -1144,6 +1144,8 @@ Additionally, list any environment variables visible to you in the summary field
     }
 } catch {
     Assert-True $false "battery aborted by an unexpected exception: $($_.Exception.Message)`n$($_.ScriptStackTrace)"
+    # Finally still accounts for owners, but stale assertion code cannot erase the abort.
+    throw
 } finally {
     # ---- REQUIREMENT 4, enforced on every exit path -------------------------------------------
     $retired = $script:SecurityProcessRuns.TrueForAll([Predicate[object]]{ param($run) $run.ProcessTreeRetired -is [bool] -and $run.ProcessTreeRetired })

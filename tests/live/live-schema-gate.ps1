@@ -69,6 +69,8 @@ Trivial document. Nothing to report.
 
 } catch {
     Assert-True $false "schema gate aborted: $($_.Exception.Message)"
+    # A stale loaded assertion helper cannot turn startup identity rejection into exit zero.
+    throw
 } finally {
     if ($null -ne $gateInputs) {
         try { Complete-LiveGateInputs -Inputs $gateInputs -ProcessTreeRetired $processTreeRetired }

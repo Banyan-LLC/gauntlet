@@ -609,23 +609,40 @@ function New-LiveGateInputs {
     $schemaPath=Join-Path $root 'schemas/verdict.schema.json'
     $gatePath=Join-Path (Split-Path $root -Parent) $(if ($Gate -eq 'schema_gate') { 'tests/live/live-schema-gate.ps1' } else { 'tests/live/live-security.ps1' })
     $libraryPath=Join-Path $root 'scripts/lib.ps1'
+    $helpersPath=Join-Path (Split-Path $root -Parent) 'tests/helpers.ps1'
     $ast=$definition.Ast
     while ($ast.Parent) { $ast=$ast.Parent }
-    if ($ast.Extent.Text -cne [IO.File]::ReadAllText($libraryPath)) { throw 'Loaded library differs from the source being tested' }
-    if ($runtimeRoot) {
-        if ([IO.Path]::GetFullPath($AgentsPath) -cne [IO.Path]::GetFullPath("$env:USERPROFILE\.codex\AGENTS.md")) { throw 'Live source inputs must name the production account instructions' }
-        if ([string]::IsNullOrEmpty($LoadedGateText) -or $LoadedGateText -cne [IO.File]::ReadAllText($gatePath)) { throw 'Loaded live gate differs from the source being tested' }
-    }
     $leases=[Collections.Generic.List[IDisposable]]::new()
     $token=[guid]::NewGuid().ToString('n')
     try {
-        # The executable and submitted schema cannot be replaced or edited during model calls.
-        foreach ($inputPath in @($ActualCli.Path,$schemaPath)) { $leases.Add([IO.FileStream]::new($inputPath,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)) }
+        # Protect the complete fingerprinted source snapshot before comparing loaded code.
+        # The executable, schema and present account instructions remain held through retirement.
+        $repoRoot=Split-Path $root -Parent
+        $inputPaths=@($ActualCli.Path,$schemaPath,$libraryPath,$helpersPath,
+            (Join-Path $root 'scripts/invoke-codex.ps1'),(Join-Path $root 'scripts/publish-review.ps1'),
+            (Join-Path $root 'scripts/calibrate-premises.ps1'),
+            (Join-Path $repoRoot 'tests/live/live-schema-gate.ps1'),(Join-Path $repoRoot 'tests/live/live-security.ps1'))
+        foreach ($inputPath in @($inputPaths | ForEach-Object { [IO.Path]::GetFullPath($_) } | Select-Object -Unique)) {
+            $leases.Add([IO.FileStream]::new($inputPath,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read))
+        }
+        if ($ast.Extent.Text -cne [IO.File]::ReadAllText($libraryPath)) { throw 'Loaded library differs from the protected source being tested' }
+        $helpersAst=(Get-Command Assert-True -CommandType Function -ErrorAction Stop).ScriptBlock.Ast
+        while ($helpersAst.Parent) { $helpersAst=$helpersAst.Parent }
+        if ($helpersAst.Extent.Text -cne [IO.File]::ReadAllText($helpersPath)) { throw 'Loaded assertion helpers differ from the protected source being tested' }
+        if ($runtimeRoot) {
+            if ([IO.Path]::GetFullPath($AgentsPath) -cne [IO.Path]::GetFullPath("$env:USERPROFILE\.codex\AGENTS.md")) { throw 'Live source inputs must name the production account instructions' }
+            if ([string]::IsNullOrEmpty($LoadedGateText) -or $LoadedGateText -cne [IO.File]::ReadAllText($gatePath)) { throw 'Loaded live gate differs from the protected source being tested' }
+        }
         $cliHash=(Get-FileHash -LiteralPath $ActualCli.Path -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
         if ($cliHash -cne $ActualCli.Sha256) { throw 'Selected CLI identity changed before execution' }
         $agentsHash='absent'
-        try { $null=[IO.File]::GetAttributes($AgentsPath); $agentsHash=(Get-FileHash -LiteralPath $AgentsPath -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant() }
+        try {
+            $leases.Add([IO.FileStream]::new($AgentsPath,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read))
+            $agentsHash=(Get-FileHash -LiteralPath $AgentsPath -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
+        }
         catch [IO.FileNotFoundException] { } catch [IO.DirectoryNotFoundException] { }
+        # Optional absence remains a declared input. Polling it does not prove that no transient
+        # account instruction file appeared during a real invocation; that behavior is unresolved.
         $profileHash=Get-InvocationProfileHash -DisableSet $DisableSet
         $captured=[pscustomobject]@{
             Root=$root; Gate=$Gate; Cli=[pscustomobject]@{Path=$ActualCli.Path;Version=$ActualCli.Version;Sha256=$cliHash}

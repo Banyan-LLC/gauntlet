@@ -300,6 +300,12 @@ try {
             $bound=New-LiveGateInputs -SkillRoot $fakeSkill -Gate 'schema_gate' -ActualCli $fakeSelection -DisableSet @('apps') -AgentsPath $fakeAgents
             $inputRecords.Add($bound)
             Assert-Throws { [IO.File]::AppendAllText((Join-Path $fakeSkill 'schemas/verdict.schema.json'),'changed') } 'tested schema stays read-only until process retirement is confirmed'
+            foreach ($leasedPath in @($fakeCli,$fakeAgents,(Join-Path $fakeSkill 'scripts/lib.ps1'),(Join-Path $inputFixture.Path 'tests/helpers.ps1'),(Join-Path $inputFixture.Path 'tests/live/live-schema-gate.ps1'))) {
+                $leasedBytes=[IO.File]::ReadAllBytes($leasedPath)
+                $leasedHash=(Get-FileHash -LiteralPath $leasedPath -Algorithm SHA256).Hash
+                try { Assert-Throws { [IO.File]::AppendAllText($leasedPath,'changed') } "active input lease prevents change-and-restore ($([IO.Path]::GetFileName($leasedPath)))" }
+                finally { if ((Get-FileHash -LiteralPath $leasedPath -Algorithm SHA256).Hash -cne $leasedHash) { [IO.File]::WriteAllBytes($leasedPath,$leasedBytes) } }
+            }
             Assert-Throws { Complete-LiveGateInputs -Inputs $bound -ProcessTreeRetired 1 } 'numeric truth cannot release execution input leases'
             Complete-LiveGateInputs -Inputs $bound -ProcessTreeRetired $true
             $manifestLease=[IO.FileStream]::new($fakePremises,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::Read)
@@ -328,6 +334,26 @@ try {
                     Assert-Eq $inputStampProbe.Count 0 'input drift never invokes the inert evidence callback'
                 } finally { [IO.File]::WriteAllBytes($driftPath,$original) }
             }
+            $helperPath=Join-Path $inputFixture.Path 'tests/helpers.ps1'
+            $helperBytes=[IO.File]::ReadAllBytes($helperPath)
+            try {
+                [IO.File]::AppendAllText($helperPath,"`n# different startup assertion source")
+                Assert-Throws {
+                    $unexpected=New-LiveGateInputs -SkillRoot $fakeSkill -Gate 'schema_gate' -ActualCli $fakeSelection -DisableSet @('apps') -AgentsPath $fakeAgents
+                    $inputRecords.Add($unexpected)
+                } 'already loaded assertion helpers must match the protected source snapshot'
+            } finally {
+                foreach ($bound in $inputRecords) { Complete-LiveGateInputs -Inputs $bound -ProcessTreeRetired $true }
+                [IO.File]::WriteAllBytes($helperPath,$helperBytes)
+            }
+            $optionalAgents=[IO.File]::ReadAllBytes($fakeAgents)
+            try {
+                [IO.File]::Delete($fakeAgents)
+                $absentInputs=New-LiveGateInputs -SkillRoot $fakeSkill -Gate 'schema_gate' -ActualCli $fakeSelection -DisableSet @('apps') -AgentsPath $fakeAgents
+                $inputRecords.Add($absentInputs)
+                Assert-Eq $absentInputs.AgentsMdSha256 'absent' 'optional instructions remain explicitly absent without fabricating or requiring account setup'
+                Complete-LiveGateInputs -Inputs $absentInputs -ProcessTreeRetired $true
+            } finally { [IO.File]::WriteAllBytes($fakeAgents,$optionalAgents) }
             $unknownInputs=[pscustomobject]@{Token=[guid]::NewGuid().ToString('n')}
             Assert-Throws { Invoke-LiveGateStamp -FailureCount 0 -CleanupResults @([pscustomobject]@{Accepted=$true}) -Inputs $unknownInputs -Stamp { throw 'must not enter writer' } } 'caller supplied input tokens cannot authorize a stamp'
         } finally {
@@ -335,6 +361,29 @@ try {
             foreach ($path in $fixtureFiles) { [IO.File]::Delete($path) }
             for ($directoryIndex=$fixtureDirectories.Count-1; $directoryIndex -ge 0; $directoryIndex--) { [IO.Directory]::Delete((Join-Path $inputFixture.Path $fixtureDirectories[$directoryIndex]),$false) }
         }
+    }
+
+    # Exercise only each abort handler with an inert assertion helper and inert finally.
+    # No gate setup, model call, credential operation or production cleanup body is evaluated.
+    foreach ($abortGate in @('live-schema-gate.ps1','live-security.ps1')) {
+        $abortTokens=$null; $abortErrors=$null
+        $abortAst=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot ('live/'+$abortGate)),[ref]$abortTokens,[ref]$abortErrors)
+        $abortClause=$abortAst.Find({ param($node) $node -is [Management.Automation.Language.CatchClauseAst] -and $node.Body.Extent.Text -match '(schema gate aborted:|battery aborted by an unexpected exception:)' },$true)
+        $abortText=$abortClause.Body.Extent.Text
+        $abortBody=[scriptblock]::Create($abortText.Substring(1,$abortText.Length-2))
+        $abortFinally=[Collections.Generic.List[string]]::new()
+        $abortThrew=$false
+        try {
+            & {
+                param($body,$finalized)
+                function Assert-True { }
+                try { throw 'offline startup identity rejection' }
+                catch { & $body }
+                finally { $finalized.Add('finalized') }
+            } $abortBody $abortFinally
+        } catch { $abortThrew=$true }
+        Assert-True $abortThrew "startup rejection survives stale no-op assertions ($abortGate)"
+        Assert-Eq $abortFinally.Count 1 'rejected startup still evaluates the inert finalization path'
     }
 
     # Load only the production tracker function AST, never the live gate's top-level body.
