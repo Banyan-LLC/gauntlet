@@ -68,10 +68,12 @@ try {
     Assert-True (-not (Remove-LiveGateDirectory -Record $schema -ProcessTreeRetired $true).Accepted) 'consumed ownership cannot authorize a later directory'
     $missing = New-LiveGateDirectory -Kind Schema
     $owned.Add($missing)
-    [IO.Directory]::Delete($missing.Path, $false)
-    Assert-True (Remove-LiveGateDirectory -Record $missing -ProcessTreeRetired $true).Accepted 'genuinely missing owned target is accepted without hiding IO errors'
+    Assert-Throws { [IO.Directory]::Delete($missing.Path, $false) } 'held ownership prevents unobserved external deletion'
+    Assert-True (Remove-LiveGateDirectory -Record $missing -ProcessTreeRetired $true).Accepted 'the custody holder can dispose its own exact empty object'
 
-    $harness = New-HarnessDir -RepoRoot (Split-Path $PSScriptRoot -Parent)
+    $liveHarnessMode = (Get-Command New-HarnessDir).Parameters.ContainsKey('RequireLiveGateOwnership')
+    Assert-True $liveHarnessMode 'harness exposes protected live-gate ownership separately from ordinary invocation'
+    $harness = if ($liveHarnessMode) { New-HarnessDir -RepoRoot (Split-Path $PSScriptRoot -Parent) -RequireLiveGateOwnership } else { New-HarnessDir -RepoRoot (Split-Path $PSScriptRoot -Parent) }
     $harnessRecord = Get-LiveGateDirectoryRecord -Path $harness
     $owned.Add($harnessRecord)
     $residue = Join-Path $harness 'residue.txt'
@@ -80,16 +82,86 @@ try {
     Assert-True ([IO.File]::Exists($residue)) 'nonempty harness residue remains for inspection'
     [IO.File]::Delete($residue)
     Assert-True (Remove-LiveGateDirectory -Record $harnessRecord -ProcessTreeRetired $true).Accepted 'empty owned harness is removed without recursion'
+    $hasFinalizer = $null -ne (Get-Command Complete-LiveGateDirectories -ErrorAction SilentlyContinue)
+    Assert-True $hasFinalizer 'gate finalizer includes factories that threw before returning their ownership records'
+    if ($hasFinalizer) {
+        $tokensBefore = @((Get-LiveGateDirectoryRecords).Token)
+        Assert-Throws { New-HarnessDir -RepoRoot (Join-Path $env:LOCALAPPDATA 'gauntlet-review/harness') -RequireLiveGateOwnership } 'post-creation discovery assertion can fail under its guarded lifecycle'
+        $partial = @(Get-LiveGateDirectoryRecords | Where-Object { $_.Token -notin $tokensBefore })
+        Assert-Eq $partial.Count 1 'a throwing factory still publishes its single exact partial creation'
+        foreach ($partialRecord in $partial) { $owned.Add($partialRecord) }
+        $finalized = @(Complete-LiveGateDirectories -Kinds @('Harness') -ProcessTreeRetired $true)
+        Assert-Eq $finalized.Count 1 'finalizer observes the partial harness absent from caller assignments'
+        Assert-True $finalized[0].Accepted 'partial empty harness is finalized through its original held object'
+        Assert-True (-not [IO.Directory]::Exists($partial[0].Path)) 'partial creation leaves no untracked fixture behind'
+    }
 
     $old = New-LiveGateDirectory -Kind Schema
     $owned.Add($old)
-    [IO.Directory]::Delete($old.Path, $false)
-    [IO.Directory]::CreateDirectory($old.Path) | Out-Null
-    Assert-True (-not (Remove-LiveGateDirectory -Record $old -ProcessTreeRetired $true).Accepted) 'replacement directory cannot reuse a stale creation record'
-    [IO.Directory]::Delete($old.Path, $false)
+    $moved = $old.Path + '-moved'
+    try { Assert-Throws { [IO.Directory]::Move($old.Path, $moved) } 'custody prevents directory replacement between creation and cleanup' }
+    finally { if ([IO.Directory]::Exists($moved)) { [IO.Directory]::Move($moved, $old.Path) } }
+    Assert-True (Remove-LiveGateDirectory -Record $old -ProcessTreeRetired $true).Accepted 'protected identity survives a rejected external rename'
 
     $security = New-LiveGateDirectory -Kind Security
     $owned.Add($security)
+    $movedSecurity = $security.Path + '-moved'
+    try { Assert-Throws { [IO.Directory]::Move($security.Path, $movedSecurity) } 'credential-tree custody prevents a renamed tree from passing absence checks' }
+    finally { if ([IO.Directory]::Exists($movedSecurity)) { [IO.Directory]::Move($movedSecurity, $security.Path) } }
+    $hasOwnedProducer = $null -ne (Get-Command New-LiveGateChildDirectory -ErrorAction SilentlyContinue) -and $null -ne (Get-Command Write-LiveGateChildFile -ErrorAction SilentlyContinue)
+    Assert-True $hasOwnedProducer 'credential writes require an exclusively created owned child API'
+    if ($hasOwnedProducer) {
+        $producer = New-LiveGateDirectory -Kind Security
+        $owned.Add($producer)
+        # Load the real producer bodies without executing any live gate top-level statements.
+        $producerTokens=$null; $producerErrors=$null
+        $producerAst=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'live/live-security.ps1'),[ref]$producerTokens,[ref]$producerErrors)
+        foreach ($producerName in @('New-ControlHome','New-ControlCwd')) {
+            $producerFunction=$producerAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $producerName },$true)
+            . ([scriptblock]::Create($producerFunction.Extent.Text))
+        }
+        $dummySource=New-LiveGateDirectory -Kind Schema
+        $owned.Add($dummySource)
+        $authSrc=Join-Path $dummySource.Path 'events.jsonl'
+        [IO.File]::WriteAllText($authSrc,'dummy-only')
+        $securityDirectory=$producer
+        $guidRoot=$producer.Path
+        $offlineHome = New-ControlHome -Name 'offline' -ConfigToml 'dummy-config'
+        $dummyCredential = [Text.Encoding]::UTF8.GetBytes('dummy-only')
+        $auth = Join-Path $offlineHome 'auth.json'
+        $read = [IO.FileStream]::new($auth,[IO.FileMode]::Open,[IO.FileAccess]::Read,([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+        try { $reader=[IO.StreamReader]::new($read); Assert-Eq ($reader.ReadToEnd()) 'dummy-only' 'owned producer writes only its supplied dummy bytes' }
+        finally { $read.Dispose() }
+        $hasOwnedHash = $null -ne (Get-Command Get-LiveGateChildFileHash -ErrorAction SilentlyContinue)
+        Assert-True $hasOwnedHash 'production copy verification reads the held object rather than reopening its pathname'
+        if ($hasOwnedHash) { Assert-Eq (Get-LiveGateChildFileHash -Record $producer -Path $auth) '832cb5e7d57e92b974279ac4967692d0a919a2e87bab4f722e64ad5826ec1078' 'held-object hashing verifies the actual dummy destination bytes' }
+        Assert-Throws { Write-LiveGateChildFile -Record $producer -Directory $offlineHome -Name 'auth.json' -Bytes ([byte[]]@(0)) } 'existing credential destinations are never reused or overwritten'
+        Assert-Throws { [IO.Directory]::Move($offlineHome, ($offlineHome + '-moved')) } 'credential home stays pinned through producer writes'
+        Assert-Throws { [IO.File]::Move($auth, (Join-Path $producer.Path 'moved-auth.json')) } 'copied credential object cannot be renamed outside its registered home'
+        Assert-Throws { New-LiveGateChildDirectory -Record $producer -Name 'home-offline' } 'an existing child cannot become a new credential destination'
+        Assert-Throws { Write-LiveGateChildFile -Record $producer -Directory ([IO.Path]::GetTempPath()) -Name 'auth.json' -Bytes $dummyCredential } 'owned writer refuses a directory outside its private creation records'
+        Assert-Throws { Write-LiveGateChildFile -Record $producer -Directory $offlineHome -Name '../escape' -Bytes $dummyCredential } 'owned writer refuses child path traversal'
+        $offlineCwd=New-ControlCwd -Name 'offline'
+        Assert-Throws { [IO.Directory]::Move($offlineCwd, ($offlineCwd+'-moved')) } 'real control working-directory producer retains stable containment'
+        $poisonedHome=Join-Path $producer.Path 'home-preexisting'
+        [IO.Directory]::CreateDirectory($poisonedHome) | Out-Null
+        Assert-Throws { New-ControlHome -Name 'preexisting' } 'real credential producer refuses a precreated home before copying'
+        $linkedHome=New-LiveGateChildDirectory -Record $producer -Name 'home-linked'
+        $linkedConfig=Join-Path $linkedHome 'config.toml'
+        New-Item -ItemType HardLink -Path $linkedConfig -Target $authSrc -ErrorAction Stop | Out-Null
+        Assert-Throws { Write-LiveGateChildFile -Record $producer -Directory $linkedHome -Name 'config.toml' -Bytes $dummyCredential } 'linked destination cannot redirect the owned producer write'
+        Assert-Eq ([IO.File]::ReadAllText($authSrc)) 'dummy-only' 'refused linked destination leaves foreign dummy bytes unchanged'
+        $script:LiveGateDirectories[$producer.Token].Custody.Dispose()
+        [IO.File]::Delete($auth)
+        [IO.File]::Delete((Join-Path $offlineHome 'config.toml'))
+        [IO.File]::Delete($linkedConfig)
+        [IO.Directory]::Delete($offlineHome,$false)
+        [IO.Directory]::Delete($offlineCwd,$false)
+        [IO.Directory]::Delete($poisonedHome,$false)
+        [IO.Directory]::Delete($linkedHome,$false)
+        [IO.Directory]::Delete($producer.Path,$false)
+        Assert-True (-not (Remove-LiveGateDirectory -Record $producer -ProcessTreeRetired $true -AllowSecurityTreeCleanup).Accepted) 'released custody never authorizes even an absent credential tree'
+    }
     $result = Remove-LiveGateDirectory -Record $security -ProcessTreeRetired $true
     Assert-True (-not $result.Accepted) 'security tree cleanup requires explicit run-level authorization'
     Assert-True ([IO.Directory]::Exists($security.Path)) 'missing authorization never deletes even an empty security root'
@@ -106,8 +178,24 @@ try {
         New-Item -ItemType Junction -Path $link -Target $booleanProbe.Path -ErrorAction Stop | Out-Null
         try { Assert-Throws { Assert-LiveGateTreeSafe -Path $security.Path } 'tree inventory refuses a nested reparse entry before any disposal' }
         finally { [IO.Directory]::Delete($link, $false) }
+        $emptyDirectories=[Collections.Generic.List[string]]::new()
+        try {
+            for ($emptyIndex=0; $emptyIndex -lt 250; $emptyIndex++) {
+                $emptyPath=Join-Path $nested "empty-$emptyIndex"
+                [IO.Directory]::CreateDirectory($emptyPath) | Out-Null
+                $emptyDirectories.Add($emptyPath)
+            }
+            $inventoryTimer=[Diagnostics.Stopwatch]::StartNew()
+            Assert-Throws { Assert-LiveGateTreeSafe -Path $security.Path -TimeoutMs 1 } 'empty-directory processing cannot run past the shared inventory deadline'
+            $inventoryTimer.Stop()
+            Assert-True ($inventoryTimer.Elapsed.TotalSeconds -lt 2) 'bounded observation returns promptly even while metadata work is unresolved'
+            $settleTimer=[Diagnostics.Stopwatch]::StartNew()
+            while ($script:LiveGateDirectories[$security.Token].Custody.Busy -and $settleTimer.ElapsedMilliseconds -lt 1000) { Start-Sleep -Milliseconds 5 }
+            Assert-True (-not $script:LiveGateDirectories[$security.Token].Custody.Busy) 'timed-out read-only worker completes without launching deletion'
+        } finally { foreach ($emptyPath in $emptyDirectories) { [IO.Directory]::Delete($emptyPath,$false) } }
     } finally { [IO.File]::Delete($dummy); [IO.Directory]::Delete($nested, $false) }
     # This fixture deliberately never exercises the recursive code path.
+    $script:LiveGateDirectories[$security.Token].Custody.Dispose()
     [IO.Directory]::Delete($security.Path, $false)
 
     $stampProbe = [System.Collections.Generic.List[string]]::new()
@@ -202,6 +290,10 @@ try {
     # Every target below is an exact fixture returned by this run's creation API.
     # No unknown entry is swept and no recursive remover is invoked by this suite.
     foreach ($record in $owned) {
+        if ($script:LiveGateDirectories.ContainsKey($record.Token)) {
+            $remainingOwner = $script:LiveGateDirectories[$record.Token]
+            if ($remainingOwner.PSObject.Properties['Custody']) { $remainingOwner.Custody.Dispose() }
+        }
         if ([IO.Directory]::Exists($record.Path)) {
             foreach ($name in @('events.jsonl','verdict.json','argv.ps1')) {
                 $file = Join-Path $record.Path $name

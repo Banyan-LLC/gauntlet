@@ -271,6 +271,179 @@ namespace GauntletLive {
         static extern SafeFileHandle CreateFileW(string path, uint access, uint share, IntPtr security, uint mode, uint flags, IntPtr template);
         [DllImport("kernel32.dll", SetLastError=true)]
         static extern bool GetFileInformationByHandle(SafeFileHandle handle, out FileInfo info);
+        [StructLayout(LayoutKind.Sequential)] struct UnicodeString { public ushort Length, MaximumLength; public IntPtr Buffer; }
+        [StructLayout(LayoutKind.Sequential)] struct ObjectAttributes { public int Length; public IntPtr Root, Name; public uint Attributes; public IntPtr Security, Quality; }
+        [StructLayout(LayoutKind.Sequential)] struct IoStatus { public IntPtr Status; public UIntPtr Information; }
+        [StructLayout(LayoutKind.Sequential)] struct StandardInfo { public long Allocation, Length; public uint Links; public byte DeletePending, Directory; }
+        [DllImport("ntdll.dll")] static extern int NtCreateFile(out SafeFileHandle handle, uint access, ref ObjectAttributes attributes,
+            out IoStatus status, IntPtr allocation, uint fileAttributes, uint share, uint disposition, uint options, IntPtr ea, uint eaLength);
+        [DllImport("ntdll.dll")] static extern uint RtlNtStatusToDosError(int status);
+        [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetFileInformationByHandle(SafeFileHandle handle, int kind, ref uint flags, uint size);
+        [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetFileInformationByHandleEx(SafeFileHandle handle, int kind, out StandardInfo info, uint size);
+        static void Leaf(string name) {
+            if (String.IsNullOrEmpty(name) || name.Length > 255 || name == "." || name == ".." || name.EndsWith(".") || name.EndsWith(" ") ||
+                name.IndexOfAny(new char[] {'\\','/',':','\0','*','?','"','<','>','|'}) >= 0) throw new ArgumentException("Invalid owned child name");
+        }
+        static SafeFileHandle Relative(SafeFileHandle parent, string name, bool create, bool directory, bool deleteAccess) {
+            Leaf(name);
+            IntPtr text=Marshal.StringToHGlobalUni(name), unicode=IntPtr.Zero;
+            try {
+                var u = new UnicodeString {Length=(ushort)(name.Length*2), MaximumLength=(ushort)(name.Length*2+2), Buffer=text};
+                unicode=Marshal.AllocHGlobal(Marshal.SizeOf<UnicodeString>()); Marshal.StructureToPtr(u, unicode, false);
+                var attributes=new ObjectAttributes {Length=Marshal.SizeOf<ObjectAttributes>(), Root=parent.DangerousGetHandle(), Name=unicode, Attributes=0x40};
+                uint access=0x00100080u | (deleteAccess ? 0x10000u : 0u) | (directory ? 1u : (create ? 3u : 0u));
+                uint options=0x00200020u | (directory ? 1u : (create ? 0x40u : 0u));
+                SafeFileHandle handle; IoStatus status;
+                int code=NtCreateFile(out handle, access, ref attributes, out status, IntPtr.Zero, directory ? 0x10u : 0x80u,
+                    3, create ? 2u : 1u, options, IntPtr.Zero, 0);
+                if (code < 0) { handle?.Dispose(); throw new Win32Exception((int)RtlNtStatusToDosError(code)); }
+                return handle;
+            } finally { if (unicode != IntPtr.Zero) Marshal.FreeHGlobal(unicode); Marshal.FreeHGlobal(text); }
+        }
+        static FileInfo Regular(SafeFileHandle handle) {
+            FileInfo info; Require(GetFileInformationByHandle(handle, out info));
+            if ((info.Attributes & 0x400) != 0) throw new InvalidOperationException("Owned entry is a reparse point");
+            if ((info.Attributes & 0x10) == 0 && info.Links != 1) throw new InvalidOperationException("Owned file has unresolved hard-link custody");
+            return info;
+        }
+        public sealed class Custody : IDisposable {
+            sealed class Entry { public string Path; public SafeFileHandle Handle; public bool Directory, Deleted; }
+            readonly List<SafeFileHandle> parents=new List<SafeFileHandle>();
+            readonly Dictionary<string,Entry> produced=new Dictionary<string,Entry>(StringComparer.OrdinalIgnoreCase);
+            Entry root;
+            Task pending;
+            bool disposed, mutationBegun;
+            string cleanupFailure;
+            public bool Created { get { return root != null && root.Handle != null && !root.Handle.IsInvalid; } }
+            public bool Busy { get { return pending != null && !pending.IsCompleted; } }
+            public bool Released { get { return disposed; } }
+            static void Check(Stopwatch clock, int milliseconds) {
+                if (clock.ElapsedMilliseconds >= milliseconds) throw new TimeoutException("Owned cleanup exceeded its monotonic deadline; completion is unresolved");
+            }
+            public void Create(string path) {
+                if (root != null || disposed) throw new InvalidOperationException("Custody cannot be reused");
+                string full=System.IO.Path.GetFullPath(path), parent=System.IO.Path.GetDirectoryName(full), drive=System.IO.Path.GetPathRoot(full);
+                if (drive.Length != 3 || drive[1] != ':' || new DriveInfo(drive).DriveType != DriveType.Fixed)
+                    throw new InvalidOperationException("Live-gate custody requires a local fixed drive");
+                root=new Entry {Path=full, Directory=true};
+                var current=CreateFileW(drive, 0x00100081, 3, IntPtr.Zero, 3, 0x02200000, IntPtr.Zero);
+                if (current.IsInvalid) { current.Dispose(); throw new Win32Exception(Marshal.GetLastWin32Error()); }
+                parents.Add(current); Regular(current);
+                foreach (string part in parent.Substring(drive.Length).Split(new char[]{'\\','/'}, StringSplitOptions.RemoveEmptyEntries)) {
+                    current=Relative(current, part, false, true, false); parents.Add(current); Regular(current);
+                }
+                // FILE_CREATE and the returned no-delete-sharing handle acquire the same object atomically.
+                root.Handle=Relative(current, System.IO.Path.GetFileName(full), true, true, true);
+                produced.Add(full, root);
+                Regular(root.Handle);
+            }
+            Entry DirectoryEntry(string path) {
+                if (disposed || cleanupFailure != null || Busy) throw new InvalidOperationException("Owned custody is released, failed or busy");
+                Entry entry;
+                if (!produced.TryGetValue(System.IO.Path.GetFullPath(path), out entry) || !entry.Directory || entry.Deleted)
+                    throw new InvalidOperationException("Directory is outside this run's private creation records");
+                Regular(entry.Handle); return entry;
+            }
+            public string AddDirectory(string parent, string name) {
+                var owner=DirectoryEntry(parent); Leaf(name);
+                var child=new Entry {Path=System.IO.Path.Combine(owner.Path,name), Directory=true};
+                child.Handle=Relative(owner.Handle,name,true,true,true);
+                produced.Add(child.Path,child); Regular(child.Handle); return child.Path;
+            }
+            public void WriteFile(string parent, string name, byte[] bytes) {
+                var owner=DirectoryEntry(parent); Leaf(name);
+                var child=new Entry {Path=System.IO.Path.Combine(owner.Path,name)};
+                child.Handle=Relative(owner.Handle,name,true,false,true);
+                produced.Add(child.Path,child); Regular(child.Handle);
+                using (var stream=new FileStream(new SafeFileHandle(child.Handle.DangerousGetHandle(),false),FileAccess.Write)) {
+                    stream.Write(bytes,0,bytes.Length); stream.Flush(true);
+                }
+                Regular(child.Handle);
+            }
+            public string FileSha256(string path) {
+                if (disposed || Busy || cleanupFailure != null) throw new InvalidOperationException("Original custody is unavailable");
+                Entry entry;
+                if (!produced.TryGetValue(System.IO.Path.GetFullPath(path),out entry) || entry.Directory || entry.Deleted)
+                    throw new InvalidOperationException("File has no private producer record");
+                Regular(entry.Handle);
+                using (var stream=new FileStream(new SafeFileHandle(entry.Handle.DangerousGetHandle(),false),FileAccess.Read)) {
+                    stream.Position=0;
+                    return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream)).ToLowerInvariant();
+                }
+            }
+            List<Entry> Inventory(string kind, int maximum, Stopwatch clock, int milliseconds, List<Entry> opened) {
+                Check(clock,milliseconds);
+                if (!Created || disposed || root.Deleted) throw new InvalidOperationException("Original owned directory custody is unavailable");
+                var entries=new List<Entry>(); var directories=new Stack<Entry>(); directories.Push(root);
+                while (directories.Count != 0) {
+                    Check(clock,milliseconds); var directory=directories.Pop(); Regular(directory.Handle); Check(clock,milliseconds);
+                    foreach (string path in System.IO.Directory.EnumerateFileSystemEntries(directory.Path)) {
+                        Check(clock,milliseconds); string name=System.IO.Path.GetFileName(path);
+                        if (kind == "Harness" || (kind == "Schema" && name != "events.jsonl" && name != "verdict.json"))
+                            throw new InvalidOperationException("Unexpected entry in owned " + kind + " directory");
+                        if (entries.Count >= maximum) throw new InvalidOperationException("Owned inventory exceeded its entry budget");
+                        Entry child;
+                        if (!produced.TryGetValue(path,out child)) {
+                            child=new Entry {Path=path}; child.Handle=Relative(directory.Handle,name,false,false,true); opened.Add(child);
+                        }
+                        var info=Regular(child.Handle); child.Directory=(info.Attributes & 0x10) != 0;
+                        if (kind == "Schema" && child.Directory) throw new InvalidOperationException("Unexpected directory in schema results");
+                        entries.Add(child); if (child.Directory) directories.Push(child);
+                        Check(clock,milliseconds);
+                    }
+                    Check(clock,milliseconds);
+                }
+                Check(clock,milliseconds); return entries;
+            }
+            static void DeleteObject(Entry entry, Stopwatch clock, int milliseconds) {
+                Check(clock,milliseconds); Regular(entry.Handle);
+                uint flags=0x13; // DELETE, POSIX_SEMANTICS, IGNORE_READONLY_ATTRIBUTE. No pathname fallback.
+                Require(SetFileInformationByHandle(entry.Handle,21,ref flags,4)); Check(clock,milliseconds);
+                StandardInfo info; Require(GetFileInformationByHandleEx(entry.Handle,1,out info,(uint)Marshal.SizeOf<StandardInfo>()));
+                if (info.DeletePending == 0 && info.Links != 0) throw new InvalidOperationException("Owned object's deletion is unresolved");
+                entry.Handle.Dispose(); entry.Deleted=true; Check(clock,milliseconds);
+                try { System.IO.File.GetAttributes(entry.Path); throw new InvalidOperationException("Owned pathname remains or was replaced after object deletion"); }
+                catch (FileNotFoundException) { } catch (DirectoryNotFoundException) { }
+                Check(clock,milliseconds);
+            }
+            void Bounded(Action<Stopwatch> operation, int milliseconds, bool cleanup) {
+                if (milliseconds < 1 || milliseconds > 10000) throw new ArgumentOutOfRangeException(nameof(milliseconds));
+                if (disposed || Busy || cleanupFailure != null) throw new InvalidOperationException("Original custody is released, failed or has unresolved work");
+                var clock=Stopwatch.StartNew();
+                pending=Task.Run(() => operation(clock));
+                try {
+                    if (!pending.Wait(Math.Max(0,milliseconds-(int)clock.ElapsedMilliseconds)))
+                        throw new TimeoutException("Owned cleanup exceeded its monotonic deadline; completion is unresolved");
+                    Check(clock,milliseconds);
+                } catch (Exception error) {
+                    if (cleanup && (mutationBegun || error.GetBaseException() is TimeoutException)) cleanupFailure=error.GetBaseException().Message;
+                    throw new InvalidOperationException(error.GetBaseException().Message,error);
+                }
+            }
+            public void Inspect(int maximum, int milliseconds) {
+                Bounded(clock => { var opened=new List<Entry>(); try { Inventory("Security",maximum,clock,milliseconds,opened); }
+                    finally { foreach (var entry in opened) entry.Handle.Dispose(); } },milliseconds,false);
+            }
+            public void Cleanup(string kind, int milliseconds) {
+                Bounded(clock => {
+                    if (!Created) { CloseHandles(); return; }
+                    var opened=new List<Entry>();
+                    try {
+                        var entries=Inventory(kind,kind == "Schema" ? 2 : 10000,clock,milliseconds,opened);
+                        for (int index=entries.Count-1; index>=0; index--) { mutationBegun=true; DeleteObject(entries[index],clock,milliseconds); }
+                        mutationBegun=true; DeleteObject(root,clock,milliseconds); CloseHandles();
+                    } finally { foreach (var entry in opened) entry.Handle.Dispose(); }
+                },milliseconds,true);
+            }
+            void CloseHandles() {
+                disposed=true; foreach (var entry in produced.Values) entry.Handle?.Dispose(); root?.Handle?.Dispose();
+                for (int index=parents.Count-1;index>=0;index--) parents[index].Dispose();
+            }
+            public void Dispose() {
+                if (Busy) { pending.ContinueWith(task => CloseHandles(),TaskScheduler.Default); }
+                else CloseHandles();
+            }
+        }
         [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
         static extern bool CreateDirectoryW(string path, IntPtr security);
         public static void CreateExclusiveDirectory(string path) {
@@ -321,13 +494,12 @@ function New-OwnedLiveGateDirectory {
     $pattern = switch ($Kind) { 'Schema' { '^schema-gate-[0-9a-f]{32}$' }; 'Security' { '^codexsec-[0-9a-f]{32}$' }; 'Harness' { '^[0-9a-f]{32}$' } }
     if (-not [StringComparer]::OrdinalIgnoreCase.Equals([IO.Path]::GetDirectoryName($pathAbs), $root) -or
         [IO.Path]::GetFileName($pathAbs) -cnotmatch $pattern) { throw 'Live gate target is not an exact generated direct child of its managed root' }
-    Assert-LiveGatePathComponents -Path $root
-    [GauntletLive.Native]::CreateExclusiveDirectory($pathAbs)
-    Assert-LiveGatePathComponents -Path $pathAbs
     $token = [guid]::NewGuid().ToString('n')
-    $script:LiveGateDirectories.Add($token, [pscustomobject]@{
-        Path=$pathAbs; Root=$root; Kind=$Kind; Identity=[GauntletLive.Native]::DirectoryIdentity($pathAbs)
-    })
+    $owner = [pscustomobject]@{ Path=$pathAbs; Root=$root; Kind=$Kind; Custody=[GauntletLive.Native+Custody]::new(); CreationError=$null }
+    # Publish before the OS call. A factory throw still leaves a complete per-run cleanup record.
+    $script:LiveGateDirectories.Add($token, $owner)
+    try { $owner.Custody.Create($pathAbs) }
+    catch { $owner.CreationError=$_.Exception.Message; throw }
     return [pscustomobject]@{ Token=$token; Path=$pathAbs }
 }
 
@@ -353,30 +525,60 @@ function Get-LiveGateDirectoryRecord {
     throw "Directory has no creation record in this run: $abs"
 }
 
-function Assert-LiveGateTreeSafe {
-    # Read-only, bounded inventory. Never follow a link into another cleanup target.
-    param([Parameter(Mandatory)][string]$Path, [ValidateRange(1,10000)][int]$MaxEntries=10000)
-    Assert-LiveGatePathComponents -Path $Path
-    $pending = [Collections.Generic.Stack[string]]::new()
-    $pending.Push($Path)
-    $count = 0
-    $deadline = [DateTime]::UtcNow.AddSeconds(10)
-    while ($pending.Count -gt 0) {
-        $directory = $pending.Pop()
-        Assert-LiveGatePathComponents -Path $directory
-        foreach ($entry in [IO.Directory]::EnumerateFileSystemEntries($directory)) {
-            if ([DateTime]::UtcNow -gt $deadline) { throw 'Security-tree validation exceeded its deadline' }
-            if (++$count -gt $MaxEntries) { throw 'Security-tree validation exceeded its entry budget' }
-            $attributes = [IO.File]::GetAttributes($entry)
-            if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Security tree contains a reparse entry; cleanup is refused' }
-            if (($attributes -band [IO.FileAttributes]::Directory) -ne 0) { $pending.Push($entry) }
+function Get-LiveGateDirectoryRecords {
+    foreach ($entry in $script:LiveGateDirectories.GetEnumerator()) {
+        [pscustomobject]@{ Token=$entry.Key; Path=$entry.Value.Path; Kind=$entry.Value.Kind }
+    }
+}
+
+function Complete-LiveGateDirectories {
+    param([Parameter(Mandatory)][ValidateSet('Harness','Schema','Security')][string[]]$Kinds,
+          [Parameter(Mandatory)]$ProcessTreeRetired, [switch]$AllowSecurityTreeCleanup)
+    # Capture the whole scope first. This includes factories that created and then threw.
+    $records = @(Get-LiveGateDirectoryRecords)
+    foreach ($kind in $Kinds) {
+        foreach ($record in $records) {
+            if ($record.Kind -eq $kind) {
+                Remove-LiveGateDirectory -Record $record -ProcessTreeRetired $ProcessTreeRetired -AllowSecurityTreeCleanup:$AllowSecurityTreeCleanup
+            }
         }
     }
+}
+
+function New-LiveGateChildDirectory {
+    param([Parameter(Mandatory)]$Record, [Parameter(Mandatory)][string]$Name)
+    $owner = $script:LiveGateDirectories[[string]$Record.Token]
+    if ($null -eq $owner -or $owner.Kind -ne 'Security' -or $Record.Path -cne $owner.Path) { throw 'Unknown security producer ownership' }
+    return $owner.Custody.AddDirectory($owner.Path, $Name)
+}
+
+function Write-LiveGateChildFile {
+    param([Parameter(Mandatory)]$Record, [Parameter(Mandatory)][string]$Directory,
+          [Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][AllowEmptyCollection()][byte[]]$Bytes)
+    $owner = $script:LiveGateDirectories[[string]$Record.Token]
+    if ($null -eq $owner -or $owner.Kind -ne 'Security' -or $Record.Path -cne $owner.Path) { throw 'Unknown security producer ownership' }
+    $owner.Custody.WriteFile($Directory, $Name, $Bytes)
+}
+
+function Get-LiveGateChildFileHash {
+    param([Parameter(Mandatory)]$Record, [Parameter(Mandatory)][string]$Path)
+    $owner = $script:LiveGateDirectories[[string]$Record.Token]
+    if ($null -eq $owner -or $owner.Kind -ne 'Security' -or $Record.Path -cne $owner.Path) { throw 'Unknown security producer ownership' }
+    return $owner.Custody.FileSha256($Path)
+}
+
+function Assert-LiveGateTreeSafe {
+    # Read-only inventory. Protected handle acquisition and every empty directory share the budget.
+    param([Parameter(Mandatory)][string]$Path, [ValidateRange(1,10000)][int]$MaxEntries=10000,
+          [ValidateRange(1,10000)][int]$TimeoutMs=10000)
+    $record = Get-LiveGateDirectoryRecord -Path $Path
+    $script:LiveGateDirectories[$record.Token].Custody.Inspect($MaxEntries,$TimeoutMs)
     return $true
 }
 
 function Remove-LiveGateDirectory {
-    param([Parameter(Mandatory)]$Record, [Parameter(Mandatory)]$ProcessTreeRetired, [switch]$AllowSecurityTreeCleanup)
+    param([Parameter(Mandatory)]$Record, [Parameter(Mandatory)]$ProcessTreeRetired, [switch]$AllowSecurityTreeCleanup,
+          [ValidateRange(1,10000)][int]$TimeoutMs=10000)
     $result = [pscustomobject]@{ Accepted=$false; Path=$null; Error=$null }
     try {
         if ($ProcessTreeRetired -isnot [bool] -or -not $ProcessTreeRetired) { throw 'Process-tree retirement is unresolved; cleanup is refused' }
@@ -384,48 +586,11 @@ function Remove-LiveGateDirectory {
         $owner = $script:LiveGateDirectories[[string]$Record.Token]
         $result.Path = $owner.Path
         if (-not [StringComparer]::OrdinalIgnoreCase.Equals([string]$Record.Path, $owner.Path)) { throw 'Cleanup path differs from its exclusive creation record' }
-        Assert-LiveGatePathComponents -Path $owner.Root
         if ($owner.Kind -eq 'Security' -and -not $AllowSecurityTreeCleanup) { throw 'Security-tree cleanup requires explicit run-level authorization' }
-        # Missing is distinct from access/IO errors. No Test-Path suppression authorizes deletion.
-        $exists = $true
-        try { $attributes = [IO.File]::GetAttributes($owner.Path) }
-        catch [IO.FileNotFoundException] { $exists = $false }
-        catch [IO.DirectoryNotFoundException] { $exists = $false }
-        if ($exists) {
-            Assert-LiveGatePathComponents -Path $owner.Path
-            if ([GauntletLive.Native]::DirectoryIdentity($owner.Path) -cne $owner.Identity) { throw 'Cleanup directory identity differs from its creation record' }
-            $entries = [Collections.Generic.List[string]]::new()
-            if ($owner.Kind -ne 'Security') {
-                foreach ($entry in [IO.Directory]::EnumerateFileSystemEntries($owner.Path)) {
-                    if ($owner.Kind -eq 'Harness') { throw 'Owned harness is not empty; residue must be inspected' }
-                    if ($entries.Count -ge 2) { throw 'Unexpected entry in owned schema result directory' }
-                    $attributes = [IO.File]::GetAttributes($entry)
-                    if (($attributes -band ([IO.FileAttributes]::Directory -bor [IO.FileAttributes]::ReparsePoint)) -ne 0 -or
-                        [IO.Path]::GetFileName($entry) -cnotin @('events.jsonl','verdict.json')) { throw 'Unexpected entry in owned schema result directory' }
-                    $entries.Add($entry)
-                }
-            }
-            if ($owner.Kind -eq 'Schema') {
-                foreach ($entry in $entries) { Remove-Item -LiteralPath $entry -Force -ErrorAction Stop }
-                [IO.Directory]::Delete($owner.Path, $false)
-            } elseif ($owner.Kind -eq 'Harness') {
-                [IO.Directory]::Delete($owner.Path, $false)
-            } else {
-                # Only an explicitly authorized, exact registered Security target reaches this
-                # one recursive remover. No parent, wildcard or caller-selected tree is accepted.
-                $null = Assert-LiveGateTreeSafe -Path $owner.Path
-                Assert-LiveGatePathComponents -Path $owner.Path
-                if ([GauntletLive.Native]::DirectoryIdentity($owner.Path) -cne $owner.Identity) { throw 'Security root identity changed during validation' }
-                Write-Host "Authorized owned security cleanup target: $($owner.Path)"
-                Remove-Item -LiteralPath $owner.Path -Recurse -Force -ErrorAction Stop
-            }
-        }
-        # Verify absence, without treating permission/stat errors as proof.
-        $absent = $false
-        try { $null = [IO.File]::GetAttributes($owner.Path) }
-        catch [IO.FileNotFoundException] { $absent = $true }
-        catch [IO.DirectoryNotFoundException] { $absent = $true }
-        if (-not $absent) { throw 'Owned directory remains after cleanup' }
+        # Mutation uses the original held objects, including permitted descendants. Unexpected
+        # disappearance, released custody or uncompleted IO never substitutes for deletion proof.
+        if ($owner.Kind -eq 'Security') { Write-Host "Authorized owned security cleanup target: $($owner.Path)" }
+        $owner.Custody.Cleanup($owner.Kind,$TimeoutMs)
         $script:LiveGateDirectories.Remove([string]$Record.Token) | Out-Null
         $result.Accepted = $true
     } catch { $result.Error = $_.Exception.Message }
@@ -1485,7 +1650,7 @@ function Assert-HarnessSafe {
 function New-HarnessDir {
     # Unpredictable name, generated on first use, must not already exist. A caller-chosen or
     # reusable id could point at a pre-existing directory holding a planted AGENTS.md.
-    param([Parameter(Mandatory)][string]$RepoRoot)
+    param([Parameter(Mandatory)][string]$RepoRoot, [switch]$RequireLiveGateOwnership)
     Initialize-LiveGateNative
     $root = [IO.Path]::GetFullPath($env:LOCALAPPDATA)
     Assert-LiveGatePathComponents -Path $root
@@ -1503,7 +1668,8 @@ function New-HarnessDir {
     $name = (-join ($bytes | ForEach-Object { $_.ToString('x2') }))
     $dir = Join-Path $root $name
     if (Test-Path $dir) { throw "harness collision on $name — refusing to reuse an existing directory" }
-    $null = New-OwnedLiveGateDirectory -Path $dir -Kind Harness
+    if ($RequireLiveGateOwnership) { $null = New-OwnedLiveGateDirectory -Path $dir -Kind Harness }
+    else { [GauntletLive.Native]::CreateExclusiveDirectory($dir) }
     return (Assert-HarnessSafe -Dir $dir -RepoRoot $RepoRoot)
 }
 

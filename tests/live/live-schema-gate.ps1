@@ -16,6 +16,7 @@
 # Costs one small live round. Rejections cost ~2s (they fail before inference).
 . "$PSScriptRoot\..\helpers.ps1"
 . "$PSScriptRoot\..\..\gauntlet-review\scripts\lib.ps1"
+$ErrorActionPreference = 'Stop'
 
 $skillRoot = "$PSScriptRoot\..\..\gauntlet-review"
 $schema = Join-Path $skillRoot 'schemas\verdict.schema.json'
@@ -28,7 +29,7 @@ try {
     $tmp = $schemaRecord.Path
     $cli = Select-CodexCli -Candidates (Get-CodexCandidates)
     $disable = Get-DisableSet -FeatureNames $cli.FeatureNames
-    $harness = New-HarnessDir -RepoRoot $PSScriptRoot
+    $harness = New-HarnessDir -RepoRoot $PSScriptRoot -RequireLiveGateOwnership
     $harnessRecord = Get-LiveGateDirectoryRecord -Path $harness
     $verdictPath = Join-Path $tmp 'verdict.json'          # outside the harness, which stays empty
     $codexArgs = New-CodexArgs -HarnessDir $harness -SchemaPath $schema -VerdictPath $verdictPath -DisableSet $disable
@@ -65,12 +66,9 @@ Trivial document. Nothing to report.
 } catch {
     Assert-True $false "schema gate aborted: $($_.Exception.Message)"
 } finally {
-    foreach ($record in @($harnessRecord,$schemaRecord)) {
-        if ($null -ne $record) {
-            $cleanup = Remove-LiveGateDirectory -Record $record -ProcessTreeRetired $processTreeRetired
-            $cleanupResults.Add($cleanup)
-            Assert-True $cleanup.Accepted "owned schema gate cleanup accepted ($($record.Path)): $($cleanup.Error)"
-        }
+    foreach ($cleanup in @(Complete-LiveGateDirectories -Kinds @('Harness','Schema') -ProcessTreeRetired $processTreeRetired)) {
+        $cleanupResults.Add($cleanup)
+        Assert-True $cleanup.Accepted "owned schema gate cleanup accepted ($($cleanup.Path)): $($cleanup.Error)"
     }
 }
 
