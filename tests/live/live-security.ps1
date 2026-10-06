@@ -144,6 +144,12 @@ function Test-ControlDiagnosticDecodedSecret {
     $State.Work += [long]$Text.Length * [Math]::Max(1,$Store.Secrets.Count)
     if ($State.Work -gt 67108864) { $State.Limited=$true; return $true }
     foreach ($secret in $Store.Secrets) { if ($Text.Contains($secret)) { return $true } }
+    # Percent decoding shares the encoding depth and accounting with JSON and Base64.
+    # Inspect known credentials only here so benign URI text is not mistaken for malformed JSON.
+    if ($Text.IndexOf('%',[StringComparison]::Ordinal) -ge 0) {
+        $protectedPercent=Protect-ControlDiagnosticText -Store $Store -Text $Text -ScanState $State -Depth $Depth -KnownCredentialsOnly
+        if ($protectedPercent -cne $Text) { return $true }
+    }
     $trimmed=$Text.TrimStart([char]0xfeff).TrimStart()
     if (-not ($trimmed.StartsWith('{') -or $trimmed.StartsWith('[') -or $trimmed.StartsWith('"'))) { return $false }
     try { $document=ConvertFrom-Json -InputObject $trimmed -AsHashtable -Depth 64 -ErrorAction Stop }
@@ -193,6 +199,89 @@ function Protect-ControlDiagnosticText {
             $spans.Add([pscustomobject]@{Start=$start;End=$start+$secret.Length})
             $offset=$start+$secret.Length
         }
+    }
+    # Decode percent octets rather than enumerate spellings. Map decoded matches back to
+    # original spans, including partial escapes and UTF-8 runs, without rewriting benign text.
+    if ($original.IndexOf('%',[StringComparison]::Ordinal) -ge 0) {
+        $percentRegex=[regex]::new('(?:%[0-9A-Fa-f]{2})+',[Text.RegularExpressions.RegexOptions]::CultureInvariant,[TimeSpan]::FromMilliseconds(250))
+        try {
+            if ($percentRegex.IsMatch($original)) {
+                if ($Depth -ge 4) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+                $percentBuilder=[Text.StringBuilder]::new(); $percentCursor=0
+                $percentSegments=[Collections.Generic.List[object]]::new()
+                foreach ($percentMatch in $percentRegex.Matches($original)) {
+                    $state.Nodes++; $state.Work += $percentMatch.Length
+                    if ($state.Nodes -gt 8192 -or $state.Work -gt 67108864) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+                    if ($percentMatch.Index -gt $percentCursor) {
+                        $literalLength=$percentMatch.Index-$percentCursor
+                        $percentSegments.Add([pscustomobject]@{Start=$percentBuilder.Length;End=$percentBuilder.Length+$literalLength;SourceStart=$percentCursor;SourceEnd=$percentMatch.Index;Escaped=$false})
+                        [void]$percentBuilder.Append($original.Substring($percentCursor,$literalLength))
+                    }
+                    $decodedPercent=[Uri]::UnescapeDataString($percentMatch.Value)
+                    $percentSegments.Add([pscustomobject]@{Start=$percentBuilder.Length;End=$percentBuilder.Length+$decodedPercent.Length;SourceStart=$percentMatch.Index;SourceEnd=$percentMatch.Index+$percentMatch.Length;Escaped=$true})
+                    [void]$percentBuilder.Append($decodedPercent)
+                    $percentCursor=$percentMatch.Index+$percentMatch.Length
+                }
+                if ($percentCursor -lt $original.Length) {
+                    $percentSegments.Add([pscustomobject]@{Start=$percentBuilder.Length;End=$percentBuilder.Length+$original.Length-$percentCursor;SourceStart=$percentCursor;SourceEnd=$original.Length;Escaped=$false})
+                    [void]$percentBuilder.Append($original.Substring($percentCursor))
+                }
+                $percentText=$percentBuilder.ToString()
+                $state.Bytes += [Text.Encoding]::UTF8.GetByteCount($percentText)
+                $state.Work += [long]$percentText.Length * [Math]::Max(1,$Store.Secrets.Count)
+                if ($state.Bytes -gt 1048576 -or $state.Work -gt 67108864) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+                foreach ($secret in $Store.Secrets) {
+                    $offset=0
+                    while ($secret.Length -and $offset -lt $percentText.Length) {
+                        $start=$percentText.IndexOf($secret,$offset,[StringComparison]::Ordinal)
+                        if ($start -lt 0) { break }
+                        $end=$start+$secret.Length; $sourceStart=$null; $sourceEnd=$null
+                        foreach ($segment in $percentSegments) {
+                            $state.Work++
+                            if ($state.Work -gt 67108864) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+                            if ($segment.Start -le $start -and $segment.End -gt $start) { $sourceStart=if ($segment.Escaped) { $segment.SourceStart } else { $segment.SourceStart+$start-$segment.Start } }
+                            if ($segment.Start -lt $end -and $segment.End -ge $end) { $sourceEnd=if ($segment.Escaped) { $segment.SourceEnd } else { $segment.SourceStart+$end-$segment.Start }; break }
+                        }
+                        $state.Spans++
+                        if ($state.Spans -gt 4096) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+                        $spans.Add([pscustomobject]@{Start=$sourceStart;End=$sourceEnd})
+                        $offset=$end
+                    }
+                }
+                # Inspect nested encodings within URI tokens using the same shared state.
+                $percentTokenRegex=[regex]::new('[^\s"<>]+',[Text.RegularExpressions.RegexOptions]::CultureInvariant,[TimeSpan]::FromMilliseconds(250))
+                foreach ($percentToken in $percentTokenRegex.Matches($original)) {
+                    if (-not $percentRegex.IsMatch($percentToken.Value)) { continue }
+                    $state.Candidates++
+                    if ($state.Candidates -gt 256) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+                    $decodedToken=[Uri]::UnescapeDataString($percentToken.Value)
+                    if ($decodedToken -ceq $percentToken.Value) { continue }
+                    $state.Work += [long]$decodedToken.Length * [Math]::Max(1,$Store.Secrets.Count)
+                    if ($state.Work -gt 67108864) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+                    # Mask already mapped decoded matches only in the inspection copy. A
+                    # direct credential must not hide a second nested credential in the token.
+                    $nestedToken=$decodedToken
+                    foreach ($secret in $Store.Secrets) {
+                        if ($secret.Length -and $nestedToken.Contains($secret)) {
+                            $state.Work += $nestedToken.Length
+                            if ($state.Work -gt 67108864) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+                            $nestedToken=$nestedToken.Replace($secret,(' '*$secret.Length))
+                        }
+                    }
+                    $sensitive=Test-ControlDiagnosticDecodedSecret -Store $Store -Text $nestedToken -State $state -Depth ($Depth+1) -KnownCredentialsOnly
+                    if (-not $sensitive) {
+                        $nestedPercent=Protect-ControlDiagnosticText -Store $Store -Text $nestedToken -ScanState $state -Depth ($Depth+1) -KnownCredentialsOnly
+                        $sensitive=$nestedPercent -cne $nestedToken
+                    }
+                    if ($state.Limited) { return '[redacted: diagnostic scan budget]' }
+                    if ($sensitive) {
+                        $state.Spans++
+                        if ($state.Spans -gt 4096) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+                        $spans.Add([pscustomobject]@{Start=$percentToken.Index;End=$percentToken.Index+$percentToken.Length})
+                    }
+                }
+            }
+        } catch [Text.RegularExpressions.RegexMatchTimeoutException] { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
     }
     # Inspect JSON string tokens directly in raw JSON and JSON-lines. Keep their quote
     # delimiters and every unrelated event field exact; sensitive content becomes a source span.

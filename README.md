@@ -141,6 +141,10 @@ pwsh -File .\tests\live\live-security.ps1 -AllowOwnedSecurityTreeCleanup -Failed
 Failed positive controls retain one JSON record each, before credential-tree cleanup. Records
 include the executable, argv as an array, process outcome, event/model output and stderr. Known
 auth values (including common JSON, URL and Base64 encodings) and bearer credentials are redacted.
+Percent octets decode regardless of hexadecimal case, including partial escapes, unreserved
+characters and UTF-8 runs. Decoded credential matches map back to original source spans so
+adjacent benign text keeps its spelling. Nested percent, JSON and Base64 encodings share the
+same depth, candidate, decoded-byte and work limits; benign percent text remains unchanged.
 Bounded Base64 and Base64URL decoding also checks recovered text and credentials inside parsed
 JSON strings and property names. It handles missing padding, key/value delimiters, MIME line folding, JSON
 reserialization, Unicode escapes, serialized inner JSON and both UTF-16 byte orders, including
@@ -159,7 +163,8 @@ than retaining a possibly recoverable fragment. Trusted invocation refuses that 
 Exact-value and encoded-content redactions are combined as spans of the original text,
 so one replacement cannot hide another recoverable credential. The per-field limits are four MiB
 of input characters, 256 encoded candidates, one MiB of decoded bytes, four encoding layers,
-8,192 combined parsed JSON nodes, raw string tokens and bare escape runs, 4,096 redaction spans and 67,108,864 counted comparison characters.
+8,192 combined parsed JSON nodes, raw string tokens, bare escape runs and percent runs,
+4,096 redaction spans and 67,108,864 counted comparison characters.
 An encoded candidate over 262,144 characters is redacted conservatively. Exceeding a shared work
 limit or the regex timeout replaces untrusted output with `[redacted: diagnostic scan budget]`
 instead of retaining an unchecked tail. Span and work limits include all recursive decoding.

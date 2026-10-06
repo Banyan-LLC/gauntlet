@@ -17,6 +17,7 @@ $edgeStore=New-ControlDiagnosticStore -Root $fixtureRoot -CredentialRoot (Join-P
 $invocationStore=New-ControlDiagnosticStore -Root $fixtureRoot -CredentialRoot (Join-Path $fixtureRoot 'credentials')
 $rawStore=New-ControlDiagnosticStore -Root $fixtureRoot -CredentialRoot (Join-Path $fixtureRoot 'credentials')
 $emojiStore=New-ControlDiagnosticStore -Root $fixtureRoot -CredentialRoot (Join-Path $fixtureRoot 'credentials')
+$percentStores=[Collections.Generic.List[object]]::new()
 $producer=@'
 {
   "tokens": { "access_token": "synthetic-secret/for-encoding=42" },
@@ -182,6 +183,75 @@ try {
     Assert-Throws { Write-FailedControlDiagnostic -Store $emojiStore -Name 'surrogate-argv' -Executable 'codex.exe' -Argv @($emojiNative) -Result $emojiResult } 'supplementary Unicode credentials refuse invocation retention'
     Assert-True (-not [IO.File]::Exists((Join-Path $emojiStore.Path 'surrogate-argv.json'))) 'surrogate invocation refusal creates no record'
     $mixedEscapes='synthetic-\u0073ecret/for-encoding=42'
+    # Removing bounded percent decoding must expose recoverable credentials in actual records.
+    $percentSecret='synthetic/secret+case=987'
+    $percentProducer='{"tokens":{"access_token":"synthetic/secret+case=987"}}'
+    $percentLower='synthetic%2fsecret%2bcase%3d987'
+    $percentBase64='c3ludGhldGljJTJmc2VjcmV0JTJiY2FzZSUzZDk4Nw=='
+    $percentJson='{"notice":"synthetic%2fsecret%2bcase%3d987"}'
+    $percentKey='{"synthetic%2fsecret%2bcase%3d987":"ordinary diagnostic"}'
+    $percentDocument=[regex]::Replace([Uri]::EscapeDataString($percentProducer),'%[0-9A-Fa-f]{2}',{param($match) $match.Value.ToLowerInvariant()})
+    $percentEmoji='synthetic/secret+'+[char]::ConvertFromUtf32(0x1f600)+'=987'
+    $percentCases=@(
+        @{Name='lower';Text=$percentLower;Expected='[redacted]';Native='[redacted]'},
+        @{Name='mixed';Text='synthetic%2fsecret%2Bcase%3d987';Expected='[redacted]';Native='[redacted]'},
+        @{Name='partial';Text='synthetic%2fsecret+case=987';Expected='[redacted]';Native='[redacted]'},
+        @{Name='unreserved';Text='synthetic/%73ecret+case=987';Expected='[redacted]';Native='[redacted]'},
+        @{Name='wrapped';Text='before synthetic%2fsecret%2bcase%3d987 after';Expected='before [redacted] after';Native='before [redacted] after'},
+        @{Name='adjacent';Text='%70refixsynthetic%2fsecret%2bcase%3d987suffix';Expected='%70refix[redacted]suffix';Native='%70refix[redacted]suffix'},
+        @{Name='twice';Text='synthetic%252fsecret%252bcase%253d987';Expected='[redacted]';Native='[redacted]'},
+        @{Name='shared-token';Text='synthetic%2fsecret%2bcase%3d987,synthetic%252fsecret%252bcase%253d987';Expected='[redacted]';Native='[redacted]'},
+        @{Name='base64';Text=$percentBase64;Expected='[redacted]';Native='[redacted]'},
+        @{Name='nested-base64';Text=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($percentBase64));Expected='[redacted]';Native='[redacted]'},
+        @{Name='json-value';Text=$percentJson;Expected='{"notice":"[redacted]"}';Native='[redacted]'},
+        @{Name='json-key';Text=$percentKey;Expected='{"[redacted]":"ordinary diagnostic"}';Native='[redacted]'},
+        @{Name='base64-json';Text=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($percentJson));Expected='[redacted]';Native='[redacted]'},
+        @{Name='serialized-json';Text=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((@{message=$percentJson} | ConvertTo-Json -Compress)));Expected='[redacted]';Native='[redacted]'},
+        @{Name='document';Text=$percentDocument;Expected='[redacted]';Native='[redacted]'},
+        @{Name='utf8';Text='synthetic%2fsecret%2b%f0%9f%98%80%3d987';Expected='[redacted]';Native='[redacted]';Secret=$percentEmoji}
+    )
+    foreach ($percentCase in $percentCases) {
+        $percentStore=New-ControlDiagnosticStore -Root $fixtureRoot -CredentialRoot (Join-Path $fixtureRoot 'credentials')
+        $percentStores.Add($percentStore)
+        $percentProducerText=if ($percentCase.ContainsKey('Secret')) { @{tokens=@{access_token=$percentCase.Secret}} | ConvertTo-Json -Compress } else { $percentProducer }
+        Add-ControlDiagnosticCredentials -Store $percentStore -Bytes ([Text.Encoding]::UTF8.GetBytes($percentProducerText))
+        $percentNative=@{type='item.completed';item=@{type='agent_message';text=$percentCase.Text}} | ConvertTo-Json -Compress -Depth 8
+        $percentResult=[pscustomobject]@{Usable=$false;Reason=$percentCase.Text;InputTokens=12;Stdout=$percentNative;Stderr=$percentCase.Text;ExitCode=0;TimedOut=$false;StartFailed=$false}
+        Write-FailedControlDiagnostic -Store $percentStore -Name 'percent-record' -Executable 'codex.exe' -Argv @('exec','') -Result $percentResult -Error $percentCase.Text | Out-Null
+        $percentRecord=Read-EncodedFixture (Join-Path $percentStore.Path 'percent-record.json') | ConvertFrom-Json
+        $percentEvent=$percentRecord.Stdout | ConvertFrom-Json
+        Assert-Eq $percentEvent.item.text $percentCase.Native "$($percentCase.Name): native retained model output removes the recoverable percent credential"
+        Assert-Eq $percentEvent.type 'item.completed' "$($percentCase.Name): native event metadata remains exact"
+        foreach ($percentField in @('Stderr','Reason','Error')) {
+            Assert-Eq $percentRecord.$percentField $percentCase.Expected "$($percentCase.Name): actual retained $percentField removes the recoverable percent credential"
+        }
+        Assert-True $percentRecord.Redacted "$($percentCase.Name): percent redaction is reported"
+        Assert-True (-not $percentRecord.Usable -and $percentRecord.ExitCode -eq 0 -and $percentRecord.InputTokens -eq 12 -and -not $percentRecord.TimedOut -and -not $percentRecord.StartFailed) "$($percentCase.Name): process outcomes remain exact"
+        Assert-Eq ($percentRecord.Argv -join '|') 'exec|' "$($percentCase.Name): empty argument boundaries remain exact"
+        Assert-Throws { Write-FailedControlDiagnostic -Store $percentStore -Name 'percent-argv' -Executable 'codex.exe' -Argv @($percentCase.Text) -Result $percentResult } "$($percentCase.Name): known percent credentials refuse argv retention"
+        Assert-True (-not [IO.File]::Exists((Join-Path $percentStore.Path 'percent-argv.json'))) "$($percentCase.Name): argv refusal creates no record"
+        Assert-Throws { Write-FailedControlDiagnostic -Store $percentStore -Name 'percent-executable' -Executable $percentCase.Text -Argv @('exec') -Result $percentResult } "$($percentCase.Name): known percent credentials refuse executable retention"
+        Assert-True (-not [IO.File]::Exists((Join-Path $percentStore.Path 'percent-executable.json'))) "$($percentCase.Name): executable refusal creates no record"
+        Assert-Eq $percentStore.Count 1 "$($percentCase.Name): invocation refusal does not rely on the eight-record cap"
+    }
+    $benignPercent='ordinary%2fnotice%2bcase%3d987 %22quoted%22 %G1 100%done'
+    $benignPercentNative=@{type='item.completed';item=@{type='agent_message';text=$benignPercent}} | ConvertTo-Json -Compress -Depth 8
+    $benignPercentResult=[pscustomobject]@{Usable=$false;Reason=$benignPercent;InputTokens=12;Stdout=$benignPercentNative;Stderr=$benignPercent;ExitCode=0;TimedOut=$false;StartFailed=$false}
+    $benignPercentStore=New-ControlDiagnosticStore -Root $fixtureRoot -CredentialRoot (Join-Path $fixtureRoot 'credentials')
+    $percentStores.Add($benignPercentStore)
+    Add-ControlDiagnosticCredentials -Store $benignPercentStore -Bytes ([Text.Encoding]::UTF8.GetBytes($percentProducer))
+    $benignPercentExecutable='C:\percent%2fordinary\codex.exe'
+    Write-FailedControlDiagnostic -Store $benignPercentStore -Name 'benign-percent' -Executable $benignPercentExecutable -Argv @($benignPercent,'') -Result $benignPercentResult -Error $benignPercent | Out-Null
+    $benignPercentRecord=Read-EncodedFixture (Join-Path $benignPercentStore.Path 'benign-percent.json') | ConvertFrom-Json
+    Assert-Eq $benignPercentRecord.Stdout $benignPercentNative 'benign percent native output remains exact'
+    foreach ($percentField in @('Stderr','Reason','Error')) { Assert-Eq $benignPercentRecord.$percentField $benignPercent "benign percent $percentField remains exact" }
+    Assert-Eq $benignPercentRecord.Executable $benignPercentExecutable 'benign percent executable remains exact'
+    Assert-Eq $benignPercentRecord.Argv[0] $benignPercent 'benign percent argument remains exact'
+    Assert-Eq $benignPercentRecord.Argv[1] '' 'benign percent invocation preserves empty arguments'
+    Assert-True (-not $benignPercentRecord.Redacted -and -not $benignPercentRecord.Truncated) 'benign percent inspection does not report false redaction or truncation'
+    $percentDepth=$percentLower
+    for ($layer=0;$layer -lt 4;$layer++) { $percentDepth=$percentDepth.Replace('%','%25') }
+    Assert-Eq (Protect-ControlDiagnosticText -Store $benignPercentStore -Text $percentDepth) '[redacted: diagnostic scan budget]' 'nested percent decoding cannot exceed the shared four-layer bound'
     Assert-Eq (Protect-ControlDiagnosticText -Store $store -Text $mixedEscapes) '[redacted]' 'Unicode inspection checks mixed literal and escaped credential content'
     Assert-Eq (Protect-ControlDiagnosticText -Store $store -Text ('synthetic-secret/for-encoding=42 '+$escapedSecret)) '[redacted]' 'a literal credential span cannot hide another escaped credential in the same field'
     $badCases=@(
@@ -227,6 +297,6 @@ try {
     $syntheticJwt='synthetic-header.'+$jwtPayload+'.synthetic-signature'
     Add-ControlDiagnosticCredentials -Store $store -Bytes ([Text.Encoding]::UTF8.GetBytes(('{"tokens":{"id_token":"'+$syntheticJwt+'"}}')))
     Assert-Eq (Protect-ControlDiagnosticText -Store $store -Text $syntheticJwt) '[redacted]' 'encoded payload redaction cannot break detection of a known full credential spanning token boundaries'
-} finally { $store.Custody.Dispose(); $edgeStore.Custody.Dispose(); $invocationStore.Custody.Dispose(); $rawStore.Custody.Dispose(); $emojiStore.Custody.Dispose() }
+} finally { $store.Custody.Dispose(); $edgeStore.Custody.Dispose(); $invocationStore.Custody.Dispose(); $rawStore.Custody.Dispose(); $emojiStore.Custody.Dispose(); foreach ($percentStore in $percentStores) { $percentStore.Custody.Dispose() } }
 Write-Host "Synthetic evidence: $fixtureRoot"
 Write-TestResult
