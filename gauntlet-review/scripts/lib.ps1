@@ -285,13 +285,13 @@ namespace GauntletLive {
             if (String.IsNullOrEmpty(name) || name.Length > 255 || name == "." || name == ".." || name.EndsWith(".") || name.EndsWith(" ") ||
                 name.IndexOfAny(new char[] {'\\','/',':','\0','*','?','"','<','>','|'}) >= 0) throw new ArgumentException("Invalid owned child name");
         }
-        static SafeFileHandle Relative(SafeFileHandle parent, string name, bool create, bool directory, bool deleteAccess, uint sharing=3) {
+        static SafeFileHandle Relative(SafeFileHandle parent, string name, bool create, bool directory, bool deleteAccess, uint sharing=3, IntPtr security=default(IntPtr)) {
             Leaf(name);
             IntPtr text=Marshal.StringToHGlobalUni(name), unicode=IntPtr.Zero;
             try {
                 var u = new UnicodeString {Length=(ushort)(name.Length*2), MaximumLength=(ushort)(name.Length*2+2), Buffer=text};
                 unicode=Marshal.AllocHGlobal(Marshal.SizeOf<UnicodeString>()); Marshal.StructureToPtr(u, unicode, false);
-                var attributes=new ObjectAttributes {Length=Marshal.SizeOf<ObjectAttributes>(), Root=parent.DangerousGetHandle(), Name=unicode, Attributes=0x40};
+                var attributes=new ObjectAttributes {Length=Marshal.SizeOf<ObjectAttributes>(), Root=parent.DangerousGetHandle(), Name=unicode, Attributes=0x40, Security=security};
                 uint access=0x00100080u | (deleteAccess ? 0x10000u : 0u) | (directory ? 1u : (create ? 3u : 0u));
                 uint options=0x00200020u | (directory ? 1u : (create ? 0x40u : 0u));
                 SafeFileHandle handle; IoStatus status;
@@ -321,7 +321,8 @@ namespace GauntletLive {
             static void Check(Stopwatch clock, int milliseconds) {
                 if (clock.ElapsedMilliseconds >= milliseconds) throw new TimeoutException("Owned cleanup exceeded its monotonic deadline; completion is unresolved");
             }
-            public void Create(string path) {
+            public void Create(string path) { Create(path, null); }
+            public void Create(string path, byte[] securityDescriptor) {
                 if (root != null || disposed) throw new InvalidOperationException("Custody cannot be reused");
                 string full=System.IO.Path.GetFullPath(path), parent=System.IO.Path.GetDirectoryName(full), drive=System.IO.Path.GetPathRoot(full);
                 if (drive.Length != 3 || drive[1] != ':' || new DriveInfo(drive).DriveType != DriveType.Fixed)
@@ -334,7 +335,14 @@ namespace GauntletLive {
                     current=Relative(current, part, false, true, false); parents.Add(current); Regular(current);
                 }
                 // FILE_CREATE and the returned no-delete-sharing handle acquire the same object atomically.
-                root.Handle=Relative(current, System.IO.Path.GetFileName(full), true, true, true);
+                IntPtr security=IntPtr.Zero;
+                try {
+                    if (securityDescriptor != null) {
+                        security=Marshal.AllocHGlobal(securityDescriptor.Length);
+                        Marshal.Copy(securityDescriptor,0,security,securityDescriptor.Length);
+                    }
+                    root.Handle=Relative(current, System.IO.Path.GetFileName(full), true, true, true, 3, security);
+                } finally { if (security != IntPtr.Zero) Marshal.FreeHGlobal(security); }
                 produced.Add(full, root);
                 Regular(root.Handle);
             }

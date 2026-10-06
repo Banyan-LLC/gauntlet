@@ -125,12 +125,55 @@ The security battery prepares temporary credential copies and requires explicit 
 to clean up its owned security tree for the actual live invocation. Only after authorizing that
 invocation and its cleanup, run these commands in this exact order. The
 `-AllowOwnedSecurityTreeCleanup` switch records that opt-in; omitting it refuses startup.
+The security battery also requires `-FailedControlDiagnosticsRoot`, an existing regular directory
+on a local fixed drive, outside the credential tree. It creates a fresh `failed-controls-<guid>`
+child there with access restricted to the current Windows user. Select an artifact location you
+intend to retain before starting any live call.
 
 ```powershell
 pwsh -File .\gauntlet-review\scripts\calibrate-premises.ps1
 pwsh -File .\tests\live\live-schema-gate.ps1
-pwsh -File .\tests\live\live-security.ps1 -AllowOwnedSecurityTreeCleanup
+$diagnosticsRoot = Join-Path $env:LOCALAPPDATA 'gauntlet-review\diagnostics'
+New-Item -ItemType Directory -Path $diagnosticsRoot -Force | Out-Null
+pwsh -File .\tests\live\live-security.ps1 -AllowOwnedSecurityTreeCleanup -FailedControlDiagnosticsRoot $diagnosticsRoot
 ```
+
+Failed positive controls retain one JSON record each, before credential-tree cleanup. Records
+include the executable, argv as an array, process outcome, event/model output and stderr. Known
+auth values (including common JSON, URL and Base64 encodings) and bearer credentials are redacted.
+Bounded Base64 and Base64URL decoding also checks recovered text and credentials inside parsed
+JSON strings and property names. It handles missing padding, key/value delimiters, MIME line folding, JSON
+reserialization, Unicode escapes, serialized inner JSON and both UTF-16 byte orders, including
+non-ASCII prefixes. Serialized inner JSON consumes the same encoding depth and work budgets.
+Raw JSON and JSON-lines inspect escaped string tokens in their original source positions;
+sensitive values or property names are redacted while event boundaries and unrelated fields
+remain exact. Benign raw JSON remains unchanged. Trusted raw JSON invocation content follows
+the same credential checks and refuses before writing when a match or inspection limit occurs.
+Bare JSON escape content, including literal escape text inside native event strings, receives
+bounded recursive inspection of all standard escapes, including escaped solidus and Unicode
+surrogate pairs. Consecutive escape runs decode together; ordinary Windows path text remains
+literal unless transformed content proves sensitive. Valid quoted regions and known redaction spans are masked
+before this check so event structure stays intact and one secret cannot hide another.
+Incomplete or invalid quoted content becomes `[redacted: diagnostic scan incomplete]` rather
+than retaining a possibly recoverable fragment. Trusted invocation refuses that record.
+Exact-value and encoded-content redactions are combined as spans of the original text,
+so one replacement cannot hide another recoverable credential. The per-field limits are four MiB
+of input characters, 256 encoded candidates, one MiB of decoded bytes, four encoding layers,
+8,192 combined parsed JSON nodes, raw string tokens and bare escape runs, 4,096 redaction spans and 67,108,864 counted comparison characters.
+An encoded candidate over 262,144 characters is redacted conservatively. Exceeding a shared work
+limit or the regex timeout replaces untrusted output with `[redacted: diagnostic scan budget]`
+instead of retaining an unchecked tail. Span and work limits include all recursive decoding.
+Trusted executable paths and argv are checked for known credentials without conservatively
+changing benign encoded text. A credential match or inspection limit refuses the record before
+writing; published executable paths, argument arrays and process outcome metadata remain exact.
+The invocation shares one inspection budget across the executable and all arguments.
+`Redacted` reports output changes. Output excerpts keep the beginning and end, with `Truncated` set
+when content is omitted. The limit is eight records, one MiB each; stdout is limited to 32,768
+characters and stderr to 8,192. Oversized argv is refused rather than silently altered. A write
+failure fails the battery and cannot authorize live evidence. These private diagnostic records
+are not certification evidence. Successful controls retain no output, and an all-green run leaves
+an empty diagnostic child. Records survive credential cleanup; remove them only when you have
+finished inspecting them. Do not publish their contents without reviewing the redactions.
 
 Calibration verifies the selected CLI, schema, account-level Codex `AGENTS.md`, and invocation
 profile. It makes no model request. The two live gates then prove that the real API accepts the
@@ -279,7 +322,9 @@ instructions or an omitted cleanup opt-in still refuse certification; do not byp
 ```powershell
 pwsh -File .\gauntlet-review\scripts\calibrate-premises.ps1
 pwsh -File .\tests\live\live-schema-gate.ps1
-pwsh -File .\tests\live\live-security.ps1 -AllowOwnedSecurityTreeCleanup
+$diagnosticsRoot = Join-Path $env:LOCALAPPDATA 'gauntlet-review\diagnostics'
+New-Item -ItemType Directory -Path $diagnosticsRoot -Force | Out-Null
+pwsh -File .\tests\live\live-security.ps1 -AllowOwnedSecurityTreeCleanup -FailedControlDiagnosticsRoot $diagnosticsRoot
 pwsh -File .\install.ps1
 ```
 

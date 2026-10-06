@@ -1,8 +1,12 @@
 #Requires -Version 7
 [CmdletBinding()]
-param([switch]$AllowOwnedSecurityTreeCleanup)
+param([switch]$AllowOwnedSecurityTreeCleanup, [string]$FailedControlDiagnosticsRoot)
 if (-not $AllowOwnedSecurityTreeCleanup) {
     Write-Error 'This live battery copies credentials and requires separately authorized owned-tree cleanup. No run began.'
+    exit 2
+}
+if ([string]::IsNullOrWhiteSpace($FailedControlDiagnosticsRoot)) {
+    Write-Error 'Supply an existing private-artifact parent with -FailedControlDiagnosticsRoot. No run began.'
     exit 2
 }
 <# LIVE security battery for the hermetic Codex reviewer. Makes REAL Codex CLI calls -- each one
@@ -78,6 +82,292 @@ $agentsMdSrcSha256 = $null
 $script:HarnessesCreated = [System.Collections.Generic.List[string]]::new()   # New-HarnessDir output, OUTSIDE guidRoot
 $script:SecurityProcessRuns = [Collections.Generic.List[object]]::new()
 $script:SecurityCleanupResults = [Collections.Generic.List[object]]::new()
+$diagnosticStore = $null
+
+function New-ControlDiagnosticStore {
+    param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][string]$CredentialRoot)
+    $parent=[IO.Path]::GetFullPath($Root).TrimEnd('\','/')
+    $credentialPath=[IO.Path]::GetFullPath($CredentialRoot).TrimEnd('\','/')
+    if ([StringComparer]::OrdinalIgnoreCase.Equals($parent,$credentialPath) -or
+        $parent.StartsWith($credentialPath+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Failure diagnostics must be outside the retiring credential tree'
+    }
+    Assert-LiveGatePathComponents -Path $parent
+    Initialize-LiveGateNative
+    $custody=[GauntletLive.Native+Custody]::new()
+    $path=Join-Path $parent ('failed-controls-'+[guid]::NewGuid().ToString('n'))
+    try {
+        # Reuse handle-relative exclusive creation and pinned regular ancestry. This owner is
+        # deliberately separate from LiveGateDirectories, whose contents are retired on exit.
+        $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User
+        $acl=[Security.AccessControl.DirectorySecurity]::new()
+        $acl.SetOwner($sid)
+        $acl.SetAccessRuleProtection($true,$false)
+        $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($sid,'FullControl','ContainerInherit,ObjectInherit','None','Allow'))
+        $custody.Create($path,$acl.GetSecurityDescriptorBinaryForm())
+        return [pscustomobject]@{Path=$path;Custody=$custody;Count=0;Secrets=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)}
+    } catch { $custody.Dispose(); throw }
+}
+
+function Add-ControlDiagnosticCredentials {
+    param([Parameter(Mandatory)]$Store, [Parameter(Mandatory)][byte[]]$Bytes)
+    # Consume the bytes the credential producer already read. Never read another auth path.
+    # Refuse material we cannot completely parse/redact before copying it into a control home.
+    if ($Bytes.Length -gt 1048576) { throw 'Credential redaction input exceeds its byte budget' }
+    $raw=[Text.UTF8Encoding]::new($false,$true).GetString($Bytes)
+    $document=ConvertFrom-Json -InputObject $raw -AsHashtable -Depth 64 -ErrorAction Stop
+    if ($document -isnot [Collections.IDictionary]) { throw 'Credential redaction requires a JSON object' }
+    $documentJson=ConvertTo-Json -InputObject $raw -Compress
+    foreach ($variant in @($raw,$documentJson.Substring(1,$documentJson.Length-2),[Uri]::EscapeDataString($raw),[Convert]::ToBase64String($Bytes))) {
+        $Store.Secrets.Add($variant) | Out-Null
+    }
+    $pending=[Collections.Generic.Stack[object]]::new(); $pending.Push($document)
+    while ($pending.Count) {
+        $value=$pending.Pop()
+        if ($value -is [string] -and $value.Length) {
+            if ($value.Length -gt 65536) { throw 'Credential value exceeds its redaction budget' }
+            $json=ConvertTo-Json -InputObject $value -Compress
+            foreach ($variant in @($value,$json.Substring(1,$json.Length-2),[Uri]::EscapeDataString($value),[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($value)))) {
+                $Store.Secrets.Add($variant) | Out-Null
+            }
+            if ($Store.Secrets.Count -gt 512) { throw 'Credential redaction exceeds its value budget' }
+        } elseif ($value -is [Collections.IDictionary]) {
+            foreach ($child in $value.Values) { $pending.Push($child) }
+        } elseif ($value -is [Collections.IEnumerable] -and $value -isnot [string]) {
+            foreach ($child in $value) { $pending.Push($child) }
+        }
+    }
+}
+
+function Test-ControlDiagnosticDecodedSecret {
+    param($Store, [string]$Text, $State, [switch]$KnownCredentialsOnly, [int]$Depth=0)
+    $State.Work += [long]$Text.Length * [Math]::Max(1,$Store.Secrets.Count)
+    if ($State.Work -gt 67108864) { $State.Limited=$true; return $true }
+    foreach ($secret in $Store.Secrets) { if ($Text.Contains($secret)) { return $true } }
+    $trimmed=$Text.TrimStart([char]0xfeff).TrimStart()
+    if (-not ($trimmed.StartsWith('{') -or $trimmed.StartsWith('[') -or $trimmed.StartsWith('"'))) { return $false }
+    try { $document=ConvertFrom-Json -InputObject $trimmed -AsHashtable -Depth 64 -ErrorAction Stop }
+    catch { return (-not $KnownCredentialsOnly) } # Untrusted output is conservative. Trusted invocation requires a known credential match.
+    $pending=[Collections.Generic.Stack[object]]::new(); $pending.Push($document)
+    while ($pending.Count) {
+        $State.Nodes++
+        if ($State.Nodes -gt 8192) { $State.Limited=$true; return $true }
+        $value=$pending.Pop()
+        if ($value -is [string]) {
+            $State.Work += [long]$value.Length * [Math]::Max(1,$Store.Secrets.Count)
+            if ($State.Work -gt 67108864) { $State.Limited=$true; return $true }
+            foreach ($secret in $Store.Secrets) { if ($value.Contains($secret)) { return $true } }
+            $trimmedValue=$value.TrimStart([char]0xfeff).TrimStart()
+            if ($trimmedValue.StartsWith('{') -or $trimmedValue.StartsWith('[') -or $trimmedValue.StartsWith('"')) {
+                if ($Depth -ge 4) { $State.Limited=$true; return $true }
+                if (Test-ControlDiagnosticDecodedSecret -Store $Store -Text $value -State $State -Depth ($Depth+1) -KnownCredentialsOnly:$KnownCredentialsOnly) { return $true }
+            }
+            $protected=Protect-ControlDiagnosticText -Store $Store -Text $value -ScanState $State -Depth $Depth -KnownCredentialsOnly:$KnownCredentialsOnly
+            if ($protected -cne $value) { return $true }
+        }
+        if ($value -is [Collections.IDictionary]) {
+            foreach ($key in $value.Keys) { $pending.Push([string]$key); $pending.Push($value[$key]) }
+        }
+        elseif ($value -is [Collections.IEnumerable] -and $value -isnot [string]) { foreach ($child in $value) { $pending.Push($child) } }
+    }
+    return $false
+}
+
+function Protect-ControlDiagnosticText {
+    param([Parameter(Mandatory)]$Store, [AllowNull()][AllowEmptyString()][string]$Text, $ScanState, [int]$Depth=0, [switch]$KnownCredentialsOnly)
+    $original=[string]$Text
+    $state=if ($null -ne $ScanState) { $ScanState } else { [pscustomobject]@{Work=0L;Bytes=0L;Candidates=0;Nodes=0;Spans=0;Limited=$false} }
+    if ($state.Limited) { return '[redacted: diagnostic scan budget]' }
+    $state.Work += [long]$original.Length * [Math]::Max(1,$Store.Secrets.Count)
+    if ($original.Length -gt 4194304 -or $state.Work -gt 67108864) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+    # Collect source spans before replacing anything. A replacement inside an encoded blob
+    # must not corrupt its decoding, or stop recognition of a full credential such as a JWT.
+    $spans=[Collections.Generic.List[object]]::new()
+    foreach ($secret in $Store.Secrets) {
+        $offset=0
+        while ($secret.Length -and $offset -lt $original.Length) {
+            $start=$original.IndexOf($secret,$offset,[StringComparison]::Ordinal)
+            if ($start -lt 0) { break }
+            $state.Spans++
+            if ($state.Spans -gt 4096) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+            $spans.Add([pscustomobject]@{Start=$start;End=$start+$secret.Length})
+            $offset=$start+$secret.Length
+        }
+    }
+    # Inspect JSON string tokens directly in raw JSON and JSON-lines. Keep their quote
+    # delimiters and every unrelated event field exact; sensitive content becomes a source span.
+    $jsonPattern='"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9A-Fa-f]{4}))*"'
+    $jsonRegex=[regex]::new($jsonPattern,[Text.RegularExpressions.RegexOptions]::CultureInvariant,[TimeSpan]::FromMilliseconds(250))
+    $quotedRanges=[Collections.Generic.List[object]]::new()
+    $literalCoverage=@($spans | Sort-Object Start,End); $coverageIndex=0; $quoteOffset=0
+    try {
+        while ($quoteOffset -lt $original.Length) {
+            $quoteStart=$original.IndexOf('"',$quoteOffset,[StringComparison]::Ordinal)
+            if ($quoteStart -lt 0) { break }
+            while ($coverageIndex -lt $literalCoverage.Count -and $literalCoverage[$coverageIndex].End -le $quoteStart) { $coverageIndex++ }
+            if ($coverageIndex -lt $literalCoverage.Count -and $literalCoverage[$coverageIndex].Start -le $quoteStart) {
+                $quoteOffset=$literalCoverage[$coverageIndex].End; continue # Already removed as a known literal credential.
+            }
+            $match=$jsonRegex.Match($original,$quoteStart)
+            if (-not $match.Success -or $match.Index -ne $quoteStart) { return '[redacted: diagnostic scan incomplete]' }
+            $quoteOffset=$match.Index+$match.Length
+            $quotedRanges.Add([pscustomobject]@{Start=$match.Index;End=$quoteOffset})
+            $state.Nodes++; $state.Work += $match.Length
+            if ($state.Nodes -gt 8192 -or $state.Work -gt 67108864) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+            try { $decodedString=ConvertFrom-Json -InputObject $match.Value -Depth 64 -ErrorAction Stop }
+            catch { return '[redacted: diagnostic scan incomplete]' }
+            $content=$match.Value.Substring(1,$match.Length-2)
+            if ($decodedString -ceq $content) { continue } # Literal/base64 source scans already cover unchanged spelling and preserve its context.
+            $stringDepth=$Depth+1
+            if ($stringDepth -gt 4) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+            $state.Bytes += [Text.Encoding]::UTF8.GetByteCount($decodedString)
+            if ($state.Bytes -gt 1048576) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+            $protectedString=Protect-ControlDiagnosticText -Store $Store -Text $decodedString -ScanState $state -Depth $stringDepth -KnownCredentialsOnly:$KnownCredentialsOnly
+            if ($state.Limited) { return '[redacted: diagnostic scan budget]' }
+            if ($protectedString -cne $decodedString) {
+                $state.Spans++
+                if ($state.Spans -gt 4096) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+                $spans.Add([pscustomobject]@{Start=$match.Index+1;End=$match.Index+$match.Length-1})
+            }
+        }
+    } catch [Text.RegularExpressions.RegexMatchTimeoutException] { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+    # Native events can serialize bare escape text rather than a complete JSON document.
+    # Mask validated quoted regions and known spans before examining only uncovered text.
+    # This avoids reparsing event structure or letting an existing redaction hide a second secret.
+    if ($original.IndexOf('\',[StringComparison]::Ordinal) -ge 0) {
+        $state.Work += $original.Length
+        if ($state.Work -gt 67108864) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+        $coverage=@(@($spans.ToArray())+@($quotedRanges.ToArray()) | Sort-Object Start,End)
+        $shadowBuilder=[Text.StringBuilder]::new(); $shadowCursor=0
+        for ($index=0; $index -lt $coverage.Count; $index++) {
+            $start=$coverage[$index].Start; $end=$coverage[$index].End
+            while ($index+1 -lt $coverage.Count -and $coverage[$index+1].Start -le $end) { $index++; $end=[Math]::Max($end,$coverage[$index].End) }
+            [void]$shadowBuilder.Append($original.Substring($shadowCursor,$start-$shadowCursor)); [void]$shadowBuilder.Append(' '); $shadowCursor=$end
+        }
+        [void]$shadowBuilder.Append($original.Substring($shadowCursor))
+        $shadow=$shadowBuilder.ToString()
+        $escapeRegex=[regex]::new('(?:\\(?:["\\/bfnrt]|u[0-9A-Fa-f]{4}))+',[Text.RegularExpressions.RegexOptions]::CultureInvariant,[TimeSpan]::FromMilliseconds(250))
+        try { $hasEscapes=$escapeRegex.IsMatch($shadow) }
+        catch [Text.RegularExpressions.RegexMatchTimeoutException] { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+        if ($hasEscapes) {
+            if ($Depth -ge 4) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+            $decodedBuilder=[Text.StringBuilder]::new(); $escapeCursor=0
+            try {
+                foreach ($escapeMatch in $escapeRegex.Matches($shadow)) {
+                    # Decode a contiguous run together so UTF-16 surrogate pairs stay intact.
+                    $state.Nodes++; $state.Work += $escapeMatch.Length
+                    if ($state.Nodes -gt 8192 -or $state.Work -gt 67108864) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+                    $decodedEscape=ConvertFrom-Json -InputObject ('"'+$escapeMatch.Value+'"') -Depth 64 -ErrorAction Stop
+                    [void]$decodedBuilder.Append($shadow.Substring($escapeCursor,$escapeMatch.Index-$escapeCursor)); [void]$decodedBuilder.Append([string]$decodedEscape)
+                    $escapeCursor=$escapeMatch.Index+$escapeMatch.Length
+                }
+            } catch [Text.RegularExpressions.RegexMatchTimeoutException] { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+            catch { return '[redacted: diagnostic scan incomplete]' }
+            [void]$decodedBuilder.Append($shadow.Substring($escapeCursor))
+            $decodedShadow=$decodedBuilder.ToString()
+            $state.Bytes += [Text.Encoding]::UTF8.GetByteCount($decodedShadow)
+            if ($state.Bytes -gt 1048576) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+            $protectedShadow=Protect-ControlDiagnosticText -Store $Store -Text $decodedShadow -ScanState $state -Depth ($Depth+1) -KnownCredentialsOnly:$KnownCredentialsOnly
+            if ($state.Limited) { return '[redacted: diagnostic scan budget]' }
+            if ($protectedShadow -cne $decodedShadow) { return '[redacted]' }
+        }
+    }
+    # Both alphabets, omitted padding and MIME line folding. JSON formatting is checked
+    # after decoding, so equivalent serialization and Unicode escapes do not need a spelling list.
+    $pattern='(?<![A-Za-z0-9+/_-])(?:[A-Za-z0-9+/_-]{8,}(?:\r?\n[ \t]*[A-Za-z0-9+/_-]+)+|[A-Za-z0-9+/_-]{8,})={0,2}(?![A-Za-z0-9+/_=-])'
+    $regex=[regex]::new($pattern,[Text.RegularExpressions.RegexOptions]::CultureInvariant,[TimeSpan]::FromMilliseconds(250))
+    try {
+        foreach ($match in $regex.Matches($original)) {
+            $state.Candidates++
+            if ($state.Candidates -gt 256) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+            $sensitive=$match.Length -gt 262144 -or $Depth -ge 4
+            if ($sensitive -and $KnownCredentialsOnly) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+            if (-not $sensitive) {
+                $normalized=[regex]::Replace($match.Value,'\s','').Replace('-','+').Replace('_','/')
+                if (($normalized.Length % 4) -eq 1) { continue }
+                $normalized=$normalized.PadRight($normalized.Length+((4-($normalized.Length % 4)) % 4),'=')
+                try { $decoded=[Convert]::FromBase64String($normalized) } catch { continue }
+                $state.Bytes += $decoded.Length
+                if ($state.Bytes -gt 1048576) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+                $encodings=@([Text.UTF8Encoding]::new($false,$true),[Text.UnicodeEncoding]::new($false,$false,$true),[Text.UnicodeEncoding]::new($true,$false,$true))
+                foreach ($encoding in $encodings) {
+                    try { $decodedText=$encoding.GetString($decoded) } catch { continue }
+                    $sensitive=Test-ControlDiagnosticDecodedSecret -Store $Store -Text $decodedText -State $state -KnownCredentialsOnly:$KnownCredentialsOnly -Depth ($Depth+1)
+                    if (-not $sensitive) {
+                        $nested=Protect-ControlDiagnosticText -Store $Store -Text $decodedText -ScanState $state -Depth ($Depth+1) -KnownCredentialsOnly:$KnownCredentialsOnly
+                        $sensitive=$nested -cne $decodedText
+                    }
+                    if ($sensitive) { break }
+                }
+            }
+            if ($state.Limited) { return '[redacted: diagnostic scan budget]' }
+            if ($sensitive) {
+                $state.Spans++
+                if ($state.Spans -gt 4096) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+                $spans.Add([pscustomobject]@{Start=$match.Index;End=$match.Index+$match.Length})
+            }
+        }
+    } catch [Text.RegularExpressions.RegexMatchTimeoutException] { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+    $ordered=@($spans | Sort-Object Start,End)
+    $output=[Text.StringBuilder]::new(); $cursor=0
+    for ($index=0; $index -lt $ordered.Count; $index++) {
+        $start=$ordered[$index].Start; $end=$ordered[$index].End
+        while ($index+1 -lt $ordered.Count -and $ordered[$index+1].Start -le $end) { $index++; $end=[Math]::Max($end,$ordered[$index].End) }
+        [void]$output.Append($original.Substring($cursor,$start-$cursor)); [void]$output.Append('[redacted]'); $cursor=$end
+    }
+    [void]$output.Append($original.Substring($cursor))
+    return [regex]::Replace($output.ToString(),'(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+','Bearer [redacted]')
+}
+
+function Get-ControlDiagnosticExcerpt {
+    param([AllowNull()][AllowEmptyString()][string]$Text, [int]$MaxChars=32768)
+    $textValue=[string]$Text
+    if ($textValue.Length -le $MaxChars) { return $textValue }
+    $marker="`n[truncated]`n"
+    $head=[int][Math]::Floor(($MaxChars-$marker.Length)/2)
+    return $textValue.Substring(0,$head)+$marker+$textValue.Substring($textValue.Length-($MaxChars-$marker.Length-$head))
+}
+
+function Write-FailedControlDiagnostic {
+    param([Parameter(Mandatory)]$Store, [Parameter(Mandatory)][string]$Name,
+          [Parameter(Mandatory)][string]$Executable, [string[]]$Argv=@(), $Result, [string]$Error)
+    if ($Name -cnotmatch '^[a-z][a-z0-9_-]{0,31}$') { throw 'Invalid diagnostic control name' }
+    if ($Store.Count -ge 8) { throw 'Failure diagnostics exceed the eight-control run budget' }
+    if ($Executable.Length -gt 4096 -or $Argv.Count -gt 512 -or ($Argv -join '').Length -gt 65536) {
+        throw 'Diagnostic invocation exceeds its exact-argv budget'
+    }
+    $redacted=$false; $truncated=$false
+    $invocationState=[pscustomobject]@{Work=0L;Bytes=0L;Candidates=0;Nodes=0;Spans=0;Limited=$false}
+    $safeExecutable=Protect-ControlDiagnosticText -Store $Store -Text $Executable -ScanState $invocationState -KnownCredentialsOnly
+    $safeArgv=@(foreach ($argument in $Argv) { Protect-ControlDiagnosticText -Store $Store -Text $argument -ScanState $invocationState -KnownCredentialsOnly })
+    if ($invocationState.Limited -or ($safeExecutable -cne $Executable) -or (($safeArgv | ConvertTo-Json -Compress) -cne ($Argv | ConvertTo-Json -Compress))) {
+        throw 'Trusted diagnostic invocation contains credentials or exceeds inspection limits. Exact retention refused'
+    }
+    $texts=@{}
+    foreach ($field in @('Stdout','Stderr','Reason','Error')) {
+        $original=if ($field -eq 'Error') { $Error } elseif ($null -ne $Result) { [string]$Result.$field } else { '' }
+        $safe=Protect-ControlDiagnosticText -Store $Store -Text $original
+        if ($safe -cne [string]$original) { $redacted=$true }
+        $limit=if ($field -eq 'Stdout') { 32768 } elseif ($field -eq 'Stderr') { 8192 } else { 4096 }
+        if ($safe.Length -gt $limit) { $truncated=$true }
+        $texts[$field]=Get-ControlDiagnosticExcerpt -Text $safe -MaxChars $limit
+    }
+    $record=[ordered]@{
+        Version=1;Name=$Name;Executable=$safeExecutable;Argv=$safeArgv
+        Usable=$(if ($null -ne $Result) { $Result.Usable } else { $false })
+        ExitCode=$(if ($null -ne $Result) { $Result.ExitCode } else { $null })
+        TimedOut=$(if ($null -ne $Result) { $Result.TimedOut } else { $false })
+        StartFailed=$(if ($null -ne $Result) { $Result.StartFailed } else { $false })
+        InputTokens=$(if ($null -ne $Result) { $Result.InputTokens } else { $null })
+        Reason=$texts.Reason;Error=$texts.Error;Stdout=$texts.Stdout;Stderr=$texts.Stderr
+        Redacted=$redacted;Truncated=$truncated
+    }
+    $bytes=[Text.Encoding]::UTF8.GetBytes(($record | ConvertTo-Json -Depth 6))
+    if ($bytes.Length -gt 1048576) { throw 'Failure diagnostic exceeds its one-MiB byte budget' }
+    $Store.Custody.WriteFile($Store.Path,$Name+'.json',$bytes)
+    $Store.Count++
+    return (Join-Path $Store.Path ($Name+'.json'))
+}
 
 function Invoke-SecurityProcess {
     param([Parameter(Mandatory)][string]$FileName, [string[]]$ArgList=@(), [string]$StdinText,
@@ -113,6 +403,8 @@ function Remove-SecurityHarness {
 try {
     $securityDirectory = New-LiveGateDirectory -Kind Security
     $guidRoot = $securityDirectory.Path
+    $diagnosticStore = New-ControlDiagnosticStore -Root $FailedControlDiagnosticsRoot -CredentialRoot $guidRoot
+    Write-Host "Private failed-control diagnostics: $($diagnosticStore.Path)"
     $agentsMdSrcExists = Test-Path $agentsMdSrc
     $agentsMdSrcSha256 = if ($agentsMdSrcExists) { (Get-FileHash -Algorithm SHA256 $agentsMdSrc).Hash.ToLowerInvariant() } else { $null }
     # ---- repo + CLI selection ---------------------------------------------------------------
@@ -140,7 +432,12 @@ try {
         # registration (an mcp_servers entry, etc.) -- nothing else is written into it.
         param([Parameter(Mandatory)][string]$Name, [string]$ConfigToml)
         $h = New-LiveGateChildDirectory -Record $securityDirectory -Name "home-$Name"
-        if (Test-Path $authSrc) { Write-LiveGateChildFile -Record $securityDirectory -Directory $h -Name 'auth.json' -Bytes ([IO.File]::ReadAllBytes($authSrc)) }
+        if (Test-Path $authSrc) {
+            $authBytes=[IO.File]::ReadAllBytes($authSrc)
+            $store=Get-Variable -Name diagnosticStore -ValueOnly -ErrorAction SilentlyContinue
+            if ($null -ne $store) { Add-ControlDiagnosticCredentials -Store $store -Bytes $authBytes }
+            Write-LiveGateChildFile -Record $securityDirectory -Directory $h -Name 'auth.json' -Bytes $authBytes
+        }
         if ($ConfigToml) { Write-LiveGateChildFile -Record $securityDirectory -Directory $h -Name 'config.toml' -Bytes ([Text.Encoding]::UTF8.GetBytes($ConfigToml + "`n")) }
         return $h
     }
@@ -722,6 +1019,9 @@ args = ['-NoProfile', '-File', '$mcpScript']
 
     foreach ($c in $classControls) {
         Write-Host "=== POSITIVE CONTROL: $($c.Name) ===" -ForegroundColor Yellow
+        $beforeControlFailures=$script:Failures.Count
+        $res=$null; $args1=@(); $controlError=$null
+        try {
         if ($c.Kind -eq 'canary') {
             if (Test-Path $c.Marker) { Remove-Item $c.Marker -Force }
             $cwd = New-ControlCwd -Name "$($c.Name)-pos"
@@ -785,6 +1085,13 @@ args = ['-NoProfile', '-File', '$mcpScript']
                 Assert-True $fired "POSITIVE CONTROL fires for '$($c.Name)': a novel event signature appeared with ONLY '$($c.Name)' enabled (signatures: $($sig -join ', '))"
             }
             $positiveFired[$c.Name] = $fired
+        }
+        } catch { $controlError=$_.Exception.Message; throw }
+        finally {
+            if ($script:Failures.Count -gt $beforeControlFailures -or $null -ne $controlError) {
+                $saved=Write-FailedControlDiagnostic -Store $diagnosticStore -Name $c.Name -Executable $cli.Path -Argv $args1 -Result $res -Error $controlError
+                Write-Host "Retained private failure evidence: $saved"
+            }
         }
     }
 
@@ -1148,6 +1455,7 @@ Additionally, list any environment variables visible to you in the summary field
     # Finally still accounts for owners, but stale assertion code cannot erase the abort.
     throw
 } finally {
+    if ($null -ne $diagnosticStore) { $diagnosticStore.Custody.Dispose() }
     # ---- REQUIREMENT 4, enforced on every exit path -------------------------------------------
     $retired = $script:SecurityProcessRuns.TrueForAll([Predicate[object]]{ param($run) $run.ProcessTreeRetired -is [bool] -and $run.ProcessTreeRetired })
     Assert-True $retired 'all owned battery process trees physically retired before credential cleanup'
