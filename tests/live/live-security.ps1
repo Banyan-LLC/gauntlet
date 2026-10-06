@@ -258,21 +258,30 @@ function Protect-ControlDiagnosticText {
                     if ($decodedToken -ceq $percentToken.Value) { continue }
                     $state.Work += [long]$decodedToken.Length * [Math]::Max(1,$Store.Secrets.Count)
                     if ($state.Work -gt 67108864) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
-                    # Mask already mapped decoded matches only in the inspection copy. A
-                    # direct credential must not hide a second nested credential in the token.
-                    $nestedToken=$decodedToken
+                    # Compute the directly matched result for comparison only. Recursive
+                    # inspection always receives the intact token so an overlapping known
+                    # value cannot corrupt Base64 alignment and hide another credential.
+                    $directTokenSpans=[Collections.Generic.List[object]]::new()
                     foreach ($secret in $Store.Secrets) {
-                        if ($secret.Length -and $nestedToken.Contains($secret)) {
-                            $state.Work += $nestedToken.Length
-                            if ($state.Work -gt 67108864) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
-                            $nestedToken=$nestedToken.Replace($secret,(' '*$secret.Length))
+                        $offset=0
+                        while ($secret.Length -and $offset -lt $decodedToken.Length) {
+                            $start=$decodedToken.IndexOf($secret,$offset,[StringComparison]::Ordinal)
+                            if ($start -lt 0) { break }
+                            if ($state.Spans+$directTokenSpans.Count -ge 4096) { $state.Limited=$true; return '[redacted: diagnostic scan budget]' }
+                            $directTokenSpans.Add([pscustomobject]@{Start=$start;End=$start+$secret.Length})
+                            $offset=$start+$secret.Length
                         }
                     }
-                    $sensitive=Test-ControlDiagnosticDecodedSecret -Store $Store -Text $nestedToken -State $state -Depth ($Depth+1) -KnownCredentialsOnly
-                    if (-not $sensitive) {
-                        $nestedPercent=Protect-ControlDiagnosticText -Store $Store -Text $nestedToken -ScanState $state -Depth ($Depth+1) -KnownCredentialsOnly
-                        $sensitive=$nestedPercent -cne $nestedToken
+                    $directOrdered=@($directTokenSpans | Sort-Object Start,End)
+                    $directBuilder=[Text.StringBuilder]::new(); $directCursor=0
+                    for ($index=0; $index -lt $directOrdered.Count; $index++) {
+                        $start=$directOrdered[$index].Start; $end=$directOrdered[$index].End
+                        while ($index+1 -lt $directOrdered.Count -and $directOrdered[$index+1].Start -le $end) { $index++; $end=[Math]::Max($end,$directOrdered[$index].End) }
+                        [void]$directBuilder.Append($decodedToken.Substring($directCursor,$start-$directCursor)); [void]$directBuilder.Append('[redacted]'); $directCursor=$end
                     }
+                    [void]$directBuilder.Append($decodedToken.Substring($directCursor))
+                    $nestedPercent=Protect-ControlDiagnosticText -Store $Store -Text $decodedToken -ScanState $state -Depth ($Depth+1) -KnownCredentialsOnly
+                    $sensitive=$nestedPercent -cne $directBuilder.ToString()
                     if ($state.Limited) { return '[redacted: diagnostic scan budget]' }
                     if ($sensitive) {
                         $state.Spans++

@@ -192,6 +192,7 @@ try {
     $percentKey='{"synthetic%2fsecret%2bcase%3d987":"ordinary diagnostic"}'
     $percentDocument=[regex]::Replace([Uri]::EscapeDataString($percentProducer),'%[0-9A-Fa-f]{2}',{param($match) $match.Value.ToLowerInvariant()})
     $percentEmoji='synthetic/secret+'+[char]::ConvertFromUtf32(0x1f600)+'=987'
+    $overlapBlob=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('ordinary metadata prefix secondary-sensitive%2fsecret%3dXYZ'))
     $percentCases=@(
         @{Name='lower';Text=$percentLower;Expected='[redacted]';Native='[redacted]'},
         @{Name='mixed';Text='synthetic%2fsecret%2Bcase%3d987';Expected='[redacted]';Native='[redacted]'},
@@ -210,10 +211,14 @@ try {
         @{Name='document';Text=$percentDocument;Expected='[redacted]';Native='[redacted]'},
         @{Name='utf8';Text='synthetic%2fsecret%2b%f0%9f%98%80%3d987';Expected='[redacted]';Native='[redacted]';Secret=$percentEmoji}
     )
+    foreach ($overlapLength in @(5,6,7,9,10)) {
+        $overlapProducer=@{tokens=@{first=$overlapBlob.Substring(0,$overlapLength);second='secondary-sensitive/secret=XYZ'}} | ConvertTo-Json -Compress
+        $percentCases+=@{Name="overlap-$overlapLength";Text='%62'+$overlapBlob.Substring(1);Expected='[redacted]';Native='[redacted]';Producer=$overlapProducer}
+    }
     foreach ($percentCase in $percentCases) {
         $percentStore=New-ControlDiagnosticStore -Root $fixtureRoot -CredentialRoot (Join-Path $fixtureRoot 'credentials')
         $percentStores.Add($percentStore)
-        $percentProducerText=if ($percentCase.ContainsKey('Secret')) { @{tokens=@{access_token=$percentCase.Secret}} | ConvertTo-Json -Compress } else { $percentProducer }
+        $percentProducerText=if ($percentCase.ContainsKey('Producer')) { $percentCase.Producer } elseif ($percentCase.ContainsKey('Secret')) { @{tokens=@{access_token=$percentCase.Secret}} | ConvertTo-Json -Compress } else { $percentProducer }
         Add-ControlDiagnosticCredentials -Store $percentStore -Bytes ([Text.Encoding]::UTF8.GetBytes($percentProducerText))
         $percentNative=@{type='item.completed';item=@{type='agent_message';text=$percentCase.Text}} | ConvertTo-Json -Compress -Depth 8
         $percentResult=[pscustomobject]@{Usable=$false;Reason=$percentCase.Text;InputTokens=12;Stdout=$percentNative;Stderr=$percentCase.Text;ExitCode=0;TimedOut=$false;StartFailed=$false}

@@ -145,6 +145,8 @@ Percent octets decode regardless of hexadecimal case, including partial escapes,
 characters and UTF-8 runs. Decoded credential matches map back to original source spans so
 adjacent benign text keeps its spelling. Nested percent, JSON and Base64 encodings share the
 same depth, candidate, decoded-byte and work limits; benign percent text remains unchanged.
+Nested inspection receives the intact decoded token before any redaction. Direct-match
+comparison preserves adjacent text without masking an encoded prefix that could hide a second credential.
 Bounded Base64 and Base64URL decoding also checks recovered text and credentials inside parsed
 JSON strings and property names. It handles missing padding, key/value delimiters, MIME line folding, JSON
 reserialization, Unicode escapes, serialized inner JSON and both UTF-16 byte orders, including
