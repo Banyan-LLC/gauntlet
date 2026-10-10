@@ -505,13 +505,8 @@ try {
     Write-Host "Private failed-control diagnostics: $($diagnosticStore.Path)"
     $agentsMdSrcExists = Test-Path $agentsMdSrc
     $agentsMdSrcSha256 = if ($agentsMdSrcExists) { (Get-FileHash -Algorithm SHA256 $agentsMdSrc).Hash.ToLowerInvariant() } else { $null }
-    # ---- repo + CLI selection ---------------------------------------------------------------
-    $repo = Join-Path $guidRoot 'repo'
-    $gitPath = (Get-Command git -CommandType Application -ErrorAction Stop).Source
-    $gitInit = Invoke-SecurityProcess -FileName $gitPath -ArgList @('init','-q',$repo) -WorkingDirectory $guidRoot -TimeoutSec 30
-    if ($gitInit.StartFailed -or $gitInit.TimedOut -or $gitInit.ExitCode -ne 0) { throw "Control repository initialization failed: $($gitInit.ErrorMessage)" }
-    $gitCommit = Invoke-SecurityProcess -FileName $gitPath -ArgList @('-C',$repo,'-c','user.email=t@t','-c','user.name=t','commit','-q','--allow-empty','-m','i') -WorkingDirectory $guidRoot -TimeoutSec 30
-    if ($gitCommit.StartFailed -or $gitCommit.TimedOut -or $gitCommit.ExitCode -ne 0) { throw "Control repository commit failed: $($gitCommit.ErrorMessage)" }
+    # Harness separation needs an owned directory boundary, with no repository metadata.
+    $repo = New-LiveGateChildDirectory -Record $securityDirectory -Name 'repo'
 
     $cli = Select-CodexCli -Candidates (Get-CodexCandidates)
     Write-Host "CLI: $($cli.Path)" -ForegroundColor Cyan
