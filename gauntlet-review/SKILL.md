@@ -18,6 +18,15 @@ One artifact, one bounded loop. Modes: `doc` (spec/plan), `pr`, and `local` (a l
 
 ## Loop protocol
 
+Local mode has an optional `-VerifiedReferenceFile <json>` for one complete added
+approved spec duplicated verbatim in trusted context. See README's verified
+reference protocol before use. It preserves all unique material, records complete
+section coverage in immutable attempt metadata, and requires matching pinned-CLI
+refreshed/bundled capacity evidence before consuming an attempt. It does not
+authorize omission, changing a base/head, resetting history, increasing a budget,
+or relaxing the 128,000 output reserve and 25% context headroom. On current CLI
+catalog disagreement this route refuses; stop and consult the coordinator.
+
 1. Write/revise the artifact; commit it.
 2. Compose the prompt (template below).
 2b. **Rounds 2+: build the carry-over ledger first.** Every round is a fresh session with no

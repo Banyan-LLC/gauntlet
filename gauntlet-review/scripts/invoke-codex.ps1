@@ -34,6 +34,7 @@ param(
     [string]$BaseRefName,           # pr mode (required)
     [string]$BaseTipOid,            # pr mode (required)
     [string]$CarryOverFile,         # required for round > 1 (validated ledger; see Test-CarryOverLedger)
+    [string]$VerifiedReferenceFile, # local only: one exact approved added-spec duplicate
     [switch]$AcceptNewBinary,       # re-probe and re-pin after exit 13, same round number
     [ValidateRange(1, 100)][int]$RoundCap = 10,
     [ValidateRange(1024, 10000000)][int]$BudgetBytes = 100000,
@@ -149,6 +150,8 @@ if ($Mode -eq 'local') {
 }
 
 $promptBody = Get-Content -Raw -Encoding utf8 $PromptFile
+$referenceCoverage = $null
+if ($VerifiedReferenceFile -and $Mode -ne 'local') { Write-Error 'Verified references require local mode'; exit 12 }
 if ($Mode -eq 'local') {
     # The PromptFile is the PREAMBLE (header + trusted context) ONLY and must be ENFORCED as such:
     # reject a caller-supplied review-material section (normalized: leading whitespace and case are
@@ -156,7 +159,22 @@ if ($Mode -eq 'local') {
     if ($promptBody -match '(?im)^\s*==\s*REVIEW MATERIAL') { Write-Error "local mode: PromptFile must be a preamble only and must NOT contain a '== REVIEW MATERIAL ==' section (the diff is generated from the verified range)"; exit 12 }
     # Append the review material generated hermetically above from the verified range, so the
     # reviewed bytes are provably that range and its digest (recorded in meta) binds provenance.
-    $promptBody = $promptBody.TrimEnd() + "`n`n== REVIEW MATERIAL (untrusted) ==`n" + $localDiff + "`n"
+    $reviewDiff = $localDiff
+    if ($VerifiedReferenceFile) {
+        try {
+            $representation = ConvertTo-VerifiedReviewDiff -RepoRoot $RepoRoot -BaseOid $canonBase -HeadSha $canonHead -Preamble $promptBody -Diff $localDiff -ReferenceFile $VerifiedReferenceFile
+            $reviewDiff = $representation.Diff
+            $referenceCoverage = $representation.Manifest
+        } catch { Write-Error "Verified reference refused: $($_.Exception.Message)"; exit 12 }
+    }
+    $preambleText = if ($VerifiedReferenceFile) { $promptBody } else { $promptBody.TrimEnd() }
+    $promptBody = $preambleText + "`n`n== REVIEW MATERIAL (untrusted) ==`n" + $reviewDiff + "`n"
+}
+$originalCarrySha = $carrySha
+if ($VerifiedReferenceFile) {
+    $promptBody = $promptBody.Replace("`r`n", "`n")
+    $carryText = $carryText.Replace("`r`n", "`n")
+    $carrySha = Get-ReviewTextHash $carryText
 }
 $prompt = $carryText + $promptBody
 # Check the fully rendered payload, including carry-over and generated review
@@ -241,6 +259,35 @@ if (-not $manifest.Valid) {
 
 $prev = if (Test-Path (Join-Path $StateDir 'state.json')) { Read-RoundState -StateDir $StateDir } else { $null }
 
+# Only the new representation opts into this stricter capacity contract. Existing
+# review histories retain their prior policy. Probe before harness/attempt writes.
+$referenceCapacity = $null
+if ($VerifiedReferenceFile) {
+    $catalogRun = Invoke-BoundedProcess -FileName $cli.Path -ArgList @('debug','models') -TimeoutSec 60 -RequireProcessTreeRetirement
+    if ($catalogRun.StartFailed -or $catalogRun.TimedOut -or $catalogRun.ExitCode -ne 0 -or -not $catalogRun.ProcessTreeRetired) { Write-Error 'Pinned CLI context catalog unavailable; no attempt ran'; exit 12 }
+    # The bundled probe must not read ambient config or a custom catalog. No
+    # credentials are copied into this unique empty home. Keep unexpected output
+    # files for diagnosis rather than recursively deleting an unverified tree.
+    $catalogHome = Join-Path ([IO.Path]::GetTempPath()) ('gauntlet-catalog-' + [guid]::NewGuid().ToString('N'))
+    [void][IO.Directory]::CreateDirectory($catalogHome)
+    try {
+        $bundledRun = Invoke-BoundedProcess -FileName $cli.Path -ArgList @('debug','models','--bundled') -EnvironmentMap @{ CODEX_HOME=$catalogHome } -WorkingDirectory $catalogHome -TimeoutSec 60 -RequireProcessTreeRetirement
+    } finally {
+        try { [IO.Directory]::Delete($catalogHome,$false) } catch { Write-Warning "Catalog probe retained its nonempty directory: $catalogHome" }
+    }
+    if ($bundledRun.StartFailed -or $bundledRun.TimedOut -or $bundledRun.ExitCode -ne 0 -or -not $bundledRun.ProcessTreeRetired) { Write-Error 'Pinned CLI bundled context catalog unavailable; no attempt ran'; exit 12 }
+    try {
+        $referenceCapacity = Get-ReviewCapacityFromCatalog -CatalogJson $catalogRun.Stdout
+        $bundledCapacity = Get-ReviewCapacityFromCatalog -CatalogJson $bundledRun.Stdout
+        if ($referenceCapacity.context_window -ne $bundledCapacity.context_window -or $referenceCapacity.effective_percent -ne $bundledCapacity.effective_percent) {
+            Write-Error 'Refreshed and bundled CLI context limits disagree; actual sealed capacity is unverified. No attempt ran.'
+            exit 12
+        }
+        $referenceCapacity | Add-Member -NotePropertyName bundled_catalog_sha256 -NotePropertyValue $bundledCapacity.catalog_sha256
+    }
+    catch { Write-Error "CLI capacity refused: $($_.Exception.Message)"; exit 12 }
+}
+
 # --- Harness. Created once per loop; thereafter ONLY the recorded path is reused, always
 #     verified clean. A vanished harness is an environment fault: silently provisioning another
 #     would hide that the loop's working root changed under it, and the harness is the one
@@ -298,6 +345,12 @@ else {
     $meta.pr_number = $PrNumber; $meta.base_oid = $BaseOid; $meta.head_sha = $HeadSha
     $meta.base_ref_name = $BaseRefName; $meta.base_tip_oid = $BaseTipOid
 }
+if ($VerifiedReferenceFile) {
+    $meta.verified_reference_coverage = $referenceCoverage
+    $meta.context_capacity = $referenceCapacity
+    $meta.reference_manifest_sha256 = $referenceCoverage.reference_manifest_sha256
+    $meta.carryover_original_rendered_sha256 = $originalCarrySha
+}
 Write-AttemptMeta -StateDir $StateDir -Round $Round -Attempt $attempt -Meta $meta
 # Persist what the reviewer actually received, under our own control: the normalized ledger and
 # the exact rendered carry-over. The caller's ledger file can change or vanish; these cannot.
@@ -353,9 +406,10 @@ try {
 # 2026-09-24 when it moved from gpt-5.6-sol; all three document the same two limits), is 659,500: input_tokens above that leaves under 25%
 # headroom. Retrying the SAME prompt cannot change its own token count, so this is a human flag
 # (10) -- unlike every other usage-gate rejection above, which is a retryable failed attempt (11).
-if (($usage.InputTokens + 128000) -gt 787500) {
-    Write-RoundState -StateDir $StateDir -Patch @{ status='flagged'; failure_reason="round $Round attempt ${attempt}: usage over budget: input_tokens=$($usage.InputTokens) (max 659500 for >=25% headroom)" }
-    Write-Error "HUMAN FLAG: input_tokens $($usage.InputTokens) leaves under 25% context headroom (limit 659500). Retrying the same prompt cannot help."
+$maximumInputTokens = if ($referenceCapacity) { $referenceCapacity.maximum_input_tokens } else { 659500 }
+if ($usage.InputTokens -gt $maximumInputTokens) {
+    Write-RoundState -StateDir $StateDir -Patch @{ status='flagged'; failure_reason="round $Round attempt ${attempt}: usage over budget: input_tokens=$($usage.InputTokens) (max $maximumInputTokens for >=25% headroom)" }
+    Write-Error "HUMAN FLAG: input_tokens $($usage.InputTokens) leaves under 25% context headroom (limit $maximumInputTokens). Retrying the same prompt cannot help."
     exit 10
 }
 

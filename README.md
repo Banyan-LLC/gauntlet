@@ -1,5 +1,65 @@
 # Gauntlet
 
+### Verified duplicate controlling-spec references (local mode, opt-in)
+
+`invoke-codex.ps1 -VerifiedReferenceFile <json>` can represent one complete added
+spec body by reference to its identical complete body already embedded in the
+approved trusted context. It does not summarize or remove unique material.
+This option is local-mode only and requires an explicit approved manifest:
+
+```json
+{
+  "version": 1,
+  "base_oid": "<full original base commit>",
+  "head_sha": "<full finished head commit>",
+  "entries": [{
+    "path": "docs/superpowers/specs/<approved-spec>.md",
+    "blob": "<full approved Git blob SHA-1>",
+    "normalized_sha256": "<SHA-256 of complete UTF-8 LF body>"
+  }]
+}
+```
+
+The wrapper verifies that the path is absent at the base and bound to that blob
+at the head; the diff is one complete added-file hunk; its reconstructed bytes
+hash to the blob and approved SHA-256; and the complete body occurs exactly once
+after the trusted-context boundary. It preserves the file headers, mode, index
+and hunk header, and tells the reviewer to review the embedded body as both
+control and added artifact. Every other diff section remains identical after
+CRLF-to-LF normalization. Standalone CRs are rejected. Carry-over content and
+the preamble retain every line, with only CRLF normalization. Existing round,
+attempt, binary, harness and immutable-verdict rules still apply.
+
+Immutable attempt metadata includes the original and rendered diff hashes,
+manifest hash, original preamble hash, every section's header/hunks and original
+and rendered hashes, reference identity, and the final payload hash. Invalid
+references refuse before CLI discovery or attempt allocation. The existing
+byte/character limits and usage gate cannot be overridden by this option.
+
+Before allocating an attempt, this opt-in route probes both the pinned CLI's
+refreshed catalog and its bundled catalog. The bundled probe uses a unique empty
+CODEX_HOME without credential copies or ambient user configuration. Both must
+identify the pinned model and agree on context window and effective percentage;
+unavailable/malformed evidence or disagreement refuses with exit 12. This is
+deliberately conservative: catalogs are capacity evidence, not a token count or
+proof that the actual request will fit. Existing modes without the option retain
+their prior usage policy.
+
+On agreement the acceptance ceiling is the smaller of the existing 659,500 and
+`floor(0.75 * floor(context_window * effective_percent / 100)) - 128000`.
+The completed request's own input-token accounting must meet it before any
+canonical verdict is accepted. The output reserve and 25% headroom are unchanged.
+
+Current coordinator verification (2026-10-13): CLI 0.162.0-alpha.17.2 reports
+500,000 refreshed versus 272,000 bundled, both 95% effective. The respective
+ceilings are 228,250 and 65,800 tokens; this disagreement currently blocks the
+route. The SID converter's earlier smaller prompt used 233,439 input tokens,
+already above either ceiling. Its current exact token count is unknown. A
+one-request byte/character fit therefore does not establish admissible capacity.
+No converter review attempt should be spent to resolve this uncertainty. This
+extension must remain uninstalled until the coordinator resolves the capacity
+decision, completes review and recertifies the changed stack.
+
 Gauntlet provides two reusable [Claude Code](https://claude.ai/code) skills that ask
 OpenAI Codex to act as an independent reviewer:
 

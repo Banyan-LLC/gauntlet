@@ -2642,3 +2642,102 @@ function Revoke-SupersededReview {
     }
     [pscustomobject]@{ Revoked=$true; Reason=$null }
 }
+
+# Opt-in local-review representation, included in the certified lib.ps1 source.
+function Get-ReviewTextHash {
+    param([string]$Text)
+    [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($Text))).ToLowerInvariant()
+}
+
+function ConvertTo-VerifiedReviewDiff {
+    param([string]$RepoRoot, [string]$BaseOid, [string]$HeadSha,
+          [string]$Preamble, [string]$Diff, [string]$ReferenceFile)
+    $requestText = Get-Content -LiteralPath $ReferenceFile -Raw -Encoding utf8
+    $request = $requestText | ConvertFrom-Json -ErrorAction Stop
+    if ($request.version -cne 1 -or $request.base_oid -cne $BaseOid -or $request.head_sha -cne $HeadSha) {
+        throw 'Reference manifest version/base/head mismatch'
+    }
+    $entries = @($request.entries)
+    if ($entries.Count -ne 1) { throw 'Exactly one approved controlling-spec reference is supported' }
+    $entry = $entries[0]
+    if ($entry.path -cnotmatch '^docs/superpowers/specs/[a-z0-9][a-z0-9._-]*\.md$' -or
+        $entry.blob -cnotmatch '^[0-9a-f]{40}$' -or $entry.normalized_sha256 -cnotmatch '^[0-9a-f]{64}$') {
+        throw 'Invalid reference path/blob/hash'
+    }
+    $git = @(Get-Command git -CommandType Application -ErrorAction Stop)[0].Source
+    $gx = @('-C', $RepoRoot, '-c', 'core.useReplaceRefs=false')
+    $bound = Invoke-BoundedProcess -FileName $git -ArgList ($gx + @('rev-parse','--verify',"${HeadSha}:$($entry.path)")) -TimeoutSec 30 -RequireProcessTreeRetirement
+    $old = Invoke-BoundedProcess -FileName $git -ArgList ($gx + @('ls-tree',$BaseOid,'--',$entry.path)) -TimeoutSec 30 -RequireProcessTreeRetirement
+    foreach ($run in @($bound,$old)) {
+        if ($run.StartFailed -or $run.TimedOut -or $run.ExitCode -ne 0 -or -not $run.ProcessTreeRetired) { throw 'Cannot verify reference Git identity' }
+    }
+    if ($bound.Stdout.Trim() -cne $entry.blob -or $old.Stdout.Length -ne 0) { throw 'Reference must be the exact added blob at the verified head' }
+    $lf = $Diff.Replace("`r`n", "`n")
+    $pre = $Preamble.Replace("`r`n", "`n")
+    if ($pre.Contains("`r") -or $lf.Contains("`r")) { throw 'Standalone carriage return is not supported' }
+    $trusted = '== TRUSTED CONTEXT (approved controlling documents only) =='
+    if ([regex]::Matches($pre,[regex]::Escape($trusted)).Count -ne 1) { throw 'Missing or ambiguous trusted-context boundary' }
+    $context = $pre.Substring($pre.IndexOf($trusted,[StringComparison]::Ordinal) + $trusted.Length)
+    $sections = @([regex]::Split($lf,'(?m)(?=^diff --git )') | Where-Object { $_.Length -gt 0 })
+    $coverage = [Collections.Generic.List[object]]::new()
+    $rendered = [Text.StringBuilder]::new()
+    $found = 0
+    foreach ($section in $sections) {
+        if (-not $section.StartsWith('diff --git ',[StringComparison]::Ordinal)) { throw 'Unrecognized diff prefix' }
+        $first = ($section -split "`n",2)[0]
+        $hunks = @([regex]::Matches($section,'(?m)^@@[^\n]*') | ForEach-Object Value)
+        $replacement = $section
+        $referenced = $false
+        if ($first -ceq "diff --git a/$($entry.path) b/$($entry.path)") {
+            $found++
+            $lines = $section.Split("`n")
+            if ($lines[1] -cne 'new file mode 100644' -or $lines[2] -cnotmatch '^index 0+\.\.([0-9a-f]+)$' -or
+                -not $entry.blob.StartsWith($Matches[1],[StringComparison]::Ordinal) -or
+                $lines[3] -cne '--- /dev/null' -or $lines[4] -cne "+++ b/$($entry.path)" -or
+                $hunks.Count -ne 1 -or $lines[5] -cnotmatch '^@@ -0,0 \+1,([1-9][0-9]*) @@$') { throw 'Reference is not a single complete added-file hunk' }
+            $count = [int]$Matches[1]
+            if ($lines.Length -ne ($count + 7) -or $lines[-1] -cne '') { throw 'Reference hunk length or final newline mismatch' }
+            $body = [Text.StringBuilder]::new()
+            foreach ($line in $lines[6..($count+5)]) {
+                if (-not $line.StartsWith('+',[StringComparison]::Ordinal)) { throw 'Reference hunk contains non-addition data' }
+                [void]$body.Append($line.Substring(1)).Append("`n")
+            }
+            $text = $body.ToString()
+            $bytes = [Text.Encoding]::UTF8.GetBytes($text)
+            $header = [Text.Encoding]::ASCII.GetBytes("blob $($bytes.Length)`0")
+            $gitHash = [Convert]::ToHexString([Security.Cryptography.SHA1]::HashData([byte[]]($header+$bytes))).ToLowerInvariant()
+            if ($gitHash -cne $entry.blob -or (Get-ReviewTextHash $text) -cne $entry.normalized_sha256) { throw 'Reference content does not match approved blob/hash' }
+            if ([regex]::Matches($context,[regex]::Escape($text)).Count -ne 1) { throw 'Complete approved body must occur exactly once in trusted context' }
+            $replacement = ($lines[0..5] -join "`n") + "`n[Verified complete-body reference: $($entry.path), blob $($entry.blob), SHA256 $($entry.normalized_sha256). The complete $count-line body appears verbatim in TRUSTED CONTEXT above. Review that content both as approved control and as this added artifact. No added line is omitted from the payload.]`n"
+            $referenced = $true
+        }
+        [void]$rendered.Append($replacement)
+        $coverage.Add([pscustomobject]@{ header=$first; hunks=$hunks; original_sha256=(Get-ReviewTextHash $section); rendered_sha256=(Get-ReviewTextHash $replacement); referenced=$referenced })
+    }
+    if ($found -ne 1) { throw 'Reference file must occur exactly once in generated diff' }
+    [pscustomobject]@{ Diff=$rendered.ToString(); Manifest=[pscustomobject]@{
+        version=1; base_oid=$BaseOid; head_sha=$HeadSha; newline_normalization='CRLF to LF only'
+        original_diff_sha256=(Get-ReviewTextHash $Diff); normalized_diff_sha256=(Get-ReviewTextHash $lf)
+        rendered_diff_sha256=(Get-ReviewTextHash $rendered.ToString()); preamble_sha256=(Get-ReviewTextHash $Preamble)
+        reference_manifest_sha256=(Get-ReviewTextHash $requestText); reference=$entry; sections=$coverage.ToArray()
+    } }
+}
+
+function Get-ReviewCapacityFromCatalog {
+    param([string]$CatalogJson)
+    $catalog = $CatalogJson | ConvertFrom-Json -ErrorAction Stop
+    $models = @($catalog.models | Where-Object { $_.slug -ceq 'gpt-6.1-sol' })
+    if ($models.Count -ne 1) { throw 'Pinned model missing or duplicated in CLI catalog' }
+    $model = $models[0]
+    foreach ($name in @('context_window','max_context_window','effective_context_window_percent')) {
+        if ($model.$name -isnot [long] -and $model.$name -isnot [int]) { throw "Invalid catalog $name" }
+    }
+    if ($model.context_window -le 0 -or $model.context_window -gt $model.max_context_window -or
+        $model.effective_context_window_percent -le 0 -or $model.effective_context_window_percent -gt 100) { throw 'Invalid CLI context bounds' }
+    $effective = [long][math]::Floor($model.context_window * ($model.effective_context_window_percent / 100.0))
+    $maximum = [long][math]::Floor($effective * 0.75) - 128000
+    if ($maximum -le 0) { throw 'CLI context cannot accommodate the reserved output and required headroom' }
+    [pscustomobject]@{ model='gpt-6.1-sol'; context_window=$model.context_window; effective_percent=$model.effective_context_window_percent
+        effective_tokens=$effective; output_reserve=128000; maximum_input_tokens=[math]::Min(659500,$maximum)
+        catalog_sha256=(Get-ReviewTextHash $CatalogJson) }
+}
