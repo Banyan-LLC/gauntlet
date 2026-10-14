@@ -83,7 +83,7 @@ try {
     # Execute the real capacity admission block with an offline process stub.
     $capacityStart=$scriptText.IndexOf('$referenceCapacity = $null')
     $capacityEnd=$scriptText.IndexOf('# --- Harness.', $capacityStart)
-    $capacityBlock=$scriptText.Substring($capacityStart,$capacityEnd-$capacityStart)
+    $capacityBlock='$activeBoundProfile=$null;' + $scriptText.Substring($capacityStart,$capacityEnd-$capacityStart)
     $libPath=(Resolve-Path "$PSScriptRoot/../gauntlet-review/scripts/lib.ps1").Path.Replace("'","''")
     foreach ($case in @('mismatch','malformed','unavailable','insufficient','matching')) {
         $live=$capacity

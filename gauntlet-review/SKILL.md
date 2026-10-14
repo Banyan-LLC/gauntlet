@@ -21,11 +21,12 @@ One artifact, one bounded loop. Modes: `doc` (spec/plan), `pr`, and `local` (a l
 Local mode has an optional `-VerifiedReferenceFile <json>` for one complete added
 approved spec duplicated verbatim in trusted context. See README's verified
 reference protocol before use. It preserves all unique material, records complete
-section coverage in immutable attempt metadata, and requires matching pinned-CLI
-refreshed/bundled capacity evidence before consuming an attempt. It does not
+section coverage in immutable attempt metadata, and requires verified bound-profile
+runtime capacity evidence (or matching legacy catalogs) before consuming an attempt. It does not
 authorize omission, changing a base/head, resetting history, increasing a budget,
-or relaxing the 128,000 output reserve and 25% context headroom. On current CLI
-catalog disagreement this route refuses; stop and consult the coordinator.
+or relaxing the 128,000 output reserve and 25% context headroom. The user-approved
+872,000 bound profile has an observed effective window of 828,400 and an input
+ceiling of 493,300. Never substitute the API window for this runtime evidence.
 
 1. Write/revise the artifact; commit it.
 2. Compose the prompt (template below).

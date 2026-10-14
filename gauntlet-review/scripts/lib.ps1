@@ -630,6 +630,8 @@ function New-LiveGateInputs {
             (Join-Path $root 'scripts/invoke-codex.ps1'),(Join-Path $root 'scripts/publish-review.ps1'),
             (Join-Path $root 'scripts/calibrate-premises.ps1'),
             (Join-Path $repoRoot 'tests/live/live-schema-gate.ps1'),(Join-Path $repoRoot 'tests/live/live-security.ps1'))
+        $boundProfile = Get-BoundReviewProfile -SkillRoot $root
+        if ($boundProfile) { $inputPaths += @((Join-Path $root 'capacity-profile.json'), $boundProfile.catalog_path, (Join-Path $root 'capacity-runtime-proof.json')) }
         foreach ($inputPath in @($inputPaths | ForEach-Object { [IO.Path]::GetFullPath($_) } | Select-Object -Unique)) {
             $leases.Add([IO.FileStream]::new($inputPath,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read))
         }
@@ -1040,6 +1042,8 @@ function New-CodexArgs {
     $a.AddRange([string[]]@('-s','read-only','-C',$HarnessDir))
     $a.AddRange([string[]]@('-m',$Model,'-c',"model_reasoning_effort=`"$Effort`""))
     $a.AddRange([string[]]@('-c','web_search="disabled"','-c','shell_environment_policy.inherit="none"'))
+    $boundProfile = Get-BoundReviewProfile
+    if ($boundProfile) { $a.AddRange([string[]]@('-c',('model_catalog_json=' + (ConvertTo-Json -Compress $boundProfile.catalog_path)), '-c',('model_context_window=' + $boundProfile.requested_context_window))) }
     foreach ($f in $DisableSet) { $a.Add('--disable'); $a.Add($f) }
     $a.AddRange([string[]]@('--output-schema',$SchemaPath,'-o',$VerdictPath,'--json','-'))
     return $a.ToArray()
@@ -1093,6 +1097,8 @@ function Get-InvocationAudit {
     if ($pairs['--output-schema'] -cne $SchemaPath) { throw "audit: output-schema mismatch" }
     if ($pairs['-o'] -cne $VerdictPath) { throw "audit: verdict path mismatch" }
     $expC = @("model_reasoning_effort=`"$Effort`"", 'web_search="disabled"', 'shell_environment_policy.inherit="none"') | Sort-Object
+    $boundProfile = Get-BoundReviewProfile
+    if ($boundProfile) { $expC = @($expC) + @(('model_catalog_json=' + (ConvertTo-Json -Compress $boundProfile.catalog_path)), ('model_context_window=' + $boundProfile.requested_context_window)) | Sort-Object }
     $actC = @($cVals) | Sort-Object
     if ($cVals.Count -ne $expC.Count) { throw "audit: expected $($expC.Count) -c overrides, found $($cVals.Count) (duplicate or extra)" }
     if ((($actC -join '|')) -cne (($expC -join '|'))) { throw "audit: -c override mismatch: [$($cVals -join ', ')]" }
@@ -1216,6 +1222,8 @@ function Get-InvocationProfileHash {
     $canon = New-CodexArgs -HarnessDir '<HARNESS>' -SchemaPath '<SCHEMA>' -VerdictPath '<VERDICT>' `
         -DisableSet $DisableSet -Model $Model -Effort $Effort
     $material = ($canon -join "`u{001f}")
+    $boundProfile = Get-BoundReviewProfile
+    if ($boundProfile) { $material += "`u{001f}" + $boundProfile.catalog_sha256 + "`u{001f}" + $boundProfile.profile_sha256 }
     -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($material)) | ForEach-Object { $_.ToString('x2') })
 }
 
@@ -1256,6 +1264,10 @@ function Test-StackAcceptance {
           [Parameter(Mandatory)][string]$InvocationProfileHash,
           [string]$Model = 'gpt-6.1-sol')
     $bad = { param($why) [pscustomobject]@{ Valid=$false; Reason=$why; Manifest=$null } }
+    try {
+        $boundProfile = Get-BoundReviewProfile -SkillRoot $SkillRoot
+        if ($boundProfile) { $null = Test-BoundRuntimeProof -SkillRoot $SkillRoot -ActualCli $ActualCli -InvocationProfileHash $InvocationProfileHash }
+    } catch { return (& $bad "bound capacity proof: $($_.Exception.Message)") }
     $path = Join-Path $SkillRoot 'premises.json'
     if (-not (Test-Path $path)) { return (& $bad "premises.json is absent") }
     try { $m = Get-Content -Raw $path | ConvertFrom-Json } catch { return (& $bad "premises.json is not valid JSON") }
@@ -1328,6 +1340,9 @@ function Get-WrapperFingerprint {
         'scripts\lib.ps1',
         'scripts\publish-review.ps1'
     ) | Sort-Object
+    foreach ($optional in @('capacity-profile.json','capacity-runtime-proof.json')) {
+        if (Test-Path -LiteralPath (Join-Path $SkillRoot $optional)) { $relPaths += $optional }
+    }
     $perFileHashes = foreach ($rel in $relPaths) {
         $full = Join-Path $SkillRoot $rel
         if (-not (Test-Path -LiteralPath $full -PathType Leaf)) {
@@ -2724,7 +2739,7 @@ function ConvertTo-VerifiedReviewDiff {
 }
 
 function Get-ReviewCapacityFromCatalog {
-    param([string]$CatalogJson)
+    param([string]$CatalogJson, [Nullable[long]]$RequestedWindow)
     $catalog = $CatalogJson | ConvertFrom-Json -ErrorAction Stop
     $models = @($catalog.models | Where-Object { $_.slug -ceq 'gpt-6.1-sol' })
     if ($models.Count -ne 1) { throw 'Pinned model missing or duplicated in CLI catalog' }
@@ -2734,10 +2749,76 @@ function Get-ReviewCapacityFromCatalog {
     }
     if ($model.context_window -le 0 -or $model.context_window -gt $model.max_context_window -or
         $model.effective_context_window_percent -le 0 -or $model.effective_context_window_percent -gt 100) { throw 'Invalid CLI context bounds' }
-    $effective = [long][math]::Floor($model.context_window * ($model.effective_context_window_percent / 100.0))
+    $resolvedWindow = $model.context_window
+    if ($null -ne $RequestedWindow) {
+        if ($RequestedWindow -le 0 -or $RequestedWindow -gt $model.max_context_window) { throw 'Requested window exceeds verified catalog maximum or is invalid' }
+        $resolvedWindow = [long]$RequestedWindow
+    }
+    $effective = [long][math]::Floor($resolvedWindow * ($model.effective_context_window_percent / 100.0))
     $maximum = [long][math]::Floor($effective * 0.75) - 128000
     if ($maximum -le 0) { throw 'CLI context cannot accommodate the reserved output and required headroom' }
-    [pscustomobject]@{ model='gpt-6.1-sol'; context_window=$model.context_window; effective_percent=$model.effective_context_window_percent
+    [pscustomobject]@{ model='gpt-6.1-sol'; context_window=$resolvedWindow; catalog_default=$model.context_window; catalog_maximum=$model.max_context_window; effective_percent=$model.effective_context_window_percent
         effective_tokens=$effective; output_reserve=128000; maximum_input_tokens=[math]::Min(659500,$maximum)
         catalog_sha256=(Get-ReviewTextHash $CatalogJson) }
+}
+
+function Get-BoundReviewProfile {
+    param([string]$SkillRoot = (Split-Path $PSScriptRoot -Parent))
+    $path = Join-Path $SkillRoot 'capacity-profile.json'
+    if (-not (Test-Path -LiteralPath $path)) { return $null }
+    $raw = [IO.File]::ReadAllText($path)
+    $profile = $raw | ConvertFrom-Json -ErrorAction Stop
+    if ($profile.version -ne 1 -or $profile.model -cne 'gpt-6.1-sol' -or $profile.catalog_sha256 -cnotmatch '^[0-9a-f]{64}$' -or
+        -not [IO.Path]::IsPathFullyQualified($profile.catalog_path)) { throw 'Invalid bound capacity profile' }
+    $bytes = [IO.File]::ReadAllBytes($profile.catalog_path)
+    $hash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+    if ($hash -cne $profile.catalog_sha256) { throw 'Bound model catalog hash changed' }
+    $capacity = Get-ReviewCapacityFromCatalog -CatalogJson ([Text.Encoding]::UTF8.GetString($bytes)) -RequestedWindow $profile.requested_context_window
+    if ($capacity.catalog_default -ne $profile.expected_default -or $capacity.catalog_maximum -ne $profile.expected_maximum -or
+        $capacity.effective_percent -ne $profile.expected_effective_percent) { throw 'Bound model catalog limits changed' }
+    $profile | Add-Member -NotePropertyName capacity -NotePropertyValue $capacity
+    $profile | Add-Member -NotePropertyName profile_sha256 -NotePropertyValue (Get-ReviewTextHash $raw)
+    return $profile
+}
+
+function Test-BoundRuntimeProof {
+    param([string]$SkillRoot, [pscustomobject]$ActualCli, [string]$InvocationProfileHash)
+    $profile = Get-BoundReviewProfile -SkillRoot $SkillRoot
+    if (-not $profile) { throw 'Bound profile absent' }
+    $proof = Get-Content -LiteralPath (Join-Path $SkillRoot 'capacity-runtime-proof.json') -Raw -Encoding utf8 | ConvertFrom-Json -ErrorAction Stop
+    $producer = Join-Path (Split-Path $SkillRoot -Parent) 'tests/live/live-context-capacity.ps1'
+    if (Test-Path -LiteralPath $producer) {
+        if ((Get-FileHash -LiteralPath $producer -Algorithm SHA256).Hash.ToLowerInvariant() -cne $profile.runtime_probe_source_sha256) { throw 'Controlled fixture source changed' }
+    } elseif (Test-Path -LiteralPath (Join-Path (Split-Path $SkillRoot -Parent) 'tests')) { throw 'Controlled fixture source missing from source tree' }
+    if ($proof.fixture_sha256 -cne $profile.runtime_probe_source_sha256 -or
+        $proof.library_sha256 -cne (Get-FileHash -LiteralPath (Join-Path $SkillRoot 'scripts/lib.ps1') -Algorithm SHA256).Hash.ToLowerInvariant()) {
+        throw 'Runtime proof producer changed; rerun the controlled fixture'
+    }
+    if ($proof.version -ne 1 -or $proof.cli_sha256 -cne $ActualCli.Sha256 -or $proof.profile_sha256 -cne $InvocationProfileHash -or
+        $proof.catalog_sha256 -cne $profile.catalog_sha256 -or $proof.expected_effective_tokens -ne $profile.capacity.effective_tokens -or
+        $proof.actual_capacity_verified -isnot [bool] -or -not $proof.actual_capacity_verified -or $proof.exit_code -ne 0 -or
+        $proof.process_tree_retired -isnot [bool] -or -not $proof.process_tree_retired -or $proof.usage_valid -isnot [bool] -or -not $proof.usage_valid) {
+        throw 'Runtime context proof does not match the exact CLI/profile/catalog or failed its fixture'
+    }
+    $values = @($proof.trusted_runtime_context_values)
+    if ($values.Count -ne 1 -or $values[0] -ne $profile.capacity.effective_tokens) { throw 'Runtime effective window missing or ambiguous' }
+    $metrics = @($proof.runtime_metric_records | Where-Object { $_.metric_syntax -match '^model_context_window_effective' })
+    if ($metrics.Count -lt 1 -or @($metrics | Where-Object { $_.value -ne $profile.capacity.effective_tokens }).Count -gt 0) { throw 'Runtime effective telemetry disagrees' }
+    return $proof
+}
+
+function New-BoundReviewLease {
+    param([string]$SkillRoot)
+    $leases = [Collections.Generic.List[IDisposable]]::new()
+    $profilePath = Join-Path $SkillRoot 'capacity-profile.json'
+    if (-not (Test-Path -LiteralPath $profilePath)) { return $leases }
+    try {
+        $leases.Add([IO.FileStream]::new($profilePath,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read))
+        $profile = Get-BoundReviewProfile -SkillRoot $SkillRoot
+        foreach ($path in @($profile.catalog_path, (Join-Path $SkillRoot 'capacity-runtime-proof.json'))) {
+            $leases.Add([IO.FileStream]::new($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read))
+        }
+        if ((Get-BoundReviewProfile -SkillRoot $SkillRoot).profile_sha256 -cne $profile.profile_sha256) { throw 'Capacity inputs changed while acquiring lease' }
+        return ,$leases
+    } catch { foreach ($lease in $leases) { $lease.Dispose() }; throw }
 }

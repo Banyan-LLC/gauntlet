@@ -36,7 +36,7 @@ and rendered hashes, reference identity, and the final payload hash. Invalid
 references refuse before CLI discovery or attempt allocation. The existing
 byte/character limits and usage gate cannot be overridden by this option.
 
-Before allocating an attempt, this opt-in route probes both the pinned CLI's
+With no bound capacity profile, this opt-in route probes both the pinned CLI's
 refreshed catalog and its bundled catalog. The bundled probe uses a unique empty
 CODEX_HOME without credential copies or ambient user configuration. Both must
 identify the pinned model and agree on context window and effective percentage;
@@ -50,15 +50,30 @@ On agreement the acceptance ceiling is the smaller of the existing 659,500 and
 The completed request's own input-token accounting must meet it before any
 canonical verdict is accepted. The output reserve and 25% headroom are unchanged.
 
-Current coordinator verification (2026-10-13): CLI 0.162.0-alpha.17.2 reports
-500,000 refreshed versus 272,000 bundled, both 95% effective. The respective
-ceilings are 228,250 and 65,800 tokens; this disagreement currently blocks the
-route. The SID converter's earlier smaller prompt used 233,439 input tokens,
-already above either ceiling. Its current exact token count is unknown. A
-one-request byte/character fit therefore does not establish admissible capacity.
-No converter review attempt should be spent to resolve this uncertainty. This
-extension must remain uninstalled until the coordinator resolves the capacity
-decision, completes review and recertifies the changed stack.
+The user-approved bound profile (2026-10-14) resolves that ambiguity explicitly.
+Machine-local `gauntlet-review/capacity-profile.json` identifies a frozen unchanged
+account catalog by absolute path and SHA-256. Its model entry retains default
+500,000, maximum 872,000 and 95% effective capacity. Every sealed invocation adds
+`-c model_catalog_json="<snapshot>" -c model_context_window=872000`. Both arguments,
+the snapshot hash and descriptor hash are bound into the full invocation audit
+and certification profile. No catalog limit is invented or raised.
+
+`tests/live/live-context-capacity.ps1` runs a small controlled fixture under the
+exact sealed profile and records the runtime telemetry's
+`model_context_window_effective=828400`, separately from the requested 872,000.
+Machine-local `capacity-runtime-proof.json` binds the replacement executable,
+catalog, invocation profile, fixture/library producer hashes, invocation audit
+and sanitized diagnostic receipt. Changed/missing proof or catalog refuses
+certification and invocation. Profile, proof and catalog read leases prevent
+rewriting those files during Windows model execution; hashes are rechecked.
+
+The resulting acceptance ceiling is `floor(828400 * .75) - 128000 = 493300`
+input tokens. The output reserve and 25% headroom are unchanged. Request byte and
+character caps remain independent, and the completed request's own exact input
+usage must satisfy this ceiling before a canonical verdict can be accepted.
+The actual complete prompt's token count is not inferred from its byte length.
+The new CLI/profile/catalog must pass calibration and both live gates before a
+coordinated install. The coordinator owns those shared operations.
 
 Gauntlet provides two reusable [Claude Code](https://claude.ai/code) skills that ask
 OpenAI Codex to act as an independent reviewer:

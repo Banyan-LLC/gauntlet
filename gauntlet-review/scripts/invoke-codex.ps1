@@ -46,6 +46,9 @@ param(
 # reachable from a caller. Tests exercise the bound by invoking three times.
 $MaxAttempts = 2
 . "$PSScriptRoot\lib.ps1"
+$boundInputLeases = $null
+try {
+$boundInputLeases = New-BoundReviewLease -SkillRoot (Split-Path $PSScriptRoot -Parent)
 # Single schema now (see task-7-report.md): the codex-facing generation schema and the local
 # structural-validation schema used to be two files differing only in a top-level if/then that
 # the real API rejects outright. They are identical once if/then is removed, so one file now
@@ -230,6 +233,10 @@ if (-not $repin) {
 }
 
 $disable = Get-DisableSet -FeatureNames $cli.FeatureNames
+if (Get-BoundReviewProfile) {
+    $boundInputLeases.Add([IO.FileStream]::new($cli.Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read))
+    if ((Get-FileHash -LiteralPath $cli.Path -Algorithm SHA256).Hash.ToLowerInvariant() -cne $cli.Sha256) { Write-Error 'Selected CLI changed before its execution lease'; exit 13 }
+}
 
 # --- Premise manifest gate, AFTER selection so it binds the binary that will actually run.
 #     Validating the path the manifest names would let a manifest for A authorize a review
@@ -261,8 +268,10 @@ $prev = if (Test-Path (Join-Path $StateDir 'state.json')) { Read-RoundState -Sta
 
 # Only the new representation opts into this stricter capacity contract. Existing
 # review histories retain their prior policy. Probe before harness/attempt writes.
+$activeBoundProfile = Get-BoundReviewProfile
 $referenceCapacity = $null
-if ($VerifiedReferenceFile) {
+if ($activeBoundProfile) { $referenceCapacity = $activeBoundProfile.capacity }
+if ($VerifiedReferenceFile -and -not $activeBoundProfile) {
     $catalogRun = Invoke-BoundedProcess -FileName $cli.Path -ArgList @('debug','models') -TimeoutSec 60 -RequireProcessTreeRetirement
     if ($catalogRun.StartFailed -or $catalogRun.TimedOut -or $catalogRun.ExitCode -ne 0 -or -not $catalogRun.ProcessTreeRetired) { Write-Error 'Pinned CLI context catalog unavailable; no attempt ran'; exit 12 }
     # The bundled probe must not read ambient config or a custom catalog. No
@@ -351,6 +360,11 @@ if ($VerifiedReferenceFile) {
     $meta.reference_manifest_sha256 = $referenceCoverage.reference_manifest_sha256
     $meta.carryover_original_rendered_sha256 = $originalCarrySha
 }
+if ($activeBoundProfile) {
+    $meta.context_capacity = $referenceCapacity
+    $meta.bound_capacity_profile_sha256 = $activeBoundProfile.profile_sha256
+    $meta.capacity_runtime_proof_sha256 = (Get-FileHash -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'capacity-runtime-proof.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+}
 Write-AttemptMeta -StateDir $StateDir -Round $Round -Attempt $attempt -Meta $meta
 # Persist what the reviewer actually received, under our own control: the normalized ledger and
 # the exact rendered carry-over. The caller's ledger file can change or vanish; these cannot.
@@ -388,6 +402,7 @@ if ($run.StartFailed -or $run.TimedOut -or $run.ExitCode -ne 0 -or -not (Test-Pa
 #     lib.ps1). The attempt meta written above is immutable and predates this process running;
 #     the usage RESULT is a separate, create-only artifact, never folded back into it.
 $usage = Get-RunUsage -EventLines $run.StdoutLines
+if ($activeBoundProfile -and (Get-BoundReviewProfile).profile_sha256 -cne $activeBoundProfile.profile_sha256) { Write-Error 'Bound capacity profile changed during execution'; exit 12 }
 if (-not $usage.Ok) {
     Write-RoundState -StateDir $StateDir -Patch @{ status='failed_attempt'; failure_reason="round $Round attempt ${attempt}: usage gate: $($usage.Reason)" }
     Write-Error "Usage gate failed: $($usage.Reason). Retry this round once, then human flag."
@@ -444,3 +459,6 @@ Write-RoundState -StateDir $StateDir -Patch @{
 }
 Write-Output $verdict.NormalizedJson
 exit 0
+} finally {
+    if ($boundInputLeases) { foreach ($lease in $boundInputLeases) { $lease.Dispose() } }
+}

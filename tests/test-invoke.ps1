@@ -1,5 +1,9 @@
 . "$PSScriptRoot\helpers.ps1"
 . "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1"
+# This legacy suite builds unbound synthetic skill trees and fake CLIs. Keep
+# its in-process helpers on that same explicit fixture policy. Bound profiles
+# and their audit/hash contracts are exercised by test-bound-profile.ps1.
+function Get-BoundReviewProfile { param([string]$SkillRoot) return $null }
 # Run the fake Codex through its .ps1 entry point, never shim.cmd. Norton 360 (seen 2026-09)
 # creates an empty _norton_ directory in the working directory of any cmd.exe started with neither
 # TMP nor TEMP set, which is exactly the hermetic child env Invoke-CodexProcess builds. A
@@ -875,6 +879,11 @@ $copyRoot = Join-Path $tmp 'entry-skillroot'
 New-Item -ItemType Directory -Force $copyRoot | Out-Null
 Copy-Item -Recurse "$PSScriptRoot\..\gauntlet-review" $copyRoot
 $copySkillRoot = Join-Path $copyRoot 'gauntlet-review'
+# Synthetic fake CLI fixtures intentionally exercise the unbound legacy stack.
+foreach ($machineFile in @('capacity-profile.json','capacity-runtime-proof.json')) {
+    $fixtureFile = Join-Path $copySkillRoot $machineFile
+    if (Test-Path -LiteralPath $fixtureFile) { Remove-Item -LiteralPath $fixtureFile }
+}
 # Get-GateFingerprint (FINDING 2) resolves its fixed file list relative to -SkillRoot's PARENT --
 # i.e. as siblings of gauntlet-review/, matching this repo's real dev-repo layout (Get-WrapperFingerprint
 # no longer needs this at all -- it resolves entirely under -SkillRoot itself, see the P1 fix). The
