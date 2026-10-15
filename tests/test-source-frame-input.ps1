@@ -186,7 +186,7 @@ try {
             $localDiff = $range.Diff; $localDiffSha = $range.OriginalSha256; $compactRange = $range
             $promptBody = 'Review complete input.'; $VerifiedReferenceFile = $null
             $CompactAddedFiles = $true; $CompactIndentation = $true; $CompactRepeatedLines = $true
-            $CompactReviewMetadata = $true; $CompactSourceFrames = $true
+            $CompactReviewMetadata = $true; $CompactSourceFrames = $true; $CompactSourceWords = $false
             $referenceCoverage = $null; $compactCoverage = $null; $metadataCoverage = $null
             $provenance = [pscustomobject]@{
                 head_sha = $head; base_oid = $base; base_tip_oid = $base

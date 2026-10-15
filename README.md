@@ -43,6 +43,15 @@ leading tabs and reserved source prefixes keep legacy framing. All prior
 protocols, defaults, history and limits remain unchanged. The separate source
 frame protocol is included in the prompt and fingerprinted in attempt metadata.
 
+`-CompactSourceWords` optionally wraps complete F/FL source frames with a closed
+per-file ASCII word dictionary. It requires `-CompactAddedFiles`,
+`-CompactIndentation` and `-CompactSourceFrames`, in local or PR mode. Canonical
+`@N` references expand before the older frame/line layers; literal marker collisions
+retain the entire previous frame. Words and source-line cores share the existing
+65536-entry / 4194304-unit dictionary limits. Both byte and scalar prompt caps,
+source identities, history, defaults and older protocol text remain unchanged.
+Its separate protocol and immutable hash are included in each opted-in request.
+
 ### Verified duplicate controlling-spec references (local mode, opt-in)
 
 `invoke-codex.ps1 -VerifiedReferenceFile <json>` can represent one complete added

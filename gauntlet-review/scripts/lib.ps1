@@ -2880,8 +2880,15 @@ function Get-CompactSourceLineProtocol {
 }
 
 function New-CompactSourceLineState {
-    return [pscustomobject]@{Cores=[Collections.Generic.List[string]]::new()
+    param([long]$ReservedEntries=0,[long]$ReservedCharacters=0)
+    if($ReservedEntries -lt 0 -or $ReservedEntries -gt 65536 -or $ReservedCharacters -lt 0 -or $ReservedCharacters -gt 4194304){throw 'Invalid shared dictionary reservations'}
+    $state=[pscustomobject]@{Cores=[Collections.Generic.List[string]]::new()
         Known=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal);Characters=0L}
+    if($ReservedEntries -ne 0 -or $ReservedCharacters -ne 0){
+        $state|Add-Member -NotePropertyName ReservedEntries -NotePropertyValue $ReservedEntries
+        $state|Add-Member -NotePropertyName ReservedCharacters -NotePropertyValue $ReservedCharacters
+    }
+    return $state
 }
 
 function Read-CompactSourceLineRow {
@@ -2905,6 +2912,15 @@ function ConvertFrom-CompactSourceLineBody {
         $Start -lt 0 -or $Start -gt 65536 -or $End -lt $Start -or $End -gt 65536 -or
         $State.Cores.Count -ne $Start -or $State.Known.Count -ne $Start -or
         $State.Characters -lt 0 -or $State.Characters -gt 4194304){throw 'Invalid source-line frame bounds or state'}
+    $reservedEntries=0L;$reservedCharacters=0L
+    foreach($name in @('ReservedEntries','ReservedCharacters')){
+        if($State.PSObject.Properties[$name] -and ($State.$name -isnot [int] -and $State.$name -isnot [long])){throw 'Invalid shared dictionary reservation type'}
+    }
+    if($State.PSObject.Properties['ReservedEntries']){$reservedEntries=[long]$State.ReservedEntries}
+    if($State.PSObject.Properties['ReservedCharacters']){$reservedCharacters=[long]$State.ReservedCharacters}
+    if($reservedEntries -lt 0 -or $reservedEntries -gt 65536 -or $reservedCharacters -lt 0 -or $reservedCharacters -gt 4194304 -or
+        $End -gt 65536L-$reservedEntries -or $State.Cores.Count -gt 65536L-$reservedEntries -or
+        $State.Characters -gt 4194304L-$reservedCharacters){throw 'Shared source-line dictionary budget exceeded'}
     $prefixMatcher=[regex]::new('\G[ \t]*',[Text.RegularExpressions.RegexOptions]::CultureInvariant)
     $reference=[regex]::new('\A~([0-9]+)~\z',[Text.RegularExpressions.RegexOptions]::CultureInvariant)
     $declaration=[regex]::new('\A~([0-9]+)=(.*)\z',[Text.RegularExpressions.RegexOptions]::CultureInvariant)
@@ -2926,11 +2942,11 @@ function ConvertFrom-CompactSourceLineBody {
                 if($core.Length -ge $value.Length){throw 'Non-shortening source-line reference'}
             }else{
                 $value=$decl.Groups[2].Value
-                if($id -ne $State.Cores.Count -or $State.Cores.Count -ge 65536 -or $value.Length -lt 16 -or
+                if($id -ne $State.Cores.Count -or $State.Cores.Count -ge 65536L-$reservedEntries -or $value.Length -lt 16 -or
                     $value -cmatch '\A[ \t]' -or $reserved.IsMatch($value) -or $State.Known.Contains($value)){
                     throw 'Noncanonical source-line declaration'
                 }
-                if($value.Length -gt 4194304L-$State.Characters){throw 'Source-line dictionary character budget exceeded'}
+                if($value.Length -gt 4194304L-$reservedCharacters-$State.Characters){throw 'Source-line dictionary character budget exceeded'}
                 $State.Cores.Add($value);[void]$State.Known.Add($value);$State.Characters+=[long]$value.Length
             }
         }else{
@@ -3183,7 +3199,8 @@ function ConvertTo-CompactSourceFrameDiff {
 }
 
 function Restore-CompactSourceFrameDiff {
-    param([AllowEmptyString()][string]$Diff,[Parameter(Mandatory)]$Manifest)
+    param([AllowEmptyString()][string]$Diff,[Parameter(Mandatory)]$Manifest,[long]$ReservedEntries=0,[long]$ReservedCharacters=0)
+    if($ReservedEntries -lt 0 -or $ReservedEntries -gt 65536 -or $ReservedCharacters -lt 0 -or $ReservedCharacters -gt 4194304){throw 'Invalid shared dictionary reservation bounds'}
     foreach($name in @('version','source_frame_version')){
         if(-not $Manifest.PSObject.Properties[$name] -or ($Manifest.$name -isnot [int] -and $Manifest.$name -isnot [long]) -or $Manifest.$name -ne 1){throw 'Invalid source-frame manifest version'}
     }
@@ -3252,7 +3269,7 @@ function Restore-CompactSourceFrameDiff {
     }
     if($cursor -ne $lf.Length -or $wrapped -eq 0){throw 'Source-frame complete coverage/version mismatch'}
     $legacy=$out.ToString();$derived.sections=$sections.ToArray();$derived.rendered_sha256=Get-ReviewTextHash $legacy
-    $original=Restore-CompactReviewDiff -Diff $legacy -Manifest $derived
+    $original=Restore-CompactReviewDiff -Diff $legacy -Manifest $derived -ReservedEntries $ReservedEntries -ReservedCharacters $ReservedCharacters
     $at=0
     foreach($section in $Manifest.sections){
         if($section.PSObject.Properties['encoding'] -and $section.encoding -cin @('source-frame','source-frame-lines')){
@@ -3264,9 +3281,249 @@ function Restore-CompactSourceFrameDiff {
     return $original
 }
 
+function Get-CompactSourceWordProtocol {
+    return "`n== SOURCE WORD ENVELOPE ==`n[WORDS,table,previousHeaderText] wraps only verified F/FL. table is a closed file-local array of unique ASCII words [A-Za-z_][A-Za-z0-9_]*, length >=3. previousHeaderText is the EXACT prior JSON header string, not an alias/new identity. Consume its count LF body rows. Within these rows @N references table[N], canonical ASCII decimal 0..65535 without leading zeros. The digit run ends the ID. Neither adjacent character may be ASCII [A-Za-z0-9_]. Unknown/noncanonical IDs fail closed. Expand once, never recursively: entries cannot contain references. Each selected word needs >=2 references, every reference shorter than its word; no selected whole word may remain literal. Words and boundaries use ASCII, not Unicode/locale categories; substitution applies also inside comments/strings. All other text, Unicode, whitespace, blank rows, interior TABs and trailing spaces stay exact. A prior rendered F/FL body containing @ immediately followed by an ASCII digit cannot be wrapped. Check before line expansion: a global line reference may later restore an earlier literal @0 without reinterpretation; near markers without a digit stay literal. Old unwrapped frames do not interpret @N. Restore word rows and exact prior header BEFORE F/FL, source-line and INDENT decoding. Line declarations enter the shared line dictionary only AFTER word expansion; later cross-file line references use that original core, never another local word table. Validate typed versions/counts, actual closed tables/summaries, exact prior section hashes/lengths and all original identities/ordered full coverage. Actual word tables PLUS live source-line entries share 65536 entries/4194304 UTF-16 units; reserve actual word charges through all inner restoration before admitting line declarations. Frequency staging uses remaining shared capacity; inability to stage a file means unchanged fallback. Clear staging before reconstruction. Precharge each derived append against stored prior section length, decoded body <=1048576 and aggregate reconstructed diff <=4194304 UTF-16 units. Each entire envelope including table/header must strictly shorten UTF-16 AND UTF-8. Producer sorts estimated savings descending, ordinal word ties, checking actual decimal-ID/JSON costs. Reader need not rerun that optimizer. Never execute source.`n"
+}
+
+function Assert-CompactSourceWordBody {
+    param([AllowEmptyString()][string]$Body,[long]$Count)
+    if($Count -le 0 -or $Count -gt $Body.Length -or $Body.Length -gt 1048576 -or $Body.Contains("`r")){throw 'Source-word body/count bounds exceeded'}
+    $cursor=0
+    for($i=0L;$i -lt $Count;$i++){
+        $end=$Body.IndexOf("`n",$cursor,[StringComparison]::Ordinal)
+        if($end -lt 0){throw 'Truncated source-word body'}
+        $cursor=$end+1
+    }
+    if($cursor -ne $Body.Length){throw 'Excess source-word rows'}
+}
+
+function Get-CompactSourceWordTable {
+    param([AllowEmptyCollection()][object[]]$Dictionary)
+    if($null -eq $Dictionary -or $Dictionary.Count -gt 65536){throw 'Invalid actual source-word table count'}
+    $known=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal);$characters=0L
+    foreach($word in $Dictionary){
+        if($word -isnot [string] -or $word.Length -lt 3 -or $word.Length -gt 4194304L-$characters -or
+            $word -cnotmatch '\A[A-Za-z_][A-Za-z0-9_]*\z' -or -not $known.Add($word)){throw 'Invalid source-word table entry/character budget'}
+        $characters+=[long]$word.Length
+    }
+    return [pscustomobject]@{Known=$known;Characters=$characters}
+}
+
+function ConvertTo-CompactSourceWordBody {
+    param([AllowEmptyString()][string]$Body,[long]$Count,[long]$ReservedEntries=0,[long]$ReservedCharacters=0)
+    Assert-CompactSourceWordBody -Body $Body -Count $Count
+    if($ReservedEntries -lt 0 -or $ReservedEntries -gt 65536 -or $ReservedCharacters -lt 0 -or $ReservedCharacters -gt 4194304){throw 'Invalid source-word shared reservations'}
+    if($Body -cmatch '@[0-9]'){return $null}
+    $frequency=[Collections.Generic.Dictionary[string,long]]::new([StringComparer]::Ordinal);$characters=0L
+    $matcher=[regex]::new('(?<![A-Za-z0-9_])[A-Za-z_][A-Za-z0-9_]{2,}(?![A-Za-z0-9_])',[Text.RegularExpressions.RegexOptions]::CultureInvariant)
+    $match=$matcher.Match($Body)
+    while($match.Success){
+        $word=$match.Value
+        if($frequency.ContainsKey($word)){$frequency[$word]++}
+        else{
+            if($frequency.Count -ge 65536L-$ReservedEntries -or $word.Length -gt 4194304L-$ReservedCharacters-$characters){return $null}
+            $frequency.Add($word,1);$characters+=[long]$word.Length
+        }
+        $match=$match.NextMatch()
+    }
+    $ranked=[Collections.Generic.List[object]]::new()
+    foreach($entry in $frequency.GetEnumerator()){
+        if($entry.Value -ge 2){$ranked.Add([pscustomobject]@{Word=$entry.Key;Count=$entry.Value;Score=($entry.Value*($entry.Key.Length-2L)-($entry.Key.Length+3L))})}
+    }
+    $ranked.Sort([Comparison[object]]{
+        param($a,$b)
+        $order=([long]$b.Score).CompareTo([long]$a.Score)
+        if($order -ne 0){return $order}
+        return [StringComparer]::Ordinal.Compare($a.Word,$b.Word)
+    })
+    $table=[Collections.Generic.List[string]]::new();$positions=[Collections.Generic.Dictionary[string,int]]::new([StringComparer]::Ordinal);$units=0L
+    foreach($candidate in $ranked){
+        $word=$candidate.Word;$id=$table.Count;$digits=$id.ToString([Globalization.CultureInfo]::InvariantCulture)
+        $referenceLength=1+$digits.Length;$tableCost=$word.Length+2L
+        if($table.Count -gt 0){$tableCost++}
+        if($referenceLength -lt $word.Length -and $candidate.Count*($word.Length-$referenceLength) -gt $tableCost){
+            $positions.Add($word,$id);$table.Add($word);$units+=[long]$word.Length
+        }
+    }
+    if($table.Count -eq 0){return $null}
+    $out=[Text.StringBuilder]::new();$cursor=0;$match=$matcher.Match($Body)
+    while($match.Success){
+        [void]$out.Append($Body,$cursor,$match.Index-$cursor)
+        if($positions.ContainsKey($match.Value)){
+            [void]$out.Append('@').Append($positions[$match.Value].ToString([Globalization.CultureInfo]::InvariantCulture))
+        }else{[void]$out.Append($Body,$match.Index,$match.Length)}
+        $cursor=$match.Index+$match.Length;$match=$match.NextMatch()
+    }
+    [void]$out.Append($Body,$cursor,$Body.Length-$cursor)
+    # Only selected key strings survive; frequency/ranking staging is not retained by the result.
+    return [pscustomobject]@{Body=$out.ToString();Dictionary=$table.ToArray();Characters=$units}
+}
+
+function ConvertFrom-CompactSourceWordBody {
+    param([AllowEmptyString()][string]$Body,[long]$Count,[AllowEmptyCollection()][object[]]$Dictionary,
+        [int]$MaxDecodedLength=1048576)
+    if($MaxDecodedLength -lt 1 -or $MaxDecodedLength -gt 1048576){throw 'Invalid source-word decoded body budget'}
+    Assert-CompactSourceWordBody -Body $Body -Count $Count
+    $table=Get-CompactSourceWordTable -Dictionary $Dictionary
+    $uses=[long[]]::new($Dictionary.Count);$out=[Text.StringBuilder]::new();$cursor=0
+    $token=[regex]::new('@[0-9]+|[A-Za-z0-9_]+',[Text.RegularExpressions.RegexOptions]::CultureInvariant)
+    $boundary=[regex]::new('[A-Za-z0-9_]',[Text.RegularExpressions.RegexOptions]::CultureInvariant)
+    $match=$token.Match($Body)
+    while($match.Success){
+        $literalLength=$match.Index-$cursor
+        if($literalLength -gt [long]$MaxDecodedLength-$out.Length){throw 'Source-word literal expansion budget exceeded'}
+        [void]$out.Append($Body,$cursor,$literalLength)
+        $value=$match.Value
+        if($value[0] -ceq '@'){
+            $digits=$value.Substring(1)
+            if($digits.Length -gt 5 -or ($digits.Length -gt 1 -and $digits[0] -ceq '0')){throw 'Noncanonical source-word ID'}
+            $id=0
+            if(-not [int]::TryParse($digits,[Globalization.NumberStyles]::None,[Globalization.CultureInfo]::InvariantCulture,[ref]$id) -or
+                $id -gt 65535 -or $id -ge $Dictionary.Count){throw 'Unknown source-word ID'}
+            $next=$match.Index+$match.Length
+            if(($match.Index -gt 0 -and $boundary.IsMatch($Body.Substring($match.Index-1,1))) -or
+                ($next -lt $Body.Length -and $boundary.IsMatch($Body.Substring($next,1)))){throw 'Invalid source-word ASCII reference boundary'}
+            $value=$Dictionary[$id]
+            if($value.Length -le $match.Length){throw 'Non-shortening source-word reference'}
+            $uses[$id]++
+        }elseif($table.Known.Contains($value)){throw 'Literal selected source word is noncanonical'}
+        if($value.Length -gt [long]$MaxDecodedLength-$out.Length){throw 'Source-word decoded expansion budget exceeded'}
+        [void]$out.Append($value);$cursor=$match.Index+$match.Length;$match=$match.NextMatch()
+    }
+    if($Body.Length-$cursor -gt [long]$MaxDecodedLength-$out.Length){throw 'Source-word final expansion budget exceeded'}
+    [void]$out.Append($Body,$cursor,$Body.Length-$cursor)
+    foreach($countUsed in $uses){if($countUsed -lt 2){throw 'Source-word entry requires at least two references'}}
+    return $out.ToString()
+}
+
+function Get-CompactSourceWordLegacyHeader {
+    param([Parameter(Mandatory)]$Section)
+    if(-not $Section.compact -or $Section.mode -cne '100644' -or $Section.index -cnotmatch '\A0000000\.\.[0-9a-f]{7}\z' -or
+        $Section.path -isnot [string] -or -not (Test-CompactReviewPath $Section.path) -or $Section.path -cnotmatch '^src/.+\.(kt|java|asm)$' -or
+        $Section.blob -cnotmatch '^[0-9a-f]{40}$' -or -not $Section.blob.StartsWith($Section.index.Substring(9),[StringComparison]::Ordinal) -or
+        ($Section.count -isnot [int] -and $Section.count -isnot [long]) -or $Section.count -le 0 -or $Section.count -gt 1048576 -or
+        $Section.encoding -cnotin @('source-frame','source-frame-lines')){throw 'Invalid source-word legacy frame identity'}
+    $line=$Section.encoding -ceq 'source-frame-lines'
+    $fields=@($(if($line){'FL'}else{'F'}),$Section.path,$Section.index.Substring(9),$Section.count)
+    if($line){
+        foreach($name in @('source_line_start','source_line_end')){
+            if(-not $Section.PSObject.Properties[$name] -or ($Section.$name -isnot [int] -and $Section.$name -isnot [long]) -or
+                $Section.$name -lt 0 -or $Section.$name -gt 65536){throw 'Invalid source-word legacy dictionary bounds'}
+        }
+        $fields+=@($Section.source_line_start,$Section.source_line_end)
+    }
+    return ConvertTo-Json -InputObject $fields -Compress
+}
+
+function ConvertTo-CompactSourceWordDiff {
+    param([AllowEmptyString()][string]$Diff,[Parameter(Mandatory)]$Manifest)
+    if($Manifest.PSObject.Properties['source_word_version']){throw 'Source words cannot be wrapped twice'}
+    $original=Restore-CompactReviewDiff -Diff $Diff -Manifest $Manifest
+    $lineEntries=0L;$lineUnits=0L
+    if($Manifest.PSObject.Properties['source_line_dictionary_count']){
+        # The preceding full restore has verified these against actual line declarations.
+        $lineEntries=[long]$Manifest.source_line_dictionary_count;$lineUnits=[long]$Manifest.source_line_dictionary_utf16
+    }
+    $entries=0L;$units=0L;$cursor=0;$wrapped=0
+    $sections=[Collections.Generic.List[object]]::new();$out=[Text.StringBuilder]::new()
+    foreach($section in $Manifest.sections){
+        $part=$Diff.Substring($cursor,$section.rendered_length);$cursor+=$section.rendered_length
+        $replacement=$part;$entry=$section
+        if($section.PSObject.Properties['encoding'] -and $section.encoding -cin @('source-frame','source-frame-lines')){
+                $at=$part.IndexOf("`n",[StringComparison]::Ordinal);$legacyHeader=$part.Substring(0,$at)
+                $encoded=ConvertTo-CompactSourceWordBody -Body $part.Substring($at+1) -Count $section.count -ReservedEntries ($lineEntries+$entries) -ReservedCharacters ($lineUnits+$units)
+                if($null -ne $encoded){
+                    $candidate=(ConvertTo-Json -InputObject @('WORDS',@($encoded.Dictionary),$legacyHeader) -Depth 10 -Compress)+"`n"+$encoded.Body
+                    if($candidate.Length -lt $part.Length -and [Text.Encoding]::UTF8.GetByteCount($candidate) -lt [Text.Encoding]::UTF8.GetByteCount($part)){
+                        $entry=$section.PSObject.Copy();$entry.encoding='source-words'
+                        $entry|Add-Member -NotePropertyName word_legacy -NotePropertyValue $section.PSObject.Copy()
+                        $entry|Add-Member -NotePropertyName word_dictionary -NotePropertyValue $encoded.Dictionary
+                        $entry.rendered_length=$candidate.Length;$entry.rendered_sha256=Get-ReviewTextHash $candidate
+                        $replacement=$candidate;$entries+=@($encoded.Dictionary).Count;$units+=$encoded.Characters;$wrapped++
+                    }
+                }
+        }
+        $sections.Add($entry);[void]$out.Append($replacement)
+    }
+    if($wrapped -eq 0){return [pscustomobject]@{Diff=$Diff;Manifest=$Manifest}}
+    $rendered=$out.ToString();$coverage=$Manifest.PSObject.Copy();$coverage.sections=$sections.ToArray();$coverage.rendered_sha256=Get-ReviewTextHash $rendered
+    $coverage|Add-Member -NotePropertyName source_word_version -NotePropertyValue 1
+    $coverage|Add-Member -NotePropertyName source_word_dictionary_count -NotePropertyValue $entries
+    $coverage|Add-Member -NotePropertyName source_word_dictionary_utf16 -NotePropertyValue $units
+    $encoded=$null # No frequency staging is live when the complete restore begins.
+    if((Restore-CompactReviewDiff -Diff $rendered -Manifest $coverage) -cne $original){throw 'Source-word full reconstruction mismatch'}
+    return [pscustomobject]@{Diff=$rendered;Manifest=$coverage}
+}
+
+function Restore-CompactSourceWordDiff {
+    param([AllowEmptyString()][string]$Diff,[Parameter(Mandatory)]$Manifest,[long]$ReservedEntries=0,[long]$ReservedCharacters=0)
+    foreach($name in @('version','source_word_version','source_word_dictionary_count','source_word_dictionary_utf16')){
+        if(-not $Manifest.PSObject.Properties[$name] -or ($Manifest.$name -isnot [int] -and $Manifest.$name -isnot [long])){throw 'Invalid source-word root integer'}
+    }
+    if($Manifest.version -ne 1 -or $Manifest.source_word_version -ne 1 -or $Manifest.source_word_dictionary_count -lt 1 -or
+        $Manifest.source_word_dictionary_count -gt 65536 -or $Manifest.source_word_dictionary_utf16 -lt 3 -or
+        $Manifest.source_word_dictionary_utf16 -gt 4194304 -or $ReservedEntries -lt 0 -or $ReservedCharacters -lt 0 -or
+        $ReservedEntries -gt 65536 -or $ReservedCharacters -gt 4194304){throw 'Invalid source-word root bounds'}
+    $lf=$Diff.Replace("`r`n","`n")
+    if($lf.Contains("`r") -or (Get-ReviewTextHash $lf) -cne $Manifest.rendered_sha256){throw 'Source-word rendered digest mismatch'}
+    $entries=0L;$units=0L;$originalTotal=0L;$wrapped=0
+    foreach($section in $Manifest.sections){
+        if(($section.original_length -isnot [int] -and $section.original_length -isnot [long]) -or
+            $section.original_length -le 0 -or $section.original_length -gt 4194304L-$originalTotal){throw 'Source-word aggregate original budget exceeded'}
+        $originalTotal+=$section.original_length
+        if($section.PSObject.Properties['encoding'] -and $section.encoding -ceq 'source-words'){
+            $wrapped++
+            if($section.word_dictionary -isnot [array] -or @($section.word_dictionary).Count -lt 1){throw 'Missing actual source-word table'}
+            $table=Get-CompactSourceWordTable -Dictionary $section.word_dictionary
+            if(@($section.word_dictionary).Count -gt 65536L-$ReservedEntries-$entries -or $table.Characters -gt 4194304L-$ReservedCharacters-$units){throw 'Actual shared word-table budget exceeded'}
+            $entries+=@($section.word_dictionary).Count;$units+=$table.Characters
+        }elseif($section.PSObject.Properties['word_dictionary'] -or $section.PSObject.Properties['word_legacy']){throw 'Unexpected word section metadata'}
+    }
+    if($wrapped -eq 0 -or $entries -ne $Manifest.source_word_dictionary_count -or $units -ne $Manifest.source_word_dictionary_utf16){throw 'Actual source-word dictionary summary mismatch'}
+    $derived=$Manifest.PSObject.Copy()
+    foreach($name in @('source_word_version','source_word_dictionary_count','source_word_dictionary_utf16')){$derived.PSObject.Properties.Remove($name)}
+    $sections=[Collections.Generic.List[object]]::new();$out=[Text.StringBuilder]::new();$cursor=0
+    foreach($section in $Manifest.sections){
+        if($section.compact -isnot [bool] -or ($section.rendered_length -isnot [int] -and $section.rendered_length -isnot [long]) -or
+            $section.rendered_length -le 0 -or $section.rendered_length -gt $lf.Length-$cursor){throw 'Invalid source-word section length'}
+        $part=$lf.Substring($cursor,$section.rendered_length);$cursor+=$section.rendered_length
+        if((Get-ReviewTextHash $part) -cne $section.rendered_sha256){throw 'Source-word section digest mismatch'}
+        $entry=$section;$replacement=$part
+        if($section.PSObject.Properties['encoding'] -and $section.encoding -ceq 'source-words'){
+            $previous=$section.word_legacy
+            if($null -eq $previous -or $previous -is [array] -or $previous.PSObject.Properties['word_legacy'] -or $previous.PSObject.Properties['word_dictionary']){throw 'Invalid nested word legacy section'}
+            foreach($field in @('header','path','mode','blob','index','count','original_length','original_sha256','compact')){
+                if(-not $section.PSObject.Properties[$field] -or -not $previous.PSObject.Properties[$field] -or
+                    $section.$field.GetType() -ne $previous.$field.GetType() -or $section.$field -cne $previous.$field){throw 'Source-word original identity mismatch'}
+            }
+            if(($previous.rendered_length -isnot [int] -and $previous.rendered_length -isnot [long]) -or
+                $previous.rendered_length -le 0 -or $previous.rendered_length -gt $section.original_length -or
+                $previous.rendered_length -gt 4194304L-$out.Length){throw 'Source-word derived section budget exceeded'}
+            $legacyHeader=Get-CompactSourceWordLegacyHeader -Section $previous
+            $end=$part.IndexOf("`n",[StringComparison]::Ordinal)
+            $expected=ConvertTo-Json -InputObject @('WORDS',@($section.word_dictionary),$legacyHeader) -Depth 10 -Compress
+            if($end -lt 0 -or $part.Substring(0,$end) -cne $expected){throw 'Source-word canonical header mismatch'}
+            $remaining=[long]$previous.rendered_length-$legacyHeader.Length-1
+            if($remaining -lt 1){throw 'Source-word derived body budget exceeded'}
+            $body=ConvertFrom-CompactSourceWordBody -Body $part.Substring($end+1) -Count $previous.count -Dictionary $section.word_dictionary -MaxDecodedLength ([int][math]::Min(1048576L,$remaining))
+            if($body -cmatch '@[0-9]'){throw 'Source-word prior rendered body marker collision'}
+            $replacement=$legacyHeader+"`n"+$body
+            if($replacement.Length -ne $previous.rendered_length -or (Get-ReviewTextHash $replacement) -cne $previous.rendered_sha256){throw 'Source-word previous section identity mismatch'}
+            if($part.Length -ge $replacement.Length -or [Text.Encoding]::UTF8.GetByteCount($part) -ge [Text.Encoding]::UTF8.GetByteCount($replacement)){throw 'Non-shortening source-word envelope'}
+            $entry=$previous.PSObject.Copy()
+        }
+        if($replacement.Length -gt $section.original_length -or $replacement.Length -gt 4194304L-$out.Length){throw 'Source-word derived aggregate budget exceeded'}
+        $sections.Add($entry);[void]$out.Append($replacement)
+    }
+    if($cursor -ne $lf.Length){throw 'Source-word complete coverage mismatch'}
+    $legacy=$out.ToString();$derived.sections=$sections.ToArray();$derived.rendered_sha256=Get-ReviewTextHash $legacy
+    return Restore-CompactReviewDiff -Diff $legacy -Manifest $derived -ReservedEntries ($ReservedEntries+$entries) -ReservedCharacters ($ReservedCharacters+$units)
+}
+
 function ConvertTo-CompactReviewDiff {
     param([Parameter(Mandatory)][string]$RepoRoot,[Parameter(Mandatory)][string]$BaseOid,
-          [Parameter(Mandatory)][string]$HeadSha,[AllowEmptyString()][string]$Diff,[switch]$CompactIndentation,[switch]$CompactRepeatedLines,[switch]$CompactSourceFrames)
+          [Parameter(Mandatory)][string]$HeadSha,[AllowEmptyString()][string]$Diff,[switch]$CompactIndentation,[switch]$CompactRepeatedLines,[switch]$CompactSourceFrames,[switch]$CompactSourceWords)
+    if($CompactSourceWords -and (-not $CompactSourceFrames -or -not $CompactIndentation)){throw 'Source words require source frames and compact indentation'}
     if($CompactSourceFrames -and -not $CompactIndentation){throw 'Source frames require compact indentation'}
     if ($BaseOid -cnotmatch '^[0-9a-f]{40}$' -or $HeadSha -cnotmatch '^[0-9a-f]{40}$') { throw 'Invalid compact base/head identity' }
     $lf=$Diff.Replace("`r`n","`n")
@@ -3372,14 +3629,20 @@ function ConvertTo-CompactReviewDiff {
         newline_normalization='CRLF to LF only';sections=$sections.ToArray()}}
     if($CompactRepeatedLines){$result=ConvertTo-CompactSourceLineDiff -Diff $result.Diff -Manifest $result.Manifest}
     if($CompactSourceFrames){$result=ConvertTo-CompactSourceFrameDiff -Diff $result.Diff -Manifest $result.Manifest}
+    if($CompactSourceWords){$result=ConvertTo-CompactSourceWordDiff -Diff $result.Diff -Manifest $result.Manifest}
     return $result
 }
 
 function Restore-CompactReviewDiff {
-    param([AllowEmptyString()][string]$Diff,[Parameter(Mandatory)]$Manifest)
+    param([AllowEmptyString()][string]$Diff,[Parameter(Mandatory)]$Manifest,[long]$ReservedEntries=0,[long]$ReservedCharacters=0)
+    if($ReservedEntries -lt 0 -or $ReservedEntries -gt 65536 -or $ReservedCharacters -lt 0 -or $ReservedCharacters -gt 4194304){throw 'Invalid shared dictionary reservation bounds'}
+    if(@(@('source_word_version','source_word_dictionary_count','source_word_dictionary_utf16')|Where-Object {$Manifest.PSObject.Properties[$_]}).Count -gt 0 -or
+        @($Manifest.sections|Where-Object {$_.PSObject.Properties['encoding'] -and $_.encoding -ceq 'source-words'}).Count -gt 0){
+        return Restore-CompactSourceWordDiff -Diff $Diff -Manifest $Manifest -ReservedEntries $ReservedEntries -ReservedCharacters $ReservedCharacters
+    }
     if($Manifest.PSObject.Properties['source_frame_version'] -or
         @($Manifest.sections|Where-Object {$_.PSObject.Properties['encoding'] -and $_.encoding -cin @('source-frame','source-frame-lines')}).Count -gt 0){
-        return Restore-CompactSourceFrameDiff -Diff $Diff -Manifest $Manifest
+        return Restore-CompactSourceFrameDiff -Diff $Diff -Manifest $Manifest -ReservedEntries $ReservedEntries -ReservedCharacters $ReservedCharacters
     }
     if ($Manifest.version -cne 1 -or $Manifest.base -cnotmatch '^[0-9a-f]{40}$' -or
         $Manifest.head -cnotmatch '^[0-9a-f]{40}$' -or $Manifest.newline_normalization -cne 'CRLF to LF only') { throw 'Invalid compact manifest identity' }
@@ -3416,7 +3679,7 @@ function Restore-CompactReviewDiff {
         if($Manifest.source_line_version -ne 1 -or $Manifest.source_line_dictionary_count -lt 1 -or
             $Manifest.source_line_dictionary_count -gt 65536 -or $Manifest.source_line_dictionary_utf16 -lt 16 -or
             $Manifest.source_line_dictionary_utf16 -gt 4194304){throw 'Invalid source-line manifest bounds'}
-        $lineState=New-CompactSourceLineState
+        $lineState=New-CompactSourceLineState -ReservedEntries $ReservedEntries -ReservedCharacters $ReservedCharacters
     }elseif($present.Count){throw 'Unexpected source-line manifest metadata'}
     $hasEncodedSource=$hasIndent -or $hasLines
     if($hasEncodedSource){

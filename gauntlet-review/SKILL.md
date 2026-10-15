@@ -231,6 +231,31 @@ Get-CompactSourceFrameProtocol hash in compact_source_frame_protocol_sha256.
 The option is disabled by default and does not alter any older protocol or
 coverage shape when disabled. Certification precedes installation and dispatch.
 
+`-CompactSourceWords` adds a closed local dictionary only around already verified
+F/FL source frames. Require `-CompactAddedFiles`, `-CompactIndentation` and
+`-CompactSourceFrames` in local or PR mode. The canonical WORDS header contains
+its table and exact old header JSON string; counted LF body rows are unchanged.
+Maximal ASCII words `[A-Za-z_][A-Za-z0-9_]*` may become canonical `@N` references.
+IDs are decimal 0..65535 without leading zeros, with whole ASCII word boundaries.
+Each selected word has at least two references and each reference shortens it;
+selected words never remain literal. Any prior rendered F/FL body containing `@`
+followed by an ASCII digit forces whole-file legacy fallback. A later global line
+reference may reconstruct an earlier unwrapped literal `@0`; do not inspect or
+expand it again through the local word table. Near markers and unwrapped old frames stay literal.
+
+Restore metadata, then WORDS, then F/FL and the older source-line/indent/added layers.
+Expand words in global line declarations before storing their original cores.
+A later file's local table must never reinterpret a cross-file line reference.
+Share the existing 65536 entries / 4194304 dictionary UTF-16 units across words,
+source-line cores and producer staging; charge actual tables before expansion and
+carry reservations into line decoding. Use bounded single-pass expansion and
+precharge derived legacy section lengths before append. Decoded body/aggregate
+limits, complete source identities, ordered hashes, history, prompt/context and
+round/attempt caps remain unchanged. Require whole-envelope shortening in both
+UTF-8 and UTF-16. Bind Get-CompactSourceWordProtocol in immutable
+compact_source_word_protocol_sha256. Disabled options retain all prior bytes and
+manifest shapes. Certification precedes installation and SID dispatch.
+
 `-CompactReviewMetadata` is an additional opt-in layer in both local and PR
 modes and requires `-CompactAddedFiles`. Only complete added regular JSON/JSONL
 files under `docs/superpowers/reviews/` qualify. An unquoted `@N@` in a

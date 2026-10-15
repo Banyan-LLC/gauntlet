@@ -108,3 +108,15 @@ gates. Verify clean source, back up and install once, compare every installed
 file, and recompose the complete actual installed SID request before resuming
 original round 8. Preserve the refused over-budget baseline and all earlier
 receipts. No pruning, history reset, base/head shift for size, or extra attempt.
+
+
+## Continuation: per-file source words
+
+The fixed round-9 baseline is 1109862 bytes / 1109413 scalars. Continue only
+with the optional reversible envelope specified in
+`docs/build-log/2026-10-15-source-word-renderer.md`. Preserve source4771576,
+base97bae6f, all214 sections,46 canonical recommendations and76 history files.
+The design/scoped review, red/green, complete source-only proof, full offline,
+old/new actual readers, fresh capacity/calibration/schema/security, clean commit,
+backed-up installation/equality and complete installed-input gates remain required.
+SID round and attempt counters never reset and no attempt runs before both caps pass.

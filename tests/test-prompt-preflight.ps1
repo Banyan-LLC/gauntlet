@@ -32,7 +32,7 @@ try {
     $source = [IO.File]::ReadAllText($invokePath)
     $start = $source.IndexOf('$promptBody = Get-Content')
     $end = $source.IndexOf('# --- Binary pin', $start)
-    $slice = '$VerifiedReferenceFile=$null;$CompactAddedFiles=$false;$CompactSourceFrames=$false;$CompactRepeatedLines=$false;$CompactIndentation=$false;' + $source.Substring($start, $end - $start)
+    $slice = '$VerifiedReferenceFile=$null;$CompactAddedFiles=$false;$CompactSourceFrames=$false;$CompactSourceWords=$false;$CompactRepeatedLines=$false;$CompactIndentation=$false;' + $source.Substring($start, $end - $start)
     $lib = (Resolve-Path "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1").Path.Replace("'", "''")
     $promptFile = Join-Path $root 'preamble.txt'
     [IO.File]::WriteAllText($promptFile, 'preamble')
