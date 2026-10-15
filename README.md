@@ -9,6 +9,14 @@ Code, tests and the live carry-over ledger remain literal. Both unchanged 1 MiB
 request limits and every existing review/capacity gate still apply. See
 `gauntlet-review/SKILL.md` for framing and bounds.
 
+`-CompactIndentation` additionally represents recoverable leading indentation
+in verified complete added source files under `src/`. Each four initial spaces
+uses one transport tab in an `INDENT` frame. The decoder restores every original
+character and line, including whitespace in raw strings. Files with literal
+leading tabs fall back unchanged. All other source/test text remains directly
+readable; history, limits and publication gates are preserved. This option also
+requires `-CompactAddedFiles` and is available in local and PR modes.
+
 ### Verified duplicate controlling-spec references (local mode, opt-in)
 
 `invoke-codex.ps1 -VerifiedReferenceFile <json>` can represent one complete added

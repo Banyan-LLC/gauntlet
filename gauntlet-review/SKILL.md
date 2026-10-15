@@ -167,6 +167,20 @@ reconstruction and ordered original/rendered section digests against full HEAD
 blob and mode identities. The complete coverage manifest is recorded in immutable
 attempt metadata. The full protocol is included in the prompt before preflight.
 
+`-CompactIndentation` is a separate opt-in for complete added regular source files
+under `src/` in local and PR modes, requiring `-CompactAddedFiles`. An `INDENT`
+header retains the same path/mode/index/count fields. Each initial group of four
+ASCII spaces is represented by one transport tab, followed by zero through three
+remainder spaces. Decode only those initial tabs to four spaces each. Every
+non-indentation character and every original line remains directly readable and
+is reconstructed exactly, including whitespace inside raw strings and tests.
+Any literal tab in an original leading space/tab prefix prevents the entire file
+from using this representation. Other source formats, existing-file hunks,
+documents, references, history and the live ledger are unchanged. Canonical
+framing, expanded resource bounds, full blob/mode/index/base absence and ordered
+coverage are verified before dispatch; immutable metadata binds the additional
+protocol hash. Include that protocol in both unchanged complete-prompt limits.
+
 `-CompactReviewMetadata` is an additional opt-in layer in both local and PR
 modes and requires `-CompactAddedFiles`. Only complete added regular JSON/JSONL
 files under `docs/superpowers/reviews/` qualify. An unquoted `@N@` in a

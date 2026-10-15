@@ -40,3 +40,26 @@ Then independently review the combined change, run the complete offline and live
 gates, refresh the exact runtime proof, install with source equality and backup,
 and measure the complete SID round-4 request again. A hypothetical fit is never
 dispatch authority. Preserve every failed measurement and certification artifact.
+
+## Continuation: recoverable leading-indentation metadata
+
+After the four round-4 SID corrections and 842 passing tests, the complete
+round-5 candidate is 1,071,859 bytes and 1,071,442 scalars: both exceed the
+unchanged 1,048,576 limits. No attempt ran. Preserve this failed preview and the
+original base, all 30 findings, history and every source/test/document character.
+
+Add explicit `-CompactIndentation`, requiring verified compact composition in
+local and PR modes. Complete added regular source files under `src/` may encode
+each four initial ASCII spaces as one transport tab, with a remainder of zero
+through three spaces. Reject files with any literal tab in a leading whitespace
+prefix. Keep every non-indentation character directly readable and every line
+in its original order. `INDENT` frames must reconstruct the complete original
+diff, including whitespace inside Kotlin raw strings. Keep other frames literal.
+
+Verify canonical framing, declared line counts, per-section and aggregate
+expansion bounds before append, complete blob/mode/base-absence/index identity,
+ordered coverage and exact layered reconstruction. Include protocol instructions
+in both prompt limits. Run focused and complete offline tests, one scoped source
+review, actual hermetic-reader compatibility cases, source-bound runtime proof
+and schema/security certification. Back up and install only the verified source;
+then preflight the complete committed SID payload before allocating round 5.

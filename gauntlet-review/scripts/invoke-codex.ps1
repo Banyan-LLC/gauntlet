@@ -36,6 +36,7 @@ param(
     [string]$CarryOverFile,         # required for round > 1 (validated ledger; see Test-CarryOverLedger)
     [string]$VerifiedReferenceFile, # one exact approved added-spec duplicate
     [switch]$CompactAddedFiles,
+    [switch]$CompactIndentation,
     [switch]$CompactReviewMetadata,
     [string]$OwnerRepo,             # compact PR mode: actual repository, author read access
     [string[]]$RequiredCheckNames,  # exact required check names, no omitted checks
@@ -296,6 +297,7 @@ if ($Mode -eq 'local' -and -not $CompactAddedFiles) {
 $promptBody = Get-Content -Raw -Encoding utf8 $PromptFile
 $referenceCoverage = $null
 $compactCoverage=$null; $metadataCoverage=$null; $prInput=$null; $prToken=$null; $compactRange=$null
+if ($CompactIndentation -and -not $CompactAddedFiles) { Write-Error 'Indentation encoding requires verified compact composition'; exit 12 }
 if ($CompactReviewMetadata -and -not $CompactAddedFiles) { Write-Error 'Historical metadata encoding requires verified compact composition'; exit 12 }
 if ($CompactAddedFiles -and $Mode -notin @('local','pr')) { Write-Error 'Compact representation requires local or PR mode'; exit 12 }
 if ($VerifiedReferenceFile -and $Mode -ne 'local' -and -not ($Mode -eq 'pr' -and $CompactAddedFiles)) { Write-Error 'PR verified references require compact verified composition'; exit 12 }
@@ -331,10 +333,11 @@ if ($Mode -eq 'local' -or $CompactAddedFiles) {
     $protocol=''
     if ($CompactAddedFiles) {
         try {
-            $compact=ConvertTo-CompactReviewDiff -RepoRoot $RepoRoot -BaseOid $canonBase -HeadSha $canonHead -Diff $reviewDiff
+            $compact=ConvertTo-CompactReviewDiff -RepoRoot $RepoRoot -BaseOid $canonBase -HeadSha $canonHead -Diff $reviewDiff -CompactIndentation:$CompactIndentation
             if ((Restore-CompactReviewDiff -Diff $compact.Diff -Manifest $compact.Manifest) -cne $reviewDiff.Replace("`r`n","`n")) { throw 'Representation reconstruction mismatch' }
             $reviewDiff=$compact.Diff; $compactCoverage=$compact.Manifest
             $protocol=(Get-CompactReviewProtocol)+"`n"
+            if($CompactIndentation){$protocol+=(Get-CompactIndentationProtocol)+"`n"}
             if($CompactReviewMetadata){
                 $metadata=ConvertTo-ReviewMetadataDiff -RepoRoot $RepoRoot -BaseOid $canonBase -HeadSha $canonHead -Diff $reviewDiff -CompactManifest $compactCoverage
                 if((Restore-ReviewMetadataDiff -Diff $metadata.Diff -Manifest $metadata.Manifest) -cne $reviewDiff){throw 'Metadata reconstruction mismatch'}
@@ -554,6 +557,9 @@ if ($VerifiedReferenceFile) {
 if($CompactReviewMetadata){
     $meta.review_metadata_coverage=$metadataCoverage
     $meta.review_metadata_protocol_sha256=(Get-ReviewTextHash (Get-ReviewMetadataProtocol))
+}
+if($CompactIndentation){
+    $meta.compact_indentation_protocol_sha256=(Get-ReviewTextHash (Get-CompactIndentationProtocol))
 }
 if ($activeBoundProfile) {
     $meta.context_capacity = $referenceCapacity
