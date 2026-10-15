@@ -167,6 +167,28 @@ reconstruction and ordered original/rendered section digests against full HEAD
 blob and mode identities. The complete coverage manifest is recorded in immutable
 attempt metadata. The full protocol is included in the prompt before preflight.
 
+`-CompactReviewMetadata` is an additional opt-in layer in both local and PR
+modes and requires `-CompactAddedFiles`. Only complete added regular JSON/JSONL
+files under `docs/superpowers/reviews/` qualify. An unquoted `@N@` in a
+`REVIEWJSON` body copies an earlier exact raw JSON string token; quoted markers
+remain data. Ordinals count literals and copies across those frames in order.
+Every distinct string spelling remains literal. All other characters and
+whitespace are unchanged. Canonical references use the first occurrence only
+when shorter than the literal. The frame includes the exact original hunk range,
+so the prompt alone is sufficient to reconstruct the complete unified section.
+Code, tests and the current carry-over ledger never
+enter this table. Decode this outer layer before the existing ADDED format.
+
+The wrapper independently verifies base absence, complete HEAD blob/mode/index,
+exact layered reconstruction and ordered section coverage before budgeting or
+dispatch. Immutable attempt metadata includes both coverage layers and protocol
+hashes. Bodies are limited to 1,048,576 UTF-16 characters, 4,194,304 total decoded
+body characters, 16,384 tokens and 4,194,304 expanded raw-token characters.
+Malformed, forward, cyclic, noncanonical or over-bound references refuse. This
+does not authorize changing source/history, omitting unique information, resetting
+rounds, partitioning, increasing either 1 MiB request limit or changing the
+128,000 output reserve, 25% headroom or runtime capacity proof.
+
 `-VerifiedReferenceFile` retains the separately verified complete controlling-spec
 reference. In PR mode it requires `-CompactAddedFiles`; `-PromptFile` is then a
 preamble only, as in local mode. Never put metadata or a caller-written diff in

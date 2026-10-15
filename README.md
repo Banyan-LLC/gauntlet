@@ -1,5 +1,14 @@
 # Gauntlet
 
+Historical review metadata can additionally use `-CompactReviewMetadata` with
+`-CompactAddedFiles` in local or PR mode. Complete added review JSON/JSONL files
+retain every unique raw string token and every other character; duplicate tokens
+use explicit backward references. The certified decoder reconstructs each full
+original section exactly and verifies full Git identities and ordered coverage.
+Code, tests and the live carry-over ledger remain literal. Both unchanged 1 MiB
+request limits and every existing review/capacity gate still apply. See
+`gauntlet-review/SKILL.md` for framing and bounds.
+
 ### Verified duplicate controlling-spec references (local mode, opt-in)
 
 `invoke-codex.ps1 -VerifiedReferenceFile <json>` can represent one complete added

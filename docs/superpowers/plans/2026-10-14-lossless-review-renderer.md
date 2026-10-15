@@ -21,3 +21,22 @@ Preserve all source, test bodies, controlling context, canonical findings and re
 - PR metadata is untrusted review material, never controlling context, and cannot substitute caller assertions for actual API evidence.
 - Metadata and checks can drift during composition: bind snapshots and recheck before dispatch/publication.
 - Exact final payload, including protocol, carryover and metadata, must pass both fixed caps before allocating an attempt.
+# Continuation: historical review metadata token framing
+
+The frozen SID head `44fc79d2792f8cc7c88d8d5df9c64fde7404de36` exceeds the
+unchanged byte cap by 18,615 bytes after its four verified fixes. The continuation
+uses only duplicated raw JSON string tokens in complete historical review
+metadata additions. A read-only feasibility fixture saved 28,060 bytes before
+protocol/framing overhead across 32 metadata files, with exact reconstruction.
+
+Implement an explicit `-CompactReviewMetadata` outer layer requiring verified
+compact composition in local and PR modes. Keep every literal code/test line,
+the complete live carry-over ledger, all unique information, original files,
+base/head identities, history and limits. Validate complete Git blobs, modes,
+base absence, framing, backward ordinals, expanded resource bounds and both
+ordered coverage layers. Exercise malicious markers, quoting, Unicode, no final
+LF, JSONL, unsupported paths and tampered/reordered evidence before certification.
+Then independently review the combined change, run the complete offline and live
+gates, refresh the exact runtime proof, install with source equality and backup,
+and measure the complete SID round-4 request again. A hypothetical fit is never
+dispatch authority. Preserve every failed measurement and certification artifact.

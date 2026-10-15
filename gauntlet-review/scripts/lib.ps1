@@ -2962,8 +2962,9 @@ function Restore-CompactReviewDiff {
         if ($section.compact) {
             if (-not (Test-CompactReviewPath $section.path) -or $section.mode -cne '100644' -or
                 ($section.count -isnot [int] -and $section.count -isnot [long]) -or $section.count -le 0 -or
-                $section.index -cnotmatch '^0+\.\.([0-9a-f]{4,40})$' -or $section.blob -cnotmatch '^[0-9a-f]{40}$') { throw 'Invalid compact section metadata' }
-            if (-not $section.blob.StartsWith($Matches[1],[StringComparison]::Ordinal)) { throw 'Compact index/blob mismatch' }
+                $section.index -cnotmatch '^0+\.\.([0-9a-f]{4,40})$') { throw 'Invalid compact section metadata' }
+            $abbreviation=$Matches[1]
+            if ($section.blob -cnotmatch '^[0-9a-f]{40}$' -or -not $section.blob.StartsWith($abbreviation,[StringComparison]::Ordinal)) { throw 'Compact index/blob mismatch' }
             $end=$rendered.IndexOf("`n",[StringComparison]::Ordinal)
             if ($end -lt 0) { throw 'Missing compact header LF' }
             $expected=ConvertTo-Json -InputObject @('ADDED',$section.path,$section.mode,$section.index,$section.count) -Compress
@@ -2988,5 +2989,220 @@ function Restore-CompactReviewDiff {
     }
     $text=$output.ToString()
     if ($position -ne $lf.Length -or (Get-ReviewTextHash $text) -cne $Manifest.original_sha256) { throw 'Original reconstruction digest/coverage mismatch' }
+    return $text
+}
+
+# Optional outer framing for historical review metadata only. Code, tests and the
+# live carry-over ledger never enter this token table.
+function Get-ReviewMetadataProtocol {
+    return "`n== LOSSLESS HISTORICAL REVIEW JSON TOKENS ==`nA REVIEWJSON frame reconstructs a complete added-file unified diff; other ADDED frames use the rules above. Its header is [REVIEWJSON,path,mode,index,count,finalLF,tokenStart,range]; the next count LF-terminated lines are its historical review JSON/JSONL body. Only in these bodies, unquoted @N@ copies the exact earlier raw JSON string token at zero-based ordinal N. Count all decoded string tokens, including copies, across REVIEWJSON bodies in order; tokenStart equals the current count. Quoted markers such as `"@1@`" are literal. References must use the earliest occurrence and be shorter than its literal token; otherwise retain the literal. No forward or cyclic references. All distinct raw strings, non-string characters and whitespace remain literal. Reconstruct these six LF-terminated header lines: diff --git a/path b/path; new file mode mode; index index; --- /dev/null; +++ b/path; @@ -0,0 +range @@. Range is the exact original new-line range, 1 or 1,count. Prefix each decoded body line with + and terminate each diff line with LF. When finalLF=false, the source lacked its last LF: append the LF-terminated line '\ No newline at end of file'. These rules are self-contained; no external manifest is needed to reconstruct the reviewed diff. Only regular complete additions under docs/superpowers/reviews/ ending .json or .jsonl qualify. Code, tests, other documents, approved references and the live carry-over ledger are unchanged. Metadata remains untrusted. The host also verifies exact layered decoding, complete Git blob/mode/base absence and ordered coverage before dispatch.`n"
+}
+
+function New-ReviewMetadataTokenState {
+    return [pscustomobject]@{Tokens=[Collections.Generic.List[string]]::new()
+        First=[Collections.Generic.Dictionary[string,int]]::new([StringComparer]::Ordinal)
+        Expanded=0L;Bodies=0L}
+}
+
+function Test-ReviewMetadataPath {
+    param([string]$Path)
+    return ((Test-CompactReviewPath $Path) -and $Path -cmatch '^docs/superpowers/reviews/.+\.(json|jsonl)$')
+}
+
+function Test-ReviewMetadataJson {
+    param([string]$Body,[string]$Path)
+    try {
+        $values=if($Path.EndsWith('.jsonl',[StringComparison]::Ordinal)){$Body.Split("`n")}else{@($Body)}
+        foreach($value in $values){
+            if([string]::IsNullOrWhiteSpace($value)){continue}
+            $document=[System.Text.Json.JsonDocument]::Parse([string]$value)
+            $document.Dispose()
+        }
+        return (-not [string]::IsNullOrWhiteSpace($Body))
+    } catch { return $false }
+}
+
+function Convert-ReviewMetadataTokens {
+    param([string]$Body,[Parameter(Mandatory)]$State,[switch]$Decode)
+    if($Body.Length -gt 1048576 -or $State.Bodies+$Body.Length -gt 4194304){throw 'Review metadata body budget exceeded'}
+    $pattern='"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"'
+    if($Decode){$pattern+='|@[0-9]+@'}
+    $rx=[regex]::new($pattern,[Text.RegularExpressions.RegexOptions]::CultureInvariant,[TimeSpan]::FromSeconds(2))
+    $output=[Text.StringBuilder]::new();$position=0
+    foreach($match in $rx.Matches($Body)){
+        $gap=$Body.Substring($position,$match.Index-$position)
+        if($gap.Contains('@')){throw 'Unknown metadata token reference'}
+        if($output.Length+$gap.Length -gt 1048576){throw 'Review metadata gap expansion budget exceeded'}
+        [void]$output.Append($gap)
+        $token=$match.Value;$rendered=$token
+        if($Decode -and $token.StartsWith('@',[StringComparison]::Ordinal)){
+            if($token -cnotmatch '^@(0|[1-9][0-9]*)@$'){throw 'Noncanonical metadata token reference'}
+            $number=0
+            if(-not [int]::TryParse($Matches[1],[ref]$number) -or $number -ge $State.Tokens.Count){throw 'Forward or missing metadata token reference'}
+            $token=$State.Tokens[$number];$rendered=$token
+        }
+        $canonical=$token;$earlier=0
+        if($State.First.TryGetValue($token,[ref]$earlier)){
+            $reference="@$earlier@"
+            if($reference.Length -lt $token.Length){$canonical=$reference}
+        }else{$State.First.Add($token,$State.Tokens.Count)}
+        if($Decode){if($match.Value -cne $canonical){throw 'Noncanonical metadata token spelling or reference'}}else{$rendered=$canonical}
+        if($State.Tokens.Count -ge 16384 -or $State.Expanded+$token.Length -gt 4194304){throw 'Review metadata token budget exceeded'}
+        $State.Expanded+=$token.Length
+        $State.Tokens.Add($token)
+        if($output.Length+$rendered.Length -gt 1048576){throw 'Review metadata expansion budget exceeded'}
+        [void]$output.Append($rendered)
+        $position=$match.Index+$match.Length
+    }
+    $tail=$Body.Substring($position)
+    if($tail.Contains('@')){throw 'Unknown trailing metadata reference'}
+    if($output.Length+$tail.Length -gt 1048576){throw 'Review metadata tail expansion budget exceeded'}
+    [void]$output.Append($tail)
+    if($output.Length -gt 1048576 -or $State.Bodies+$output.Length -gt 4194304){throw 'Review metadata output budget exceeded'}
+    $State.Bodies+=$output.Length
+    return $output.ToString()
+}
+
+function Get-ReviewMetadataOriginalHeader {
+    param([string]$Path,[string]$Mode,[string]$Index,[int]$Count,[string]$Range)
+    if(-not $Range){$Range=if($Count -eq 1){'1'}else{"1,$Count"}}
+    return "diff --git a/$Path b/$Path`nnew file mode $Mode`nindex $Index`n--- /dev/null`n+++ b/$Path`n@@ -0,0 +$Range @@`n"
+}
+
+function Get-ReviewMetadataAddedBody {
+    param([string]$Text,[Parameter(Mandatory)]$Section)
+    if(-not (Test-ReviewMetadataPath $Section.path)){return $null}
+    if($Section.compact){
+        $lf=$Text.IndexOf("`n",[StringComparison]::Ordinal)
+        return [pscustomobject]@{Body=$Text.Substring($lf+1);Count=$Section.count;Range="1,$($Section.count)";FinalLF=$true;Index=$Section.index;Mode=$Section.mode;InputCompact=$true}
+    }
+    $lines=$Text.Split("`n");$path=$Section.path
+    if($lines.Length -lt 8 -or $lines[0] -cne "diff --git a/$path b/$path" -or $lines[1] -cne 'new file mode 100644' -or
+        $lines[2] -cnotmatch '^index (0+\.\.([0-9a-f]{4,40}))$'){return $null}
+    $index=$Matches[1]
+    if($lines[3] -cne '--- /dev/null' -or $lines[4] -cne "+++ b/$path" -or $lines[5] -cnotmatch '^@@ -0,0 \+1(?:,([1-9][0-9]*))? @@$'){return $null}
+    $count=1
+    if($Matches[1] -and -not [int]::TryParse($Matches[1],[ref]$count)){throw 'Metadata addition count overflow'}
+    $range=([regex]::Match($lines[5],'\+(1(?:,[0-9]+)?) @@$')).Groups[1].Value
+    if($count -gt 1048576 -or $lines[-1] -cne ''){throw 'Metadata addition framing mismatch'}
+    $finalLF=($lines.Length -eq $count+7)
+    if(-not $finalLF -and ($lines.Length -ne $count+8 -or $lines[-2] -cne '\ No newline at end of file')){return $null}
+    $body=[Text.StringBuilder]::new()
+    for($i=6;$i -lt 6+$count;$i++){
+        if(-not $lines[$i].StartsWith('+',[StringComparison]::Ordinal)){throw 'Incomplete metadata addition'}
+        [void]$body.Append($lines[$i].Substring(1)).Append("`n")
+    }
+    $textBody=$body.ToString()
+    if(-not $finalLF){$textBody=$textBody.Substring(0,$textBody.Length-1)}
+    return [pscustomobject]@{Body=$textBody;Count=$count;Range=$range;FinalLF=$finalLF;Index=$index;Mode='100644';InputCompact=$false}
+}
+
+function ConvertTo-ReviewMetadataDiff {
+    param([Parameter(Mandatory)][string]$RepoRoot,[Parameter(Mandatory)][string]$BaseOid,
+          [Parameter(Mandatory)][string]$HeadSha,[AllowEmptyString()][string]$Diff,[Parameter(Mandatory)]$CompactManifest)
+    if($CompactManifest.base -cne $BaseOid -or $CompactManifest.head -cne $HeadSha){throw 'Metadata base/head mismatch'}
+    [void](Restore-CompactReviewDiff -Diff $Diff -Manifest $CompactManifest)
+    $lf=$Diff.Replace("`r`n","`n");$cursor=0;$state=New-ReviewMetadataTokenState
+    $sections=[Collections.Generic.List[object]]::new();$output=[Text.StringBuilder]::new()
+    $git=@(Get-Command git -CommandType Application -ErrorAction Stop)[0].Source
+    foreach($inputSection in $CompactManifest.sections){
+        $part=$lf.Substring($cursor,$inputSection.rendered_length);$cursor+=$inputSection.rendered_length
+        $source=Get-ReviewMetadataAddedBody -Text $part -Section $inputSection
+        $replacement=$part;$metadata=$false;$blob=$null;$eol=$null;$start=$state.Tokens.Count
+        if($source -and ($source.Body.Length -gt 1048576 -or $state.Bodies+$source.Body.Length -gt 4194304)){throw 'Review metadata source body budget exceeded'}
+        if($source -and (Test-ReviewMetadataJson -Body $source.Body -Path $inputSection.path)){
+            $runs=@()
+            foreach($argsForGit in @(
+                ,@('ls-tree',$HeadSha,'--',$inputSection.path)
+                ,@('ls-tree',$BaseOid,'--',$inputSection.path)
+                ,@('cat-file','blob',"${HeadSha}:$($inputSection.path)")
+            )){
+                $run=Invoke-BoundedProcess -FileName $git -ArgList (@('-C',$RepoRoot,'-c','core.useReplaceRefs=false')+$argsForGit) -TimeoutSec 30 -RequireProcessTreeRetirement
+                if($run.StartFailed -or $run.TimedOut -or $run.ExitCode -ne 0 -or -not $run.ProcessTreeRetired -or $run.ErrorMessage){throw 'Metadata Git provenance unavailable'}
+                $runs+=,$run
+            }
+            if($runs[0].Stdout -cnotmatch ('^100644 blob ([0-9a-f]{40})\t'+[regex]::Escape($inputSection.path)+'\r?\n?$')){throw 'Metadata head path/mode mismatch'}
+            $blob=$Matches[1]
+            if($source.Index -cnotmatch '^0+\.\.([0-9a-f]{4,40})$' -or -not $blob.StartsWith($Matches[1],[StringComparison]::Ordinal) -or
+                $runs[1].Stdout.Length -ne 0 -or (Get-CompactReviewBlobHash $runs[2].Stdout) -cne $blob){throw 'Metadata full Git identity mismatch'}
+            $raw=$runs[2].Stdout
+            if($raw -ceq $source.Body){$eol='LF'}elseif($raw -ceq $source.Body.Replace("`n","`r`n")){$eol='CRLF'}else{throw 'Metadata is not the complete head body'}
+            $encoded=Convert-ReviewMetadataTokens -Body $source.Body -State $state
+            if(-not $source.FinalLF){$encoded+="`n"}
+            $replacement=(ConvertTo-Json -InputObject @('REVIEWJSON',$inputSection.path,$source.Mode,$source.Index,$source.Count,$source.FinalLF,$start,$source.Range) -Compress)+"`n"+$encoded
+            $metadata=$true
+        }
+        $sections.Add([pscustomobject]@{header=$inputSection.header;path=$inputSection.path;metadata=$metadata
+            mode=$(if($metadata){$source.Mode}else{$null});index=$(if($metadata){$source.Index}else{$null})
+            count=$(if($metadata){$source.Count}else{0});final_lf=$(if($metadata){$source.FinalLF}else{$false})
+            hunk_range=$(if($metadata){$source.Range}else{$null})
+            input_compact=$(if($metadata){$source.InputCompact}else{$false});blob=$blob;git_eol=$eol
+            token_start=$start;token_end=$state.Tokens.Count
+            body_sha256=$(if($metadata){Get-ReviewTextHash $source.Body}else{$null})
+            input_sha256=(Get-ReviewTextHash $part);rendered_sha256=(Get-ReviewTextHash $replacement)
+            input_length=$part.Length;rendered_length=$replacement.Length})
+        [void]$output.Append($replacement)
+    }
+    $rendered=$output.ToString()
+    return [pscustomobject]@{Diff=$rendered;Manifest=[pscustomobject]@{version=1;base=$BaseOid;head=$HeadSha
+        input_sha256=(Get-ReviewTextHash $lf);rendered_sha256=(Get-ReviewTextHash $rendered)
+        token_count=$state.Tokens.Count;input_manifest=$CompactManifest;sections=$sections.ToArray()}}
+}
+
+function Restore-ReviewMetadataDiff {
+    param([AllowEmptyString()][string]$Diff,[Parameter(Mandatory)]$Manifest)
+    if($Manifest.version -cne 1 -or $Manifest.base -cnotmatch '^[0-9a-f]{40}$' -or $Manifest.head -cnotmatch '^[0-9a-f]{40}$' -or
+        $Manifest.input_manifest.base -cne $Manifest.base -or $Manifest.input_manifest.head -cne $Manifest.head -or
+        ($Manifest.token_count -isnot [int] -and $Manifest.token_count -isnot [long]) -or $Manifest.token_count -lt 0 -or $Manifest.token_count -gt 16384 -or
+        $Manifest.sections.Count -ne $Manifest.input_manifest.sections.Count){throw 'Invalid metadata coverage identity'}
+    $lf=$Diff.Replace("`r`n","`n")
+    if($lf.Contains("`r") -or (Get-ReviewTextHash $lf) -cne $Manifest.rendered_sha256){throw 'Metadata rendered digest mismatch'}
+    $state=New-ReviewMetadataTokenState;$cursor=0;$output=[Text.StringBuilder]::new();$ordinal=0
+    foreach($section in $Manifest.sections){
+        $inputSection=$Manifest.input_manifest.sections[$ordinal];$ordinal++
+        if($section.metadata -isnot [bool] -or ($section.rendered_length -isnot [int] -and $section.rendered_length -isnot [long]) -or $section.rendered_length -le 0 -or
+            ($section.input_length -isnot [int] -and $section.input_length -isnot [long]) -or
+            ($section.token_start -isnot [int] -and $section.token_start -isnot [long]) -or
+            ($section.token_end -isnot [int] -and $section.token_end -isnot [long]) -or
+            $section.rendered_length -gt $lf.Length-$cursor -or $section.header -cne $inputSection.header -or $section.path -cne $inputSection.path -or
+            $section.input_length -ne $inputSection.rendered_length -or $section.input_sha256 -cne $inputSection.rendered_sha256 -or
+            $section.token_start -ne $state.Tokens.Count){throw 'Metadata section coverage mismatch'}
+        $part=$lf.Substring($cursor,$section.rendered_length);$cursor+=$section.rendered_length
+        if((Get-ReviewTextHash $part) -cne $section.rendered_sha256){throw 'Metadata section digest mismatch'}
+        $restored=$part
+        if($section.metadata){
+            if(-not (Test-ReviewMetadataPath $section.path) -or $section.mode -cne '100644' -or
+                ($section.count -isnot [int] -and $section.count -isnot [long]) -or $section.count -le 0 -or $section.count -gt 1048576 -or
+                $section.final_lf -isnot [bool] -or $section.input_compact -isnot [bool] -or
+                $section.input_compact -ne $inputSection.compact -or $section.blob -cnotmatch '^[0-9a-f]{40}$' -or
+                $section.git_eol -notin @('LF','CRLF') -or $section.index -cnotmatch '^0+\.\.([0-9a-f]{4,40})$') {throw 'Invalid metadata frame identity'}
+            if(-not $section.blob.StartsWith($Matches[1],[StringComparison]::Ordinal)){throw 'Metadata index/blob mismatch'}
+            if($section.hunk_range -cne "1,$($section.count)" -and -not ($section.count -eq 1 -and $section.hunk_range -ceq '1')){throw 'Metadata hunk range mismatch'}
+            if($section.input_compact -and $section.hunk_range -cne "1,$($section.count)"){throw 'Metadata compact range mismatch'}
+            $end=$part.IndexOf("`n",[StringComparison]::Ordinal)
+            $expected=ConvertTo-Json -InputObject @('REVIEWJSON',$section.path,$section.mode,$section.index,$section.count,$section.final_lf,$section.token_start,$section.hunk_range) -Compress
+            if($end -lt 0 -or $part.Substring(0,$end) -cne $expected){throw 'Metadata frame header mismatch'}
+            $encoded=$part.Substring($end+1)
+            if(-not $encoded.EndsWith("`n",[StringComparison]::Ordinal) -or $encoded.Split("`n").Length -ne $section.count+1){throw 'Metadata frame line count mismatch'}
+            if(-not $section.final_lf){$encoded=$encoded.Substring(0,$encoded.Length-1)}
+            $body=Convert-ReviewMetadataTokens -Body $encoded -State $state -Decode
+            if(-not (Test-ReviewMetadataJson -Body $body -Path $section.path) -or (Get-ReviewTextHash $body) -cne $section.body_sha256){throw 'Metadata decoded body mismatch'}
+            $raw=if($section.git_eol -ceq 'CRLF'){$body.Replace("`n","`r`n")}else{$body}
+            if((Get-CompactReviewBlobHash $raw) -cne $section.blob){throw 'Metadata decoded full Git blob mismatch'}
+            if($section.input_compact){
+                $restored=(ConvertTo-Json -InputObject @('ADDED',$section.path,$section.mode,$section.index,$section.count) -Compress)+"`n"+$body
+            }else{
+                $withLF=if($section.final_lf){$body}else{$body+"`n"}
+                $restored=(Get-ReviewMetadataOriginalHeader $section.path $section.mode $section.index $section.count $section.hunk_range)+'+'+$withLF.Substring(0,$withLF.Length-1).Replace("`n","`n+")+"`n"
+                if(-not $section.final_lf){$restored+='\ No newline at end of file'+"`n"}
+            }
+        }
+        if($state.Tokens.Count -ne $section.token_end -or $restored.Length -ne $section.input_length -or
+            (Get-ReviewTextHash $restored) -cne $section.input_sha256){throw 'Metadata exact restoration mismatch'}
+        [void]$output.Append($restored)
+    }
+    $text=$output.ToString()
+    if($cursor -ne $lf.Length -or $state.Tokens.Count -ne $Manifest.token_count -or (Get-ReviewTextHash $text) -cne $Manifest.input_sha256){throw 'Metadata complete coverage mismatch'}
+    [void](Restore-CompactReviewDiff -Diff $text -Manifest $Manifest.input_manifest)
     return $text
 }

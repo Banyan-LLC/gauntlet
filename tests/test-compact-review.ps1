@@ -110,6 +110,26 @@ try {
         $offset+=$entry.rendered_length
     }
     Assert-Throws { Restore-CompactReviewDiff -Diff $changed -Manifest $m } 'full blob independently enforced after rendered hashes rebind'
+    # Even fully rebound framing hashes cannot authorize a false abbreviated index.
+    $m=$r.Manifest | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+    $target=@($m.sections | Where-Object compact)[0]
+    $wrongIndex='0000000..'+$(if($target.blob.StartsWith('fffffff')){'eeeeeee'}else{'fffffff'})
+    $changed=$r.Diff.Replace($target.index,$wrongIndex)
+    $wrongOriginal=$diff.Replace($target.index,$wrongIndex)
+    $m.rendered_sha256=Get-ReviewTextHash $changed
+    $m.original_sha256=Get-ReviewTextHash $wrongOriginal
+    $offset=0
+    foreach($entry in $m.sections){
+        if($entry.compact){
+            $entry.index=$wrongIndex
+            $entry.rendered_sha256=Get-ReviewTextHash ($changed.Substring($offset,$entry.rendered_length))
+            $originalPart=@([regex]::Split($wrongOriginal,'(?m)(?=^diff --git )') | Where-Object { $_.StartsWith($entry.header+"`n",[StringComparison]::Ordinal) })[0]
+            $entry.original_sha256=Get-ReviewTextHash $originalPart
+            break
+        }
+        $offset+=$entry.rendered_length
+    }
+    Assert-Throws { Restore-CompactReviewDiff -Diff $changed -Manifest $m } 'index prefix independently enforced after all framing hashes rebind'
     $ref="diff --git a/docs/spec.md b/docs/spec.md`nnew file mode 100644`nindex 0000000..1234567`n--- /dev/null`n+++ b/docs/spec.md`n@@ -0,0 +1,2 @@`n[Verified complete-body reference: approved body]`n"
     $rr=Render ($diff+$ref)
     Assert-True ($rr.Diff.EndsWith($ref)) 'approved reference unchanged'
