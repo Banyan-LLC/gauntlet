@@ -130,6 +130,11 @@ on a local fixed drive, outside the credential tree. It creates a fresh `failed-
 child there with access restricted to the current Windows user. Select an artifact location you
 intend to retain before starting any live call.
 
+The computer-use positive control requests one read-only screenshot or screen-state call.
+Obtain any required screen-access authorization before running it. It forbids clicks, typing,
+navigation and application launches, and asks the model not to transcribe screen contents.
+Native dispatch logs contain only server/tool names and event type, never arguments or images.
+
 ```powershell
 pwsh -File .\gauntlet-review\scripts\calibrate-premises.ps1
 pwsh -File .\tests\live\live-schema-gate.ps1
@@ -358,10 +363,19 @@ working directory is a single-use, unpredictably named, empty harness outside ev
 Every CLI feature is disabled unless explicitly allowlisted, so a feature introduced by a future
 CLI version is denied by default.
 
-The live security battery independently control-verifies shell, web, MCP, apps, and plugins.
-Computer-use, skill-search, and subagent spawning were configured off but did not produce an
-independently observable positive signal on the verified CLI, so the guarantee is deliberately
-narrower for those three classes. See [`docs/design.md`](docs/design.md) for the exact claim.
+The live security battery requires independent positive, hermetic-negative and pairwise-isolation
+controls for shell, web, MCP, apps and plugins. Computer-use, skill-search and subagent spawning
+remain configured off without independent control proof on the headless stack. A generic MCP
+server event without tool identity cannot promote computer-use to a proved class. Every narrowed
+control still runs and any novel event fails certification. See [`docs/design.md`](docs/design.md)
+and the [current evidence correction](docs/build-log/2026-10-14-live-review-compatibility.md).
+
+Owned security-profile cleanup has one finite 60-second deadline per attempt; schema and empty
+harness cleanup retain their 10-second limits. A failed attempt retains ownership and blocks
+producers and readers. An explicit retry is admitted only after the original native work settles,
+using its original handles; unresolved work and disposal intent refuse retries. Successful native
+delete dispositions are retained across a deadline so a retry can verify completion without
+reopening or deleting a replacement path. No automatic retry loop or pathname fallback is used.
 
 All reviewed material—including PR titles, descriptions, diffs, and check summaries—is treated
 as untrusted. Only explicitly approved controlling documents enter trusted context.
