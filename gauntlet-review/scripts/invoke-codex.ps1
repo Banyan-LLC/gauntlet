@@ -34,7 +34,10 @@ param(
     [string]$BaseRefName,           # pr mode (required)
     [string]$BaseTipOid,            # pr mode (required)
     [string]$CarryOverFile,         # required for round > 1 (validated ledger; see Test-CarryOverLedger)
-    [string]$VerifiedReferenceFile, # local only: one exact approved added-spec duplicate
+    [string]$VerifiedReferenceFile, # one exact approved added-spec duplicate
+    [switch]$CompactAddedFiles,
+    [string]$OwnerRepo,             # compact PR mode: actual repository, author read access
+    [string[]]$RequiredCheckNames,  # exact required check names, no omitted checks
     [switch]$AcceptNewBinary,       # re-probe and re-pin after exit 13, same round number
     [ValidateRange(1, 100)][int]$RoundCap = 10,
     [ValidateRange(1024, 10000000)][int]$BudgetBytes = 100000,
@@ -46,6 +49,143 @@ param(
 # reachable from a caller. Tests exercise the bound by invoking three times.
 $MaxAttempts = 2
 . "$PSScriptRoot\lib.ps1"
+
+# Kept in this fingerprinted entry point so installing a renderer cannot leave
+# its PR acquisition/verification policy outside the certified wrapper snapshot.
+function Invoke-ReviewGhRead {
+    param([string]$Token,[string[]]$GhArgs)
+    Assert-NoEmptyStringElements -FunctionName 'Invoke-ReviewGhRead' -ParameterName 'GhArgs' -Values $GhArgs
+    $gh=Resolve-GhInvocation
+    # Native containment bounds aggregate stdout+stderr at 4 MiB and kills/reaps
+    # the job on overflow or deadline. A partial stream is never accepted as JSON.
+    $run=Invoke-BoundedProcess -FileName $gh.FileName -ArgList ($gh.PrefixArgs+$GhArgs) -TimeoutSec 60 -EnvironmentMap @{GH_TOKEN=$Token} -RequireProcessTreeRetirement
+    if ($run.StartFailed -or $run.TimedOut -or $run.ExitCode -ne 0 -or -not $run.ProcessTreeRetired -or $run.ErrorMessage) { throw 'Bounded PR acquisition failed or exceeded retention/deadline limits' }
+    [pscustomobject]@{ExitCode=0;Stdout=$run.Stdout}
+}
+
+function Get-VerifiedPrReviewInput {
+    param([string]$Token,[string]$OwnerRepo,[int]$Pr,[string]$BaseOid,[string]$HeadSha,
+          [string]$BaseRefName,[string]$BaseTipOid,[string[]]$RequiredCheckNames)
+    if ($OwnerRepo -cnotmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' -or $Pr -le 0 -or
+        $BaseOid -cnotmatch '^[0-9a-f]{40}$' -or $HeadSha -cnotmatch '^[0-9a-f]{40}$' -or
+        $BaseTipOid -cnotmatch '^[0-9a-f]{40}$' -or $BaseRefName -cne 'main' -or
+        -not $RequiredCheckNames -or @($RequiredCheckNames | Where-Object {[string]::IsNullOrWhiteSpace($_)}).Count -or
+        @($RequiredCheckNames | Sort-Object -Unique).Count -ne $RequiredCheckNames.Count) { throw 'Invalid compact PR provenance or required check names' }
+    # Direct exact-head comparison establishes synchronization without an
+    # unbounded poll/read path. The caller may use Wait-PrHeadSynced before this.
+    $response=Invoke-ReviewGhRead -Token $Token -GhArgs @('pr','view',"$Pr",'--repo',$OwnerRepo,'--json','number,url,title,body,baseRefOid,headRefOid,baseRefName')
+    if ($response.ExitCode -ne 0) { throw 'PR metadata unavailable' }
+    $prObject=ConvertFrom-Json -InputObject $response.Stdout -ErrorAction Stop
+    if ($prObject.number -ne $Pr -or $prObject.baseRefOid -cne $BaseOid -or $prObject.headRefOid -cne $HeadSha -or
+        $prObject.baseRefName -cne $BaseRefName -or $prObject.title -isnot [string] -or $prObject.body -isnot [string]) { throw 'PR metadata changed or malformed' }
+    $tipResponse=Invoke-ReviewGhRead -Token $Token -GhArgs @('api',"repos/$OwnerRepo/git/ref/heads/$BaseRefName")
+    $tip=ConvertFrom-Json -InputObject $tipResponse.Stdout -ErrorAction Stop
+    if ($tip.object.sha -cne $BaseTipOid) { throw 'Live PR base tip changed or unavailable' }
+    $checkResponse=Invoke-ReviewGhRead -Token $Token -GhArgs @('api','--paginate','--slurp',"repos/$OwnerRepo/commits/$HeadSha/check-runs")
+    $statusResponse=Invoke-ReviewGhRead -Token $Token -GhArgs @('api','--paginate','--slurp',"repos/$OwnerRepo/commits/$HeadSha/status")
+    if ($checkResponse.ExitCode -ne 0 -or $statusResponse.ExitCode -ne 0) { throw 'Complete exact-head CI evidence unavailable' }
+    $pages=@(ConvertFrom-Json -InputObject $checkResponse.Stdout -ErrorAction Stop)
+    $statusPages=@(ConvertFrom-Json -InputObject $statusResponse.Stdout -ErrorAction Stop)
+    if (-not $pages.Count -or -not $statusPages.Count) { throw 'Empty CI response' }
+    $runs=@($pages | ForEach-Object { $_.check_runs } | ForEach-Object { $_ })
+    if ($pages[0].total_count -ne $runs.Count) { throw 'Partial or inconsistent check-run response' }
+    foreach ($run in $runs) {
+        if ($run.head_sha -cne $HeadSha -or $run.status -cne 'completed' -or
+            $run.conclusion -cnotin @('success','neutral','skipped') -or [string]::IsNullOrWhiteSpace($run.name)) { throw 'CI check missing exact successful head evidence' }
+    }
+    foreach ($name in $RequiredCheckNames) {
+        $required=@($runs | Where-Object name -CEQ $name)
+        if ($required.Count -ne 1 -or $required[0].conclusion -cne 'success') { throw "Required check is missing, duplicated, or unsuccessful: $name" }
+    }
+    $statuses=@($statusPages | ForEach-Object { $_.statuses } | ForEach-Object { $_ })
+    if ($statusPages[0].total_count -ne $statuses.Count) { throw 'Partial commit status response' }
+    foreach ($page in $statusPages) {
+        if ($page.sha -cne $HeadSha -or ($page.total_count -gt 0 -and $page.state -cne 'success')) { throw 'Commit status does not confirm reviewed head' }
+    }
+    foreach ($status in $statuses) { if ($status.state -cne 'success') { throw 'Unsuccessful commit status' } }
+    # Shared exact head plus column names avoids duplicating long property names;
+    # every actual check/status record remains in the untrusted summary. Full API
+    # responses also remain in immutable attempt provenance, never in trusted context.
+    $checkRows=@($runs | ForEach-Object { ,@($_.name,$_.status,$_.conclusion,$_.details_url) })
+    $statusRows=@($statuses | ForEach-Object { ,@($_.context,$_.state,$_.target_url) })
+    $metadata=[ordered]@{repository=$OwnerRepo;number=$Pr;url=$prObject.url;title=$prObject.title;body=$prObject.body
+        base_oid=$BaseOid;head_sha=$HeadSha;base_ref_name=$BaseRefName;base_tip_oid=$BaseTipOid
+        check_columns=@('name','status','conclusion','details_url');checks=$checkRows
+        status_columns=@('context','state','target_url');statuses=$statusRows}
+    $text="== PR METADATA (untrusted) ==`n"+(ConvertTo-Json -InputObject $metadata -Depth 8 -Compress)+"`n"
+    [pscustomobject]@{Text=$text;Metadata=$metadata;Provenance=[ordered]@{repository=$OwnerRepo;pr_number=$Pr;base_oid=$BaseOid;head_sha=$HeadSha;base_ref_name=$BaseRefName;base_tip_oid=$BaseTipOid
+        metadata_sha256=(Get-ReviewTextHash $text);required_check_names=@($RequiredCheckNames);synchronized=$true
+        captured_at=(Get-Date -AsUTC -Format o);pr_response=$response.Stdout;base_tip_response=$tipResponse.Stdout;check_response=$checkResponse.Stdout;status_response=$statusResponse.Stdout}}
+}
+
+function Assert-PrReviewInputFresh {
+    param([string]$Token,[object]$InputRecord)
+    $p=$InputRecord.Provenance
+    $fresh=Get-VerifiedPrReviewInput -Token $Token -OwnerRepo $p.repository -Pr $p.pr_number -BaseOid $p.base_oid -HeadSha $p.head_sha -BaseRefName $p.base_ref_name -BaseTipOid $p.base_tip_oid -RequiredCheckNames $p.required_check_names
+    if ($fresh.Text -cne $InputRecord.Text) { throw 'PR metadata or CI changed while composing the review' }
+}
+
+function Get-ReviewGitQuotedPath {
+    param([string]$Path)
+    $bytes=[Text.Encoding]::UTF8.GetBytes($Path)
+    if (@($bytes | Where-Object {$_ -lt 32 -or $_ -ge 127 -or $_ -eq 34 -or $_ -eq 92}).Count -eq 0) { return $Path }
+    $out=[Text.StringBuilder]::new();[void]$out.Append('"')
+    foreach($byte in $bytes) {
+        $escape=switch([int]$byte){7{'\a'}8{'\b'}9{'\t'}10{'\n'}11{'\v'}12{'\f'}13{'\r'}34{'\"'}92{'\\'}default{$null}}
+        if($escape){[void]$out.Append($escape)}
+        elseif($byte -lt 32 -or $byte -ge 127){[void]$out.Append('\').Append([Convert]::ToString($byte,8).PadLeft(3,'0'))}
+        else{[void]$out.Append([char]$byte)}
+    }
+    [void]$out.Append('"');$out.ToString()
+}
+
+function Get-CompactReviewGitRange {
+    param([string]$RepoRoot,[string]$BaseOid,[string]$HeadSha,[ValidateSet('local','pr')][string]$Mode)
+    if ($BaseOid -cnotmatch '^[0-9a-f]{40}$' -or $HeadSha -cnotmatch '^[0-9a-f]{40}$') { throw 'Compact reviews require full immutable commit IDs' }
+    $git=@(Get-Command git -CommandType Application -ErrorAction Stop)[0].Source
+    $nullFile=if($IsWindows){'NUL'}else{'/dev/null'}
+    $gx=@('--no-optional-locks','--literal-pathspecs','--attr-source=4b825dc642cb6eb9a060e54bf8d69288fbee4904','-C',$RepoRoot,'-c','core.useReplaceRefs=false','-c','core.quotePath=true',
+        '-c',('core.attributesFile='+$nullFile),'-c','diff.noprefix=false','-c','diff.mnemonicPrefix=false','-c','diff.algorithm=myers')
+    # Drop ambient Git override variables and global/system configuration.
+    # Use the immutable empty attribute tree, not worktree/index attributes.
+    # Genuine binary summaries stay literal, as in the original review format.
+    $gitEnvironment=@{GIT_NO_LAZY_FETCH='1';GIT_CONFIG_NOSYSTEM='1';GIT_CONFIG_SYSTEM=$nullFile;GIT_CONFIG_GLOBAL=$nullFile;GIT_CONFIG_COUNT='0';GIT_ATTR_NOSYSTEM='1'}
+    foreach($name in @('SystemRoot','WINDIR','PATH','TEMP','TMP')) {if(Test-Path "Env:$name"){$gitEnvironment[$name]=(Get-Item "Env:$name").Value}}
+    $runGit={param([string[]]$GitArguments)
+        $result=Invoke-BoundedProcess -FileName $git -ArgList ($gx+$GitArguments) -TimeoutSec 60 -ClearEnvironment -EnvironmentMap $gitEnvironment -RequireProcessTreeRetirement
+        if($result.StartFailed -or $result.TimedOut -or $result.ExitCode -ne 0 -or -not $result.ProcessTreeRetired -or $result.ErrorMessage){throw "Cannot generate complete immutable Git review range ($($GitArguments[0]), exit $($result.ExitCode)): $($result.ErrorMessage) $($result.Stderr)"}
+        $result.Stdout
+    }
+    foreach($oid in @($BaseOid,$HeadSha)) {
+        if ((& $runGit -GitArguments @('rev-parse','--verify',"$oid^{commit}")).Trim() -cne $oid) { throw 'Review commit identity mismatch' }
+    }
+    $infoAttributes=(& $runGit -GitArguments @('rev-parse','--path-format=absolute','--git-path','info/attributes')).Trim()
+    # info/attributes outranks --attr-source. Refuse its presence rather than
+    # silently accept an unverified patch policy; never alter the user's file.
+    try {
+        $null=Get-Item -LiteralPath $infoAttributes -Force -ErrorAction Stop
+        throw 'Repository info/attributes must be absent for verified review generation'
+    } catch [System.Management.Automation.ItemNotFoundException] { }
+    $mergeBase=(& $runGit -GitArguments @('merge-base',$BaseOid,$HeadSha)).Trim()
+    if($Mode -ceq 'local' -and $mergeBase -cne $BaseOid){throw 'Local review base is not an ancestor'}
+    $range=if($Mode -ceq 'pr'){@("$BaseOid...$HeadSha")}else{@($BaseOid,$HeadSha)}
+    $common=@('diff','--no-ext-diff','--no-textconv','--no-color','--ignore-submodules=none','--no-renames','--no-relative','--diff-filter=ACDMRTUXB')
+    $diff=& $runGit -GitArguments ($common+@('--patch','--src-prefix=a/','--dst-prefix=b/','--line-prefix=','--unified=3','--inter-hunk-context=0')+$range+@('--'))
+    $raw=& $runGit -GitArguments ($common+@('--raw','-z','--no-abbrev')+$range+@('--'))
+    $rawParts=$raw.Split([char]0);$paths=[Collections.Generic.List[object]]::new();$headers=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    for($i=0;$i -lt $rawParts.Length-1;$i+=2) {
+        if($rawParts[$i] -cnotmatch '^:([0-7]{6}) ([0-7]{6}) ([0-9a-f]{40}) ([0-9a-f]{40}) ([ACDMTUXB])$' -or $i+1 -ge $rawParts.Length){throw 'Malformed independent changed-path coverage'}
+        $entry=[ordered]@{path=$rawParts[$i+1];old_mode=$Matches[1];new_mode=$Matches[2];old_blob=$Matches[3];new_blob=$Matches[4];status=$Matches[5]}
+        $expected='diff --git '+(Get-ReviewGitQuotedPath ('a/'+$entry.path))+' '+(Get-ReviewGitQuotedPath ('b/'+$entry.path))
+        if(-not$headers.Add($expected)){throw 'Duplicate independent changed path'}
+        $paths.Add($entry)
+    }
+    $actualHeaders=@([regex]::Matches($diff,'(?m)^diff --git [^\r\n]*')|ForEach-Object Value)
+    if($actualHeaders.Count -ne $headers.Count){throw 'Generated patch omits changed paths'}
+    foreach($header in $actualHeaders){if(-not$headers.Remove($header)){throw 'Generated patch path coverage mismatch'}}
+    [pscustomobject]@{Diff=$diff;MergeBase=$mergeBase;OriginalSha256=(Get-ReviewTextHash $diff);ChangedPaths=$paths.ToArray();ChangedPathsSha256=(Get-ReviewTextHash $raw)}
+}
+
 $boundInputLeases = $null
 try {
 $boundInputLeases = New-BoundReviewLease -SkillRoot (Split-Path $PSScriptRoot -Parent)
@@ -136,7 +276,7 @@ if ($priorCount -gt 0) {
 #     ambient repo config (submodule/attribute knobs); an imperfect local diff costs at most one
 #     extra pr round, never a security gap.
 $canonBase = $null; $canonHead = $null; $localDiff = $null; $localDiffSha = $null
-if ($Mode -eq 'local') {
+if ($Mode -eq 'local' -and -not $CompactAddedFiles) {
     $env:GIT_NO_LAZY_FETCH = '1'
     $gx = @('-C', $RepoRoot, '-c', 'core.useReplaceRefs=false')
     $canonBase = (git @gx rev-parse --verify --quiet "$BaseOid^{commit}")
@@ -154,8 +294,23 @@ if ($Mode -eq 'local') {
 
 $promptBody = Get-Content -Raw -Encoding utf8 $PromptFile
 $referenceCoverage = $null
-if ($VerifiedReferenceFile -and $Mode -ne 'local') { Write-Error 'Verified references require local mode'; exit 12 }
-if ($Mode -eq 'local') {
+$compactCoverage=$null; $prInput=$null; $prToken=$null; $compactRange=$null
+if ($CompactAddedFiles -and $Mode -notin @('local','pr')) { Write-Error 'Compact representation requires local or PR mode'; exit 12 }
+if ($VerifiedReferenceFile -and $Mode -ne 'local' -and -not ($Mode -eq 'pr' -and $CompactAddedFiles)) { Write-Error 'PR verified references require compact verified composition'; exit 12 }
+if ($CompactAddedFiles) {
+    try {
+        $compactRange=Get-CompactReviewGitRange -RepoRoot $RepoRoot -BaseOid $BaseOid -HeadSha $HeadSha -Mode $Mode
+        $canonBase=$BaseOid; $canonHead=$HeadSha; $localDiff=$compactRange.Diff; $localDiffSha=$compactRange.OriginalSha256
+        if ($Mode -eq 'pr') {
+            $gh=Resolve-GhInvocation
+            $auth=Invoke-BoundedProcess -FileName $gh.FileName -ArgList ($gh.PrefixArgs+@('auth','token','-u','geoffroth')) -TimeoutSec 30 -RequireProcessTreeRetirement
+            if ($auth.StartFailed -or $auth.TimedOut -or $auth.ExitCode -ne 0 -or -not $auth.ProcessTreeRetired -or $auth.ErrorMessage -or [string]::IsNullOrWhiteSpace($auth.Stdout)) { throw 'Author read token unavailable' }
+            $prToken=$auth.Stdout.Trim()
+            $prInput=Get-VerifiedPrReviewInput -Token $prToken -OwnerRepo $OwnerRepo -Pr $PrNumber -BaseOid $BaseOid -HeadSha $HeadSha -BaseRefName $BaseRefName -BaseTipOid $BaseTipOid -RequiredCheckNames $RequiredCheckNames
+        }
+    } catch { Write-Error "Verified review provenance refused: $($_.Exception.Message)"; exit 12 }
+}
+if ($Mode -eq 'local' -or $CompactAddedFiles) {
     # The PromptFile is the PREAMBLE (header + trusted context) ONLY and must be ENFORCED as such:
     # reject a caller-supplied review-material section (normalized: leading whitespace and case are
     # ignored) so ALL reviewed bytes provably come from the generated, digest-bound diff.
@@ -170,11 +325,21 @@ if ($Mode -eq 'local') {
             $referenceCoverage = $representation.Manifest
         } catch { Write-Error "Verified reference refused: $($_.Exception.Message)"; exit 12 }
     }
-    $preambleText = if ($VerifiedReferenceFile) { $promptBody } else { $promptBody.TrimEnd() }
-    $promptBody = $preambleText + "`n`n== REVIEW MATERIAL (untrusted) ==`n" + $reviewDiff + "`n"
+    $preambleText = if ($VerifiedReferenceFile -or $CompactAddedFiles) { $promptBody } else { $promptBody.TrimEnd() }
+    $protocol=''
+    if ($CompactAddedFiles) {
+        try {
+            $compact=ConvertTo-CompactReviewDiff -RepoRoot $RepoRoot -BaseOid $canonBase -HeadSha $canonHead -Diff $reviewDiff
+            if ((Restore-CompactReviewDiff -Diff $compact.Diff -Manifest $compact.Manifest) -cne $reviewDiff.Replace("`r`n","`n")) { throw 'Representation reconstruction mismatch' }
+            $reviewDiff=$compact.Diff; $compactCoverage=$compact.Manifest
+            $protocol=(Get-CompactReviewProtocol)+"`n"
+        } catch { Write-Error "Compact representation refused: $($_.Exception.Message)"; exit 12 }
+    }
+    $prText=if($prInput){$prInput.Text}else{''}
+    $promptBody = $preambleText + "`n`n" + $protocol + "== REVIEW MATERIAL (untrusted) ==`n" + $prText + $reviewDiff + "`n"
 }
 $originalCarrySha = $carrySha
-if ($VerifiedReferenceFile) {
+if ($VerifiedReferenceFile -or $CompactAddedFiles) {
     $promptBody = $promptBody.Replace("`r`n", "`n")
     $carryText = $carryText.Replace("`r`n", "`n")
     $carrySha = Get-ReviewTextHash $carryText
@@ -201,7 +366,8 @@ if (-not $characters.Ok) {
 # ceiling is in bytes and implies no token count: gpt-6.1-sol's tokenizer is undocumented, so the
 # usage gate below decides on the real reported count. (The acceptance-time usage-gate exit 10
 # below is NOT retryable.)
-$budget = Test-EmbedBudget -PromptText $prompt -BudgetBytes $BudgetBytes
+$effectiveByteBudget=if($CompactAddedFiles){[math]::Min($BudgetBytes,1048576)}else{$BudgetBytes}
+$budget = Test-EmbedBudget -PromptText $prompt -BudgetBytes $effectiveByteBudget
 if (-not $budget.Ok) {
     Write-RoundState -StateDir $StateDir -Patch @{ status='flagged'; failure_reason="embed budget: $($budget.Bytes) > $BudgetBytes bytes" }
     Write-Error "prompt is $($budget.Bytes) bytes over the $BudgetBytes-byte preflight budget; No round ran. Raise -BudgetBytes and retry (autonomously up to 500000); a prompt over 500000 bytes is a human flag. Never truncate."
@@ -333,6 +499,13 @@ Write-RoundState -StateDir $StateDir -Patch @{ harness_dir=$harness }
 $stem = "round-$Round-attempt-$attempt"
 $rawPath = Join-Path $StateDir "$stem-verdict.raw.json"
 
+# Last acquisition check before immutable attempt allocation or model dispatch.
+# Publication still performs its independent post-review freshness checks.
+if ($prInput) {
+    try { Assert-PrReviewInputFresh -Token $prToken -InputRecord $prInput }
+    catch { Write-Error "PR input changed before dispatch: $($_.Exception.Message)"; exit 12 }
+}
+
 $codexArgs = New-CodexArgs -HarnessDir $harness -SchemaPath $schemaPath -VerdictPath $rawPath -DisableSet $disable
 $audit = Get-InvocationAudit -CodexArgs $codexArgs -HarnessDir $harness `
     -SchemaPath $schemaPath -VerdictPath $rawPath -ExpectedDisable $disable
@@ -353,6 +526,16 @@ elseif ($Mode -eq 'local') { $meta.base_oid = $canonBase; $meta.head_sha = $cano
 else {
     $meta.pr_number = $PrNumber; $meta.base_oid = $BaseOid; $meta.head_sha = $HeadSha
     $meta.base_ref_name = $BaseRefName; $meta.base_tip_oid = $BaseTipOid
+}
+if ($CompactAddedFiles) {
+    $meta.compact_review_coverage=$compactCoverage
+    $meta.reviewed_diff_sha256=$localDiffSha
+    $meta.reviewed_merge_base=$compactRange.MergeBase
+    $meta.reviewed_changed_paths=$compactRange.ChangedPaths
+    $meta.reviewed_changed_paths_sha256=$compactRange.ChangedPathsSha256
+    $meta.compact_protocol_sha256=(Get-ReviewTextHash (Get-CompactReviewProtocol))
+    $meta.prompt_characters=$characters.Characters
+    if($prInput){$meta.pr_input_provenance=$prInput.Provenance}
 }
 if ($VerifiedReferenceFile) {
     $meta.verified_reference_coverage = $referenceCoverage

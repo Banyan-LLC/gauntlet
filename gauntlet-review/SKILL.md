@@ -155,6 +155,37 @@ channel — not because an assertion was elevated into trust.
 
 ## pr-mode inputs
 
+### Opt-in lossless complete-added-file format
+
+The coordinator-approved `-CompactAddedFiles` representation is available in local
+and PR modes. It changes only complete, single-hunk added regular files with safe
+unquoted paths and a final LF. Each compact JSON header retains the path, mode,
+exact index token and logical line count; all file-content lines remain literal,
+with only their recoverable addition prefix removed. Unsupported sections and
+existing-file hunks remain unchanged. The certified decoder verifies exact
+reconstruction and ordered original/rendered section digests against full HEAD
+blob and mode identities. The complete coverage manifest is recorded in immutable
+attempt metadata. The full protocol is included in the prompt before preflight.
+
+`-VerifiedReferenceFile` retains the separately verified complete controlling-spec
+reference. In PR mode it requires `-CompactAddedFiles`; `-PromptFile` is then a
+preamble only, as in local mode. Never put metadata or a caller-written diff in
+that preamble. The entry point independently generates the triple-dot diff and
+captures actual untrusted PR metadata and complete exact-head CI summaries.
+Pass `-OwnerRepo` and `-RequiredCheckNames` with every required exact check name.
+All named checks must be successful on the reviewed head. Other checks and
+statuses are also retained and checked; full API responses remain in immutable
+attempt provenance. The author read identity is `geoffroth`. No PR write occurs.
+
+The wrapper verifies synchronization, PR/base identities and live base tip, and
+rechecks actual metadata/CI before attempt allocation. Existing publication and
+handoff freshness gates still apply. The final prompt, including complete
+carryover, protocol and metadata, must fit both unchanged 1,048,576 limits before
+dispatch. Neither hashes nor coverage replace unique review content. Do not
+truncate a PR body, check list, source, test or history to fit. The SID planning
+allowance of 4 KiB for additional PR framing/metadata is not a new configurable
+cap or proof that an actual PR fits; measure every actual complete request.
+
 Before each pr round (author side, geoffroth token):
 `gh pr view <n> --json baseRefOid,headRefOid,baseRefName,title,body,statusCheckRollup` → record
 `(baseOid, headSha, baseRefName)`. Also capture the base branch's **live tip**: `gh api

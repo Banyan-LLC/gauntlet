@@ -32,7 +32,7 @@ try {
     $source = [IO.File]::ReadAllText($invokePath)
     $start = $source.IndexOf('$promptBody = Get-Content')
     $end = $source.IndexOf('# --- Binary pin', $start)
-    $slice = '$VerifiedReferenceFile=$null;' + $source.Substring($start, $end - $start)
+    $slice = '$VerifiedReferenceFile=$null;$CompactAddedFiles=$false;' + $source.Substring($start, $end - $start)
     $lib = (Resolve-Path "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1").Path.Replace("'", "''")
     $promptFile = Join-Path $root 'preamble.txt'
     [IO.File]::WriteAllText($promptFile, 'preamble')
@@ -117,7 +117,9 @@ try {
     Assert-Eq $recordCalls.Count 1 'invocation persists the actual process result'
     if ($recordCalls.Count -eq 1) {
         $dispatch = @($calls | Where-Object { $_.GetCommandName() -eq 'Invoke-CodexProcess' })[0]
-        Assert-True ($recordCalls[0].Extent.StartOffset -gt $dispatch.Extent.StartOffset -and $recordCalls[0].Extent.StartOffset -lt $source.IndexOf('if ($run.StartFailed')) 'receipt precedes every process-failure return'
+        # Acquisition helpers can reject their own bounded subprocesses before a
+        # model attempt exists. Scope this ordering to the actual model dispatch.
+        Assert-True ($recordCalls[0].Extent.StartOffset -gt $dispatch.Extent.StartOffset -and $recordCalls[0].Extent.StartOffset -lt $source.IndexOf('if ($run.StartFailed',$dispatch.Extent.EndOffset)) 'receipt precedes every model process-failure return'
     }
 } finally {
     if ([IO.Path]::GetDirectoryName($root) -cne [IO.Path]::GetFullPath($WorkRoot).TrimEnd([IO.Path]::DirectorySeparatorChar)) { throw 'fixture cleanup escaped its parent' }

@@ -2822,3 +2822,171 @@ function New-BoundReviewLease {
         return ,$leases
     } catch { foreach ($lease in $leases) { $lease.Dispose() }; throw }
 }
+
+# Compact additions are framed by a sidecar and a declared body line count.
+function Get-CompactReviewProtocol {
+    return "`n== VERIFIED COMPLETE ADDED-FILE ENCODING ==`nA compact header is a JSON array [ADDED,path,mode,index,count]. Its next count LF-terminated lines are literal file content, including blank or diff-like lines; prepend one + to each to reconstruct additions. Reconstruct the exact six original header lines as: diff --git a/path b/path; new file mode mode; index index; --- /dev/null; +++ b/path; @@ -0,0 +1,count @@ (each semicolon here means LF). Only unquoted safe paths, mode 100644, and complete single-hunk additions with final LF qualify. Headers elsewhere, existing-file hunks, prior-round entries, and the approved complete-spec reference are unchanged. Parse by declared line count, never by body markers. The mandatory coverage manifest binds original/rendered per-section SHA256 digests and complete Git blobs to base/head.`n"
+}
+
+function Test-CompactReviewPath {
+    param([string]$Path)
+    return ($Path -cmatch '^[A-Za-z0-9_.][A-Za-z0-9_./-]*$' -and
+        $Path -cnotmatch '(^|/)(\.|\.\.|)(/|$)' -and -not $Path.EndsWith('/'))
+}
+
+function Get-CompactReviewBlobHash {
+    param([string]$Body)
+    $bytes=[Text.Encoding]::UTF8.GetBytes($Body)
+    $prefix=[Text.Encoding]::ASCII.GetBytes("blob $($bytes.Length)`0")
+    return [Convert]::ToHexString([Security.Cryptography.SHA1]::HashData([byte[]]($prefix+$bytes))).ToLowerInvariant()
+}
+
+function Get-CompactReviewOriginalHeader {
+    param([string]$Path,[string]$Mode,[string]$Index,[int]$Count)
+    return "diff --git a/$Path b/$Path`nnew file mode $Mode`nindex $Index`n--- /dev/null`n+++ b/$Path`n@@ -0,0 +1,$Count @@`n"
+}
+
+function ConvertTo-CompactReviewDiff {
+    param([Parameter(Mandatory)][string]$RepoRoot,[Parameter(Mandatory)][string]$BaseOid,
+          [Parameter(Mandatory)][string]$HeadSha,[AllowEmptyString()][string]$Diff)
+    if ($BaseOid -cnotmatch '^[0-9a-f]{40}$' -or $HeadSha -cnotmatch '^[0-9a-f]{40}$') { throw 'Invalid compact base/head identity' }
+    $lf=$Diff.Replace("`r`n","`n")
+    if ($lf.Contains("`r")) { throw 'Standalone carriage return is unsupported' }
+    # Ordinary unified-diff body lines carry a prefix (+, - or space).
+    # Thus only the ORIGINAL diff may be scanned for unprefixed section boundaries.
+    # Compact output is never scanned this way.
+    $parts=@([regex]::Split($lf,'(?m)(?=^diff --git )') | Where-Object { $_.Length -gt 0 })
+    $sections=[Collections.Generic.List[object]]::new()
+    $seen=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $pathsSeen=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $output=[Text.StringBuilder]::new()
+    $git=@(Get-Command git -CommandType Application -ErrorAction Stop)[0].Source
+    foreach ($part in $parts) {
+        $lines=$part.Split("`n")
+        $header=$lines[0]
+        if (-not $header.StartsWith('diff --git ',[StringComparison]::Ordinal)) { throw 'Unrecognized diff prefix' }
+        if (-not $seen.Add($header)) { throw 'Duplicate diff section' }
+        if ($header -cmatch '^diff --git a/.+ b/(.+)$') {
+            $destination=$Matches[1]
+            if ((Test-CompactReviewPath $destination) -and -not $pathsSeen.Add($destination)) { throw 'Duplicate diff path' }
+        }
+        $path=$null; $index=$null; $count=$null; $blob=$null; $mode=$null; $compact=$false
+        $replacement=$part
+        if ($header -cmatch '^diff --git a/(.+) b/\1$') {
+            $path=$Matches[1]
+            # Unsupported executable additions remain literal, but cannot lie about HEAD mode.
+            if ((Test-CompactReviewPath $path) -and $lines.Length -ge 7 -and
+                -not $lines[6].StartsWith('[Verified complete-body reference:',[StringComparison]::Ordinal) -and
+                $lines[1] -cmatch '^new file mode (100644|100755)$') {
+                $claimedMode=$Matches[1]
+                $modeRun=Invoke-BoundedProcess -FileName $git -ArgList @('-C',$RepoRoot,'-c','core.useReplaceRefs=false','ls-tree',$HeadSha,'--',$path) -TimeoutSec 30 -RequireProcessTreeRetirement
+                if ($modeRun.StartFailed -or $modeRun.TimedOut -or $modeRun.ExitCode -ne 0 -or -not $modeRun.ProcessTreeRetired -or $modeRun.ErrorMessage -or
+                    $modeRun.Stdout -cnotmatch ('^'+$claimedMode+' blob [0-9a-f]{40}\t'+[regex]::Escape($path)+'\r?\n?$')) { throw 'Added HEAD mode/path mismatch' }
+            }
+            if ((Test-CompactReviewPath $path) -and $lines.Length -ge 7 -and
+                $lines[1] -ceq 'new file mode 100644' -and
+                $lines[2] -cmatch '^index (0+\.\.([0-9a-f]{4,40}))$') {
+                $index=$Matches[1]; $abbreviation=$Matches[2]; $mode='100644'
+                if ($lines[3] -ceq '--- /dev/null' -and $lines[4] -ceq "+++ b/$path" -and
+                    $lines[5] -cmatch '^@@ -0,0 \+1,(.*) @@$') {
+                    $declaredCount=$Matches[1]
+                    $count=0
+                    if ($declaredCount -cnotmatch '^[1-9][0-9]*$' -or -not [int]::TryParse($declaredCount,[ref]$count)) { throw 'Invalid addition line count' }
+                    # A spec reference, no-final-LF marker, or additional hunks remain verbatim.
+                    $unsupported=($part.Contains("`n\ No newline at end of file") -or
+                        $lines[6].StartsWith('[Verified complete-body reference:',[StringComparison]::Ordinal) -or
+                        @($lines | Where-Object { $_ -cmatch '^@@' }).Count -ne 1)
+                    if (-not $unsupported) {
+                        if ($lines.Length -ne $count+7 -or $lines[-1] -cne '') { throw 'Addition count/final LF mismatch' }
+                        $body=[Text.StringBuilder]::new()
+                        for ($i=6; $i -lt 6+$count; $i++) {
+                            if (-not $lines[$i].StartsWith('+',[StringComparison]::Ordinal)) { throw 'Incomplete addition body' }
+                            [void]$body.Append($lines[$i].Substring(1)).Append("`n")
+                        }
+                        $text=$body.ToString()
+                        $originalHeader=Get-CompactReviewOriginalHeader $path $mode $index $count
+                        $reconstructed=$originalHeader+('+'+($text.Substring(0,$text.Length-1).Replace("`n","`n+"))+"`n")
+                        if ($reconstructed -cne $part) { throw 'Noncanonical addition header' }
+                        $runs=@()
+                        foreach ($argsForGit in @(
+                            ,@('ls-tree',$HeadSha,'--',$path)
+                            ,@('ls-tree',$BaseOid,'--',$path)
+                            ,@('cat-file','blob',"${HeadSha}:$path")
+                        )) {
+                            $run=Invoke-BoundedProcess -FileName $git -ArgList (@('-C',$RepoRoot,'-c','core.useReplaceRefs=false')+$argsForGit) -TimeoutSec 30 -RequireProcessTreeRetirement
+                            if ($run.StartFailed -or $run.TimedOut -or $run.ExitCode -ne 0 -or -not $run.ProcessTreeRetired -or $run.ErrorMessage) { throw 'Cannot verify compact Git identity' }
+                            $runs+=,$run
+                        }
+                        if ($runs[0].Stdout -cnotmatch ('^100644 blob ([0-9a-f]{40})\t'+[regex]::Escape($path)+'\r?\n?$')) { throw 'Head path/mode mismatch' }
+                        $blob=$Matches[1]
+                        if ($runs[1].Stdout.Length -ne 0 -or -not $blob.StartsWith($abbreviation,[StringComparison]::Ordinal) -or
+                            (Get-CompactReviewBlobHash $text) -cne $blob -or $runs[2].Stdout.Replace("`r`n","`n") -cne $text) { throw 'Addition is not the complete head blob or exact index' }
+                        $replacement=(ConvertTo-Json -InputObject @('ADDED',$path,$mode,$index,$count) -Compress)+"`n"+$text
+                        $compact=$true
+                    }
+                }
+            }
+        }
+        $sections.Add([pscustomobject]@{header=$header;index=$index;count=$count;path=$path;blob=$blob;mode=$mode;compact=$compact
+            original_sha256=(Get-ReviewTextHash $part);rendered_sha256=(Get-ReviewTextHash $replacement)
+            original_length=$part.Length;rendered_length=$replacement.Length})
+        [void]$output.Append($replacement)
+    }
+    $rendered=$output.ToString()
+    return [pscustomobject]@{Diff=$rendered;Manifest=[pscustomobject]@{version=1;base=$BaseOid;head=$HeadSha
+        original_sha256=(Get-ReviewTextHash $lf);rendered_sha256=(Get-ReviewTextHash $rendered)
+        newline_normalization='CRLF to LF only';sections=$sections.ToArray()}}
+}
+
+function Restore-CompactReviewDiff {
+    param([AllowEmptyString()][string]$Diff,[Parameter(Mandatory)]$Manifest)
+    if ($Manifest.version -cne 1 -or $Manifest.base -cnotmatch '^[0-9a-f]{40}$' -or
+        $Manifest.head -cnotmatch '^[0-9a-f]{40}$' -or $Manifest.newline_normalization -cne 'CRLF to LF only') { throw 'Invalid compact manifest identity' }
+    $lf=$Diff.Replace("`r`n","`n")
+    if ($lf.Contains("`r") -or (Get-ReviewTextHash $lf) -cne $Manifest.rendered_sha256) { throw 'Compact rendered digest mismatch' }
+    $position=0
+    $output=[Text.StringBuilder]::new()
+    $seen=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $pathsSeen=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($section in $Manifest.sections) {
+        if ($section.compact -isnot [bool] -or ($section.rendered_length -isnot [int] -and $section.rendered_length -isnot [long]) -or
+            $section.rendered_length -le 0 -or $section.rendered_length -gt $lf.Length-$position) { throw 'Invalid compact section length' }
+        $rendered=$lf.Substring($position,$section.rendered_length)
+        $position+=$section.rendered_length
+        if ((Get-ReviewTextHash $rendered) -cne $section.rendered_sha256 -or -not $seen.Add($section.header)) { throw 'Section digest/duplicate mismatch' }
+        if ($section.header -cmatch '^diff --git a/.+ b/(.+)$') {
+            $destination=$Matches[1]
+            if ((Test-CompactReviewPath $destination) -and -not $pathsSeen.Add($destination)) { throw 'Duplicate restored path' }
+        }
+        $original=$rendered
+        if ($section.compact) {
+            if (-not (Test-CompactReviewPath $section.path) -or $section.mode -cne '100644' -or
+                ($section.count -isnot [int] -and $section.count -isnot [long]) -or $section.count -le 0 -or
+                $section.index -cnotmatch '^0+\.\.([0-9a-f]{4,40})$' -or $section.blob -cnotmatch '^[0-9a-f]{40}$') { throw 'Invalid compact section metadata' }
+            if (-not $section.blob.StartsWith($Matches[1],[StringComparison]::Ordinal)) { throw 'Compact index/blob mismatch' }
+            $end=$rendered.IndexOf("`n",[StringComparison]::Ordinal)
+            if ($end -lt 0) { throw 'Missing compact header LF' }
+            $expected=ConvertTo-Json -InputObject @('ADDED',$section.path,$section.mode,$section.index,$section.count) -Compress
+            if ($rendered.Substring(0,$end) -cne $expected) { throw 'Compact header mismatch' }
+            $cursor=$end+1
+            $additions=[Text.StringBuilder]::new()
+            for ($i=0; $i -lt $section.count; $i++) {
+                $end=$rendered.IndexOf("`n",$cursor,[StringComparison]::Ordinal)
+                if ($end -lt 0) { throw 'Truncated compact body' }
+                [void]$additions.Append('+').Append($rendered.Substring($cursor,$end-$cursor)).Append("`n")
+                $cursor=$end+1
+            }
+            if ($cursor -ne $rendered.Length) { throw 'Excess compact body data' }
+            $body=$rendered.Substring($rendered.IndexOf("`n")+1)
+            if ((Get-CompactReviewBlobHash $body) -cne $section.blob) { throw 'Compact full blob mismatch' }
+            $header=Get-CompactReviewOriginalHeader $section.path $section.mode $section.index $section.count
+            if (($header.Split("`n")[0]) -cne $section.header) { throw 'Original header mismatch' }
+            $original=$header+$additions.ToString()
+        } elseif (-not $rendered.StartsWith($section.header+"`n",[StringComparison]::Ordinal)) { throw 'Unchanged section header mismatch' }
+        if ($original.Length -ne $section.original_length -or (Get-ReviewTextHash $original) -cne $section.original_sha256) { throw 'Original section digest mismatch' }
+        [void]$output.Append($original)
+    }
+    $text=$output.ToString()
+    if ($position -ne $lf.Length -or (Get-ReviewTextHash $text) -cne $Manifest.original_sha256) { throw 'Original reconstruction digest/coverage mismatch' }
+    return $text
+}
