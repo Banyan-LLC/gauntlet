@@ -1,5 +1,132 @@
 # Gauntlet
 
+Historical review metadata can additionally use `-CompactReviewMetadata` with
+`-CompactAddedFiles` in local or PR mode. Complete added review JSON/JSONL files
+retain every unique raw string token and every other character; duplicate tokens
+use explicit backward references. The certified decoder reconstructs each full
+original section exactly and verifies full Git identities and ordered coverage.
+Code, tests and the live carry-over ledger never enter that metadata table. Both unchanged 1 MiB
+request limits and every existing review/capacity gate still apply. See
+`gauntlet-review/SKILL.md` for framing and bounds.
+
+`-CompactIndentation` additionally represents recoverable leading indentation
+in verified complete added source files under `src/`. Each four initial spaces
+uses one transport tab in an `INDENT` frame. The decoder restores every original
+character and line, including whitespace in raw strings. Files with literal
+leading tabs fall back unchanged. All other source/test text remains directly
+readable; history, limits and publication gates are preserved. This option also
+requires `-CompactAddedFiles` and is available in local and PR modes.
+
+`-CompactRepeatedLines` is a separate opt-in for complete added regular source
+files under `src/`, requiring `-CompactAddedFiles` in local or PR mode. It may be
+combined with either indentation or historical metadata framing. A visible
+`~N=TEXT` labels the first literal source core; `~N~` reuses that exact core with
+the current row's leading spaces/tabs. Full original files and unified sections
+reconstruct exactly, including raw strings, trailing whitespace and blank rows.
+Reserved literal marker rows cause whole-file fallback. Existing-file hunks,
+other formats, historical metadata rules and the live ledger are unchanged.
+
+The source dictionary is limited to 65536 entries and 4194304 UTF-16 units.
+Decoded source bodies remain limited to 1048576 units, and total reconstructed
+diff to 4194304 units. Bounds are checked before appending. Each encoded frame
+must strictly shorten its prior representation; disabled options preserve the
+old wire format. Both complete request caps and all freshness/capacity gates
+remain unchanged. The additional protocol hash is bound in attempt metadata.
+
+`-CompactSourceFrames` optionally wraps eligible `INDENT`/`INDENT_LINES`
+frames after the existing source-line pass. It requires both `-CompactAddedFiles`
+and `-CompactIndentation`, in local or PR mode. F/FL encode common tab-indentation
+counts and the repeated regular-file mode/index prefix once in the protocol.
+They reconstruct the actual `0000000..7hex` index spelling exactly; full HEAD
+blob/mode/base-absence proof remains unchanged. Other index spellings, literal
+leading tabs and reserved source prefixes keep legacy framing. All prior
+protocols, defaults, history and limits remain unchanged. The separate source
+frame protocol is included in the prompt and fingerprinted in attempt metadata.
+
+`-CompactSourceWords` optionally wraps complete F/FL source frames with a closed
+per-file ASCII word dictionary. It requires `-CompactAddedFiles`,
+`-CompactIndentation` and `-CompactSourceFrames`, in local or PR mode. Canonical
+`@N` references expand before the older frame/line layers; literal marker collisions
+retain the entire previous frame. Words and source-line cores share the existing
+65536-entry / 4194304-unit dictionary limits. Both byte and scalar prompt caps,
+source identities, history, defaults and older protocol text remain unchanged.
+Its separate protocol and immutable hash are included in each opted-in request.
+
+### Verified duplicate controlling-spec references (local mode, opt-in)
+
+`invoke-codex.ps1 -VerifiedReferenceFile <json>` can represent one complete added
+spec body by reference to its identical complete body already embedded in the
+approved trusted context. It does not summarize or remove unique material.
+This option is local-mode only and requires an explicit approved manifest:
+
+```json
+{
+  "version": 1,
+  "base_oid": "<full original base commit>",
+  "head_sha": "<full finished head commit>",
+  "entries": [{
+    "path": "docs/superpowers/specs/<approved-spec>.md",
+    "blob": "<full approved Git blob SHA-1>",
+    "normalized_sha256": "<SHA-256 of complete UTF-8 LF body>"
+  }]
+}
+```
+
+The wrapper verifies that the path is absent at the base and bound to that blob
+at the head; the diff is one complete added-file hunk; its reconstructed bytes
+hash to the blob and approved SHA-256; and the complete body occurs exactly once
+after the trusted-context boundary. It preserves the file headers, mode, index
+and hunk header, and tells the reviewer to review the embedded body as both
+control and added artifact. Every other diff section remains identical after
+CRLF-to-LF normalization. Standalone CRs are rejected. Carry-over content and
+the preamble retain every line, with only CRLF normalization. Existing round,
+attempt, binary, harness and immutable-verdict rules still apply.
+
+Immutable attempt metadata includes the original and rendered diff hashes,
+manifest hash, original preamble hash, every section's header/hunks and original
+and rendered hashes, reference identity, and the final payload hash. Invalid
+references refuse before CLI discovery or attempt allocation. The existing
+byte/character limits and usage gate cannot be overridden by this option.
+
+With no bound capacity profile, this opt-in route probes both the pinned CLI's
+refreshed catalog and its bundled catalog. The bundled probe uses a unique empty
+CODEX_HOME without credential copies or ambient user configuration. Both must
+identify the pinned model and agree on context window and effective percentage;
+unavailable/malformed evidence or disagreement refuses with exit 12. This is
+deliberately conservative: catalogs are capacity evidence, not a token count or
+proof that the actual request will fit. Existing modes without the option retain
+their prior usage policy.
+
+On agreement the acceptance ceiling is the smaller of the existing 659,500 and
+`floor(0.75 * floor(context_window * effective_percent / 100)) - 128000`.
+The completed request's own input-token accounting must meet it before any
+canonical verdict is accepted. The output reserve and 25% headroom are unchanged.
+
+The user-approved bound profile (2026-10-14) resolves that ambiguity explicitly.
+Machine-local `gauntlet-review/capacity-profile.json` identifies a frozen unchanged
+account catalog by absolute path and SHA-256. Its model entry retains default
+500,000, maximum 872,000 and 95% effective capacity. Every sealed invocation adds
+`-c model_catalog_json="<snapshot>" -c model_context_window=872000`. Both arguments,
+the snapshot hash and descriptor hash are bound into the full invocation audit
+and certification profile. No catalog limit is invented or raised.
+
+`tests/live/live-context-capacity.ps1` runs a small controlled fixture under the
+exact sealed profile and records the runtime telemetry's
+`model_context_window_effective=828400`, separately from the requested 872,000.
+Machine-local `capacity-runtime-proof.json` binds the replacement executable,
+catalog, invocation profile, fixture/library producer hashes, invocation audit
+and sanitized diagnostic receipt. Changed/missing proof or catalog refuses
+certification and invocation. Profile, proof and catalog read leases prevent
+rewriting those files during Windows model execution; hashes are rechecked.
+
+The resulting acceptance ceiling is `floor(828400 * .75) - 128000 = 493300`
+input tokens. The output reserve and 25% headroom are unchanged. Request byte and
+character caps remain independent, and the completed request's own exact input
+usage must satisfy this ceiling before a canonical verdict can be accepted.
+The actual complete prompt's token count is not inferred from its byte length.
+The new CLI/profile/catalog must pass calibration and both live gates before a
+coordinated install. The coordinator owns those shared operations.
+
 Gauntlet provides two reusable [Claude Code](https://claude.ai/code) skills that ask
 OpenAI Codex to act as an independent reviewer:
 
@@ -36,7 +163,7 @@ saying `skip codex review`.
 
 - Windows and PowerShell 7 (`pwsh`).
 - Claude Code.
-- OpenAI Codex CLI with access to `gpt-6-sol` and an authenticated Codex session.
+- OpenAI Codex CLI with access to `gpt-6.1-sol` and an authenticated Codex session.
 - Git.
 - Permission to clone this private repository.
 

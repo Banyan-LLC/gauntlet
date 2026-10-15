@@ -1,5 +1,9 @@
 . "$PSScriptRoot\helpers.ps1"
 . "$PSScriptRoot\..\gauntlet-review\scripts\lib.ps1"
+# This legacy suite builds unbound synthetic skill trees and fake CLIs. Keep
+# its in-process helpers on that same explicit fixture policy. Bound profiles
+# and their audit/hash contracts are exercised by test-bound-profile.ps1.
+function Get-BoundReviewProfile { param([string]$SkillRoot) return $null }
 # Run the fake Codex through its .ps1 entry point, never shim.cmd. Norton 360 (seen 2026-09)
 # creates an empty _norton_ directory in the working directory of any cmd.exe started with neither
 # TMP nor TEMP set, which is exactly the hermetic child env Invoke-CodexProcess builds. A
@@ -164,7 +168,7 @@ Assert-True ((Get-InvocationProfileHash -DisableSet $hashDisable -Effort 'low') 
 $savedNewCodexArgsForHash = ${function:New-CodexArgs}
 try {
     ${function:New-CodexArgs} = {
-        param($HarnessDir, $SchemaPath, $VerdictPath, $DisableSet, $Model = 'gpt-6-sol', $Effort = 'xhigh')
+        param($HarnessDir, $SchemaPath, $VerdictPath, $DisableSet, $Model = 'gpt-6.1-sol', $Effort = 'xhigh')
         @('FIXED','ARRAY','FOR','HASH','TEST')
     }
     $hFixed = Get-InvocationProfileHash -DisableSet @('irrelevant-under-the-shadow')
@@ -184,7 +188,7 @@ try {
 $savedNewCodexArgsForEphemeral = ${function:New-CodexArgs}
 try {
     ${function:New-CodexArgs} = {
-        param($HarnessDir, $SchemaPath, $VerdictPath, $DisableSet, $Model = 'gpt-6-sol', $Effort = 'xhigh')
+        param($HarnessDir, $SchemaPath, $VerdictPath, $DisableSet, $Model = 'gpt-6.1-sol', $Effort = 'xhigh')
         # Identical to the real builder in lib.ps1 except --ephemeral is OMITTED.
         $a = [System.Collections.Generic.List[string]]::new()
         $a.Add('exec')
@@ -359,7 +363,7 @@ function New-ValidPremisesHashtable {
         cli_path = $pin.Path
         schema_sha256 = $premisesSchemaSha
         agents_md_sha256 = $premisesAgentsSha
-        model = 'gpt-6-sol'
+        model = 'gpt-6.1-sol'
         invocation_profile_sha256 = $premisesProfileHash
         # Binding authorization to live evidence (see task-14-report.md): a manifest also needs
         # proof a live gate actually passed against the real API, fingerprinted to the stack it
@@ -718,7 +722,7 @@ Assert-True (-not $installedThrew) "Get-WrapperFingerprint succeeds against an i
 Assert-True ($installedWrapperFp -match '^[0-9a-f]{64}$') "installed-tree wrapper fingerprint is lowercase hex SHA-256"
 
 function New-InstalledManifest([hashtable]$LiveEvidence) {
-    @{ version=1; model='gpt-6-sol'
+    @{ version=1; model='gpt-6.1-sol'
        cli_path=$pin.Path; cli_sha256=$pin.Sha256; cli_version=$pin.Version
        schema_sha256=$premisesSchemaSha; agents_md_sha256=$premisesAgentsSha
        invocation_profile_sha256=$premisesProfileHash; recorded_utc=(Get-Date -AsUTC -Format o)
@@ -839,7 +843,7 @@ Copy-Item "$PSScriptRoot\live\live-schema-gate.ps1" "$partialRoot\tests\live\liv
 # other two present: a broken/partial dev tree, never a genuinely (wholly-absent) installed one.
 $partialSkillRoot = "$partialRoot\gauntlet-review"
 $partialWrapperFp = Get-WrapperFingerprint -SkillRoot $partialSkillRoot
-(@{ version=1; model='gpt-6-sol'
+(@{ version=1; model='gpt-6.1-sol'
     cli_path=$pin.Path; cli_sha256=$pin.Sha256; cli_version=$pin.Version
     schema_sha256=$premisesSchemaSha; agents_md_sha256=$premisesAgentsSha
     invocation_profile_sha256=$premisesProfileHash; recorded_utc=(Get-Date -AsUTC -Format o)
@@ -875,6 +879,11 @@ $copyRoot = Join-Path $tmp 'entry-skillroot'
 New-Item -ItemType Directory -Force $copyRoot | Out-Null
 Copy-Item -Recurse "$PSScriptRoot\..\gauntlet-review" $copyRoot
 $copySkillRoot = Join-Path $copyRoot 'gauntlet-review'
+# Synthetic fake CLI fixtures intentionally exercise the unbound legacy stack.
+foreach ($machineFile in @('capacity-profile.json','capacity-runtime-proof.json')) {
+    $fixtureFile = Join-Path $copySkillRoot $machineFile
+    if (Test-Path -LiteralPath $fixtureFile) { Remove-Item -LiteralPath $fixtureFile }
+}
 # Get-GateFingerprint (FINDING 2) resolves its fixed file list relative to -SkillRoot's PARENT --
 # i.e. as siblings of gauntlet-review/, matching this repo's real dev-repo layout (Get-WrapperFingerprint
 # no longer needs this at all -- it resolves entirely under -SkillRoot itself, see the P1 fix). The
@@ -932,7 +941,7 @@ function Set-TestManifest([string]$ShimPath) {
            schema_sha256=$schemaSha; agents_md_sha256=$agentsSha; invocation_profile_sha256=$profileHash
            wrapper_fingerprint=$wrapperFp; gate_fingerprint=$gateFp }
     }
-    @{ version=1; model='gpt-6-sol'
+    @{ version=1; model='gpt-6.1-sol'
        cli_path=$probe.Path; cli_sha256=$probe.Sha256; cli_version=$probe.Version
        schema_sha256=$schemaSha
        agents_md_sha256=$agentsSha
@@ -951,6 +960,10 @@ Assert-Eq $LASTEXITCODE 0 "round 1 ok"
 Assert-True (Test-Path "$stateDir\round-1-verdict.json") "canonical normalized verdict written"
 Assert-True (Test-Path "$stateDir\round-1-attempt-1-verdict.raw.json") "attempt-scoped raw verdict"
 Assert-True (Test-Path "$stateDir\round-1-attempt-1-meta.json") "attempt-scoped immutable meta"
+Assert-True (Test-Path "$stateDir\round-1-attempt-1-process.json") "accepted fake review retains its process retirement receipt"
+$acceptedProcess = Get-Content -Raw "$stateDir\round-1-attempt-1-process.json" | ConvertFrom-Json
+Assert-True ($acceptedProcess.ProcessTreeRetired -is [bool] -and $acceptedProcess.ProcessTreeRetired) "accepted production-path fake review proves owned process-tree retirement"
+Assert-Eq $acceptedProcess.ExitCode 0 "accepted process receipt records clean exit"
 Assert-True (Test-Path "$stateDir\round-1-attempt-1-events.jsonl") "attempt-scoped event stream"
 Assert-True (Test-Path "$stateDir\cli-pin.json") "pin written on round 1"
 $m1 = Get-Content -Raw "$stateDir\round-1-attempt-1-meta.json" | ConvertFrom-Json
