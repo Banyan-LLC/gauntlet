@@ -23,18 +23,19 @@ try {
     Fixture-Git @('-c','core.autocrlf=false','add','src'); Fixture-Git @('-c','user.name=geoffroth','-c','user.email=test@example.invalid','commit','-q','-m','head')
     $head=(Fixture-Git @('rev-parse','HEAD')).Trim();$preamble=Join-Path $root 'preamble.txt';[IO.File]::WriteAllText($preamble,'Review complete input.')
     $missing=Join-Path $root 'absent-cli.exe'
-    function Run([string]$Name,[string[]]$Flags,[string]$Mode='local',[long]$Budget=1048576) {
+    function Run([string]$Name,[string[]]$Flags,[string]$Mode='local',[long]$Budget=1048576,[ValidateRange(1,120)][int]$TimeoutSec=60) {
         $state=Join-Path $root $Name
         $arguments=@('-NoProfile','-File',$invoke,'-Mode',$Mode,'-PromptFile',$preamble,'-StateDir',$state,'-Round','1','-RepoRoot',$root,'-BaseOid',$base,'-HeadSha',$head,'-BudgetBytes',$Budget.ToString([Globalization.CultureInfo]::InvariantCulture),'-CliPathOverride',$missing)+$Flags
         if($Mode -eq 'doc'){$arguments+=@('-ArtifactPath','fixture.md','-ArtifactCommit',$head)}
-        $r=Invoke-BoundedProcess -FileName ([Environment]::ProcessPath) -ArgList $arguments -TimeoutSec 60 -RequireProcessTreeRetirement
+        $r=Invoke-BoundedProcess -FileName ([Environment]::ProcessPath) -ArgList $arguments -TimeoutSec $TimeoutSec -RequireProcessTreeRetirement
         Assert-True (-not $r.StartFailed -and -not $r.TimedOut -and $r.ProcessTreeRetired) "$Name bounded completion"
         Assert-Eq @(Get-ChildItem $state -Recurse -File -ErrorAction SilentlyContinue | Where-Object Name -match 'attempt|meta|cli-pin').Count 0 "$Name no attempt allocated"
         Assert-True (-not($r.Stdout+$r.Stderr).Contains($private)) "$Name no source in diagnostics"
         [pscustomobject]@{Run=$r;State=$state}
     }
     $plain=Run plain @('-CompactAddedFiles');Assert-Eq $plain.Run.ExitCode 10 'literal complete payload over fixed cap'
-    $encoded=Run encoded @('-CompactAddedFiles','-CompactRepeatedLines');Assert-Eq $encoded.Run.ExitCode 12 'encoded complete payload reaches deliberately absent CLI'
+    # Give the large complete payload finite composition and retirement headroom.
+    $encoded=Run encoded @('-CompactAddedFiles','-CompactRepeatedLines') -TimeoutSec 120;Assert-Eq $encoded.Run.ExitCode 12 'encoded complete payload reaches deliberately absent CLI'
     $reason=(Get-Content -Raw (Join-Path $encoded.State 'state.json')|ConvertFrom-Json).failure_reason
     Assert-True ($reason -match '^CLI probe:') 'both exact full-prompt caps passed before CLI'
     $dependency=Run dependency @('-CompactRepeatedLines');Assert-Eq $dependency.Run.ExitCode 12 'source-line framing requires compact composition'
@@ -70,7 +71,9 @@ try {
     Fixture-Git @('-c','core.autocrlf=false','add','src/unique.kt')
     Fixture-Git @('-c','user.name=geoffroth','-c','user.email=test@example.invalid','commit','-q','-m','unique over-cap source')
     $head=(Fixture-Git @('rev-parse','HEAD')).Trim()
-    $raised=Run -Name raised -Flags @('-CompactAddedFiles','-CompactRepeatedLines') -Budget 1048577
+    # Full composition and process retirement can exceed the default test deadline.
+    # Keep this oversized negative fixture finite without changing production caps.
+    $raised=Run -Name raised -Flags @('-CompactAddedFiles','-CompactRepeatedLines') -Budget 1048577 -TimeoutSec 120
     Assert-Eq $raised.Run.ExitCode 10 'encoded complete payload still cannot exceed the unchanged cap'
 } finally {
     $resolved=[IO.Path]::GetFullPath($root);$temp=[IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\','/')+[IO.Path]::DirectorySeparatorChar

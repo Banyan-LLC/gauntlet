@@ -74,7 +74,8 @@ try {
         [string]$Mode = 'local',
         [long]$Budget = 1048576,
         [int]$Round = 1,
-        [switch]$OmitProvenance
+        [switch]$OmitProvenance,
+        [ValidateRange(1,120)][int]$TimeoutSec = 60
     ) {
         $state = Join-Path $root $Name
         $arguments = @(
@@ -90,7 +91,7 @@ try {
         $timer = [Diagnostics.Stopwatch]::StartNew()
         $script:SourceFrameProcessPending = $true
         try {
-            $run = Invoke-BoundedProcess -FileName ([Environment]::ProcessPath) -ArgList ($arguments + $Flags) -TimeoutSec 60 -RequireProcessTreeRetirement
+            $run = Invoke-BoundedProcess -FileName ([Environment]::ProcessPath) -ArgList ($arguments + $Flags) -TimeoutSec $TimeoutSec -RequireProcessTreeRetirement
         } catch {
             $timer.Stop()
             Write-Host "Run metadata: name=$Name; elapsed_ms=$($timer.ElapsedMilliseconds); exception_type=$($_.Exception.GetType().FullName); retirement=unknown"
@@ -349,7 +350,9 @@ try {
     Fixture-Git @('-c', 'core.autocrlf=false', 'add', 'src/unique.kt')
     Fixture-Git @('-c', 'user.name=geoffroth', '-c', 'user.email=test@example.invalid', 'commit', '-q', '-m', 'unique over-cap source')
     $head = (Fixture-Git @('rev-parse', 'HEAD')).Trim()
-    $raised = Run -Name raised -Flags $allFlags -Budget 1048577
+    # Full composition and process retirement can exceed the default test deadline.
+    # Keep this oversized negative fixture finite without changing production caps.
+    $raised = Run -Name raised -Flags $allFlags -Budget 1048577 -TimeoutSec 120
     Assert-Eq $raised.Run.ExitCode 10 'actual over-cap five-flag composition remains refused with raised budget'
 } finally {
     $resolved = [IO.Path]::GetFullPath($root)
