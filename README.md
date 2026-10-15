@@ -130,6 +130,11 @@ on a local fixed drive, outside the credential tree. It creates a fresh `failed-
 child there with access restricted to the current Windows user. Select an artifact location you
 intend to retain before starting any live call.
 
+The computer-use positive control requests one read-only screenshot or screen-state call.
+Obtain any required screen-access authorization before running it. It forbids clicks, typing,
+navigation and application launches, and asks the model not to transcribe screen contents.
+Native dispatch logs contain only server/tool names and event type, never arguments or images.
+
 ```powershell
 pwsh -File .\gauntlet-review\scripts\calibrate-premises.ps1
 pwsh -File .\tests\live\live-schema-gate.ps1
@@ -359,10 +364,11 @@ Every CLI feature is disabled unless explicitly allowlisted, so a feature introd
 CLI version is denied by default.
 
 The live security battery requires independent positive, hermetic-negative and pairwise-isolation
-controls for shell, web, MCP, apps, plugins and computer-use. Skill-search and subagent spawning
-remain configured off without independently observable controls. This corrects the older five-class
-claim: newer CLIs expose a distinct computer-use event. Each selected stack must pass all six
-controls before certification. See [`docs/design.md`](docs/design.md) for the historical evidence.
+controls for shell, web, MCP, apps and plugins. Computer-use, skill-search and subagent spawning
+remain configured off without independent control proof on the headless stack. A generic MCP
+server event without tool identity cannot promote computer-use to a proved class. Every narrowed
+control still runs and any novel event fails certification. See [`docs/design.md`](docs/design.md)
+and the [current evidence correction](docs/build-log/2026-10-14-live-review-compatibility.md).
 
 Owned security-profile cleanup has one finite 60-second deadline per attempt; schema and empty
 harness cleanup retain their 10-second limits. A failed attempt retains ownership and blocks

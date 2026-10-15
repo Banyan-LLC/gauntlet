@@ -264,12 +264,16 @@ Defaults live in the orchestrator SKILL.md: author `geoffroth`, reviewer `Banyan
 
 ## Live compatibility correction (2026-10-14)
 
-The current security battery requires six independently observable classes: shell, web,
-MCP, apps, plugins and computer-use. This supersedes the older five-class requirement
-above: newer CLIs expose a distinct computer-use event. Skill-search and subagent
-spawning remain narrowed. Every required class must fire positively, remain absent
-under the canonical hermetic invocation, and pass pairwise isolation; an extra class
-is never ignored to make certification pass.
+The current security battery preserves five independently proved classes: shell, web,
+MCP, apps and plugins. Computer-use, skill-search and subagent spawning remain configured
+off without independent control proof. A provisional computer-use promotion was withdrawn:
+the earlier generic MCP server event lacked tool identity, and repeated headless controls
+did not establish a genuine invocation. The prompt now requires a currently registered
+entrypoint instead of guessed skill namespaces. No novel-event exclusion was added;
+every narrowed control still runs and any novel event fails. Each required class still
+needs positive, hermetic-negative and pairwise-isolation proof. Debug prompt-input is not
+a complete tool roster and cannot certify provider absence. Source and live evidence are
+recorded in the dated build report below.
 
 Security setup needs an owned directory boundary, not synthetic Git metadata or a
 commit identity. Security-profile cleanup uses one 60-second monotonic deadline per

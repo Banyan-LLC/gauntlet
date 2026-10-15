@@ -20,9 +20,13 @@ function Read-CapabilityDeclaration([string]$Name) {
 $required=@(Read-CapabilityDeclaration requiredClasses)
 $narrowed=@(Read-CapabilityDeclaration narrowedClasses)
 $master=@(Read-CapabilityDeclaration masterClassUniverse)
-Assert-True ($required -contains 'computer_use') 'observable computer use requires positive and hermetic isolation proofs'
-Assert-True ($narrowed -notcontains 'computer_use') 'observable computer use is not treated as an unobservable capability'
-Assert-Eq (($required | Sort-Object) -join ',') 'apps,computer_use,mcp,plugins,shell,web' 'six independently observable classes are required'
-Assert-Eq (($narrowed | Sort-Object) -join ',') 'skills,subagents' 'only genuinely unobservable classes remain narrowed'
+Assert-True ($required -notcontains 'computer_use') 'unproved headless computer use cannot be claimed as independently verified'
+Assert-True ($narrowed -contains 'computer_use') 'computer use remains explicitly configured off without independent proof'
+Assert-Eq (($required | Sort-Object) -join ',') 'apps,mcp,plugins,shell,web' 'the five independently proved classes remain required'
+Assert-Eq (($narrowed | Sort-Object) -join ',') 'computer_use,skills,subagents' 'all three independent-proof limitations remain explicit'
 Assert-Eq ((@($required)+@($narrowed) | Sort-Object -Unique) -join ',') (($master | Sort-Object) -join ',') 'the independent complete capability universe is preserved'
+. "$PSScriptRoot/../gauntlet-review/scripts/lib.ps1"
+$disabled=@(Get-DisableSet -FeatureNames @('computer_use','code_mode_host','shell_tool','enable_request_compression'))
+Assert-True ($disabled -contains 'computer_use') 'canonical default-deny still disables computer use'
+Assert-True ($disabled -contains 'code_mode_host') 'canonical default-deny still disables the code-mode host'
 Write-TestResult

@@ -872,8 +872,11 @@ try {
     #    makes one observable the battery goes red -- "promote this to a control-proven class."
     # An exhaustiveness assertion (below) requires the two to jointly cover every claimed class, so
     # narrowing can never quietly forget a capability -- it can only MOVE one between the two lists.
-    Set-Variable -Name requiredClasses -Option Constant -Value ([string[]]@('shell','web','mcp','apps','plugins','computer_use'))
-    Set-Variable -Name narrowedClasses -Option Constant -Value ([string[]]@('skills','subagents'))
+    # A generic server=codex event is not independently identified computer-use proof.
+    # Current isolated headless controls expose no genuine computer-use entrypoint. Keep
+    # the approved five-class claim; any novel event in a narrowed control still fails below.
+    Set-Variable -Name requiredClasses -Option Constant -Value ([string[]]@('shell','web','mcp','apps','plugins'))
+    Set-Variable -Name narrowedClasses -Option Constant -Value ([string[]]@('computer_use','skills','subagents'))
     Set-Variable -Name allClaimedClasses -Option Constant -Value ([string[]](@($requiredClasses) + @($narrowedClasses) | Sort-Object -Unique))
     # shell/file-read are ONE class here (CLI documents no file-read surface independent of the
     # shell tool); plugins and skills are SEPARATE (feature names `plugins` vs `skill_search`).
@@ -1167,6 +1170,21 @@ args = ['-NoProfile', '-File', '$mcpScript']
             # evidence a security battery must not hide. $usableOk itself is still needed below,
             # for whether the control counts as having genuinely fired.
             $sig = @(Assert-NovelSignatures -Stdout $res.Stdout -Name "$($c.Name) positive control event stream")
+            if ($c.Name -eq 'computer_use' -and $usableOk) {
+                # Native dispatch metadata lets the operator distinguish an actual computer
+                # invocation from discovery alone. Never print arguments or screen contents.
+                foreach ($line in ($res.Stdout -split "`r?`n")) {
+                    if (-not $line.Trim()) { continue }
+                    $event=$line | ConvertFrom-Json -ErrorAction Stop
+                    if ((Get-PropertyNames $event) -contains 'item' -and $event.item -and
+                        (Get-PropertyNames $event.item) -contains 'type' -and $event.item.type -eq 'mcp_tool_call') {
+                        $item=$event.item
+                        $server=if ((Get-PropertyNames $item) -contains 'server') { [string]$item.server } else { '' }
+                        $tool=if ((Get-PropertyNames $item) -contains 'tool') { [string]$item.tool } else { '' }
+                        Write-Host ('computer_use native dispatch: '+(@{Server=$server;Tool=$tool;Event=[string]$event.type} | ConvertTo-Json -Compress))
+                    }
+                }
+            }
             $controlSignatures[$c.Name] = $sig
             $fired = $usableOk -and ($sig.Count -gt 0)
             if ($narrowedClasses -contains $c.Name) {
