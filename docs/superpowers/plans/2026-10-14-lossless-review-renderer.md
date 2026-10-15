@@ -63,3 +63,27 @@ in both prompt limits. Run focused and complete offline tests, one scoped source
 review, actual hermetic-reader compatibility cases, source-bound runtime proof
 and schema/security certification. Back up and install only the verified source;
 then preflight the complete committed SID payload before allocating round 5.
+
+## Continuation: explicit repeated-source-line framing
+
+The verified SID head `6264848e9d3e71206c3e538e5b4421df1fb7a7a6` has 932 passing
+required tests and 14 packaged CLI checks. Its full round-6 request is 1085198
+bytes and 1084767 scalars, beyond the unchanged 1048576 caps. No attempt ran.
+Preserve all 200 sections, 161 complete additions, 37 canonical findings and the
+49 immutable prior state files, original base and remaining review budgets.
+
+Add only explicit `-CompactRepeatedLines`, requiring verified compact source
+composition in local and PR modes. Label first literal repeated source cores as
+`~N=TEXT`; use backward `~N~` references with each row's original leading prefix.
+Keep every unique literal visible. Count frames and dictionary boundaries;
+fall back wholly on source marker collisions and roll back non-shortening
+candidates. Enforce 65536 dictionary entries, 4194304 retained UTF-16 units,
+1048576 source-body units and 4194304 aggregate reconstructed diff units before
+append. Preserve all earlier protocols and output when disabled.
+
+The throwaway explicit-label prototype restores every section exactly and
+predicts 1024966 complete bytes, including a new protocol. This is not dispatch
+authority. Execute focused/full offline tests, one scoped source review, live
+schema/security/actual-reader/capacity certification, source equality and one
+backed-up installation. Then measure the actual complete installed payload and
+resume original round 6. Do not create a new SID review loop or alter its limits.

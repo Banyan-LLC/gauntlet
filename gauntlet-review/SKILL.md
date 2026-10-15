@@ -181,6 +181,29 @@ framing, expanded resource bounds, full blob/mode/index/base absence and ordered
 coverage are verified before dispatch; immutable metadata binds the additional
 protocol hash. Include that protocol in both unchanged complete-prompt limits.
 
+`-CompactRepeatedLines` independently opts into explicit source-line framing
+for the same complete added regular `src/` `.kt`, `.java` and `.asm` files, in
+local and PR modes, requiring `-CompactAddedFiles`. It composes with either other
+option. `LINES` names a prior `ADDED` body; `INDENT_LINES` names a prior `INDENT`
+body. Each seven-field header retains path/mode/index/count and adds the ordered
+dictionary start/end count. Consume exactly the declared rows, never scan body
+markers. After the exact leading ASCII space/tab prefix, `~N=TEXT` declares the
+visible literal core and `~N~` references it. IDs are explicit, canonical,
+backward-only, unique and bounded; references preserve the current prefix.
+
+Only repeated cores of at least 16 UTF-16 units qualify. A source containing a
+reserved literal core beginning `~[0-9]+=` or exactly `~[0-9]+~` falls back as a
+whole file. The dictionary owns at most 65536 cores and 4194304 UTF-16 units;
+lookahead uses the same bounds. Decoded source bodies are at most 1048576 units,
+and aggregate reconstructed diff at most 4194304. Check every bound before
+append. Validate contiguous declarations, duplicate/forward/noncanonical IDs,
+ordered start/end/final counts, full source identities and both restoration
+layers. A non-shortening candidate rolls back its tentative declarations and
+keeps the entire old frame. Current findings and history remain complete; the
+live ledger never enters the source dictionary. Include the separate protocol
+in both fixed prompt limits and bind its hash in immutable attempt metadata.
+Disabled options retain the exact old format and coverage shape.
+
 `-CompactReviewMetadata` is an additional opt-in layer in both local and PR
 modes and requires `-CompactAddedFiles`. Only complete added regular JSON/JSONL
 files under `docs/superpowers/reviews/` qualify. An unquoted `@N@` in a

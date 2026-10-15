@@ -49,7 +49,7 @@ try {
         $range=Get-CompactReviewGitRange -RepoRoot $root -BaseOid $base -HeadSha $head -Mode $mode
         & {
             $Mode=$mode;$RepoRoot=$root;$canonBase=$base;$canonHead=$head;$localDiff=$range.Diff;$promptBody='Review complete input.'
-            $CompactAddedFiles=$true;$CompactIndentation=$true;$CompactReviewMetadata=$true;$VerifiedReferenceFile=$null
+            $CompactAddedFiles=$true;$CompactRepeatedLines=$false;$CompactIndentation=$true;$CompactReviewMetadata=$true;$VerifiedReferenceFile=$null
             $prInput=if($mode -eq 'pr'){[pscustomobject]@{Text="verified PR metadata`n"}}else{$null}
             . ([scriptblock]::Create($composition))
             Assert-True ((Test-PromptCharacterLimit -PromptText $promptBody).Ok) "$mode exact scalar gate"

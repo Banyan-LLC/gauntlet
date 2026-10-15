@@ -5,7 +5,7 @@ Historical review metadata can additionally use `-CompactReviewMetadata` with
 retain every unique raw string token and every other character; duplicate tokens
 use explicit backward references. The certified decoder reconstructs each full
 original section exactly and verifies full Git identities and ordered coverage.
-Code, tests and the live carry-over ledger remain literal. Both unchanged 1 MiB
+Code, tests and the live carry-over ledger never enter that metadata table. Both unchanged 1 MiB
 request limits and every existing review/capacity gate still apply. See
 `gauntlet-review/SKILL.md` for framing and bounds.
 
@@ -16,6 +16,22 @@ character and line, including whitespace in raw strings. Files with literal
 leading tabs fall back unchanged. All other source/test text remains directly
 readable; history, limits and publication gates are preserved. This option also
 requires `-CompactAddedFiles` and is available in local and PR modes.
+
+`-CompactRepeatedLines` is a separate opt-in for complete added regular source
+files under `src/`, requiring `-CompactAddedFiles` in local or PR mode. It may be
+combined with either indentation or historical metadata framing. A visible
+`~N=TEXT` labels the first literal source core; `~N~` reuses that exact core with
+the current row's leading spaces/tabs. Full original files and unified sections
+reconstruct exactly, including raw strings, trailing whitespace and blank rows.
+Reserved literal marker rows cause whole-file fallback. Existing-file hunks,
+other formats, historical metadata rules and the live ledger are unchanged.
+
+The source dictionary is limited to 65536 entries and 4194304 UTF-16 units.
+Decoded source bodies remain limited to 1048576 units, and total reconstructed
+diff to 4194304 units. Bounds are checked before appending. Each encoded frame
+must strictly shorten its prior representation; disabled options preserve the
+old wire format. Both complete request caps and all freshness/capacity gates
+remain unchanged. The additional protocol hash is bound in attempt metadata.
 
 ### Verified duplicate controlling-spec references (local mode, opt-in)
 
