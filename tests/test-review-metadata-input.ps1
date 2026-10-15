@@ -94,7 +94,7 @@ try {
         & {
             $Mode=$mode;$RepoRoot=$root;$canonBase=$base;$canonHead=$head
             $localDiff=$range.Diff;$promptBody='Review the complete verified range.'
-            $VerifiedReferenceFile=$null;$CompactAddedFiles=$true;$CompactReviewMetadata=$true;$CompactRepeatedLines=$false;$CompactIndentation=$false
+            $VerifiedReferenceFile=$null;$CompactAddedFiles=$true;$CompactReviewMetadata=$true;$CompactSourceFrames=$false;$CompactRepeatedLines=$false;$CompactIndentation=$false
             $prInput=if($mode -eq 'pr'){[pscustomobject]@{Text="offline verified PR context`n"}}else{$null}
             $referenceCoverage=$null;$compactCoverage=$null;$metadataCoverage=$null
             . ([scriptblock]::Create($composition.Extent.Text))

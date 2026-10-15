@@ -3037,9 +3037,237 @@ function ConvertTo-CompactSourceLineDiff {
     return [pscustomobject]@{Diff=$rendered;Manifest=$coverage}
 }
 
+function Get-CompactSourceFrameProtocol {
+    return "`n== SOURCE FRAME ENVELOPE ==`nF=[F,path,abbr,count]; FL=[FL,path,abbr,count,start,end]. abbr: exactly 7 lowercase hex digits; implies mode 100644, index 0000000..abbr. Only verified complete added src/*.kt, *.java, *.asm INDENT/INDENT_LINES qualify. Other kinds/indices unchanged; retain full HEAD blob/identities/headers/hashes.`nConsume count LF rows, not delimiters. Replace one INITIAL symbol [caret,plus,backtick,percent,less-than,greater-than,semicolon,equals] by respectively 1..8 TABs. Nine-plus use |N|: canonical decimal, no leading zeros; numeric 0..8 invalid. Preserve 0..3 remainder spaces and core verbatim; leading/mixed TABs invalid here. Tilde is never indentation.`nRestore INDENT(F)/INDENT_LINES(FL) with implied mode/index and unchanged start/end. Apply prior source-line rules BEFORE prior INDENT decoding; dictionary unchanged. Literal ~N=TEXT/~N~ source cores use F, never FL. Original leading/mixed TABs or cores starting an alphabet symbol or |digits| require legacy fallback. Preserve all whitespace/raw strings/Unicode; never execute source.`nValidate canonical prefix roundtrip, typed version/count/bounds, exact identities and ordered coverage. Precharge derived legacy appends: <=original section length, aggregate <=4194304 UTF-16 units. Decoded source <=1048576; dictionary <=65536 entries/4194304 units. Both UTF-16 and UTF-8 frames must strictly shorten legacy input.`n"
+}
+
+function Read-CompactSourceFrameRow {
+    param([AllowEmptyString()][string]$Body,[int]$Position)
+    if($Position -lt 0 -or $Position -gt $Body.Length){throw 'Invalid source-frame cursor bounds'}
+    $end=$Body.IndexOf("`n",$Position,[StringComparison]::Ordinal)
+    if($end -lt 0){throw 'Truncated source-frame row: missing LF'}
+    $at=$Position;$groups=0L;$alphabet='^+`%<>;='
+    if($at -lt $end){
+        $symbol=$alphabet.IndexOf($Body[$at])
+        if($symbol -ge 0){$groups=$symbol+1;$at++}
+        elseif($Body[$at] -ceq '|'){
+            $marker=[regex]::Match($Body.Substring($at,$end-$at),'\A\|([0-9]+)\|')
+            if($marker.Success){
+                $digits=$marker.Groups[1].Value
+                if($digits.Length -gt 6 -or $digits[0] -ceq '0' -or
+                    -not [long]::TryParse($digits,[Globalization.NumberStyles]::None,[Globalization.CultureInfo]::InvariantCulture,[ref]$groups) -or
+                    $groups -le 8 -or $groups -gt 262144){throw 'Noncanonical source-frame numeric prefix bounds'}
+                $at+=$marker.Length
+            }
+        }
+    }
+    $remainderStart=$at
+    while($at -lt $end -and $Body[$at] -ceq ' '){$at++}
+    if($at-$remainderStart -gt 3 -or ($at -lt $end -and $Body[$at] -ceq "`t")){throw 'Noncanonical source-frame remainder'}
+    return [pscustomobject]@{Prefix=$Body.Substring($Position,$at-$Position);Core=$Body.Substring($at,$end-$at)
+        Next=$end+1;Groups=$groups;Remainder=$Body.Substring($remainderStart,$at-$remainderStart)}
+}
+
+function ConvertTo-CompactSourceFrameBody {
+    param([AllowEmptyString()][string]$Body,[long]$Count)
+    if($Count -le 0 -or $Count -gt $Body.Length -or $Body.Length -gt 1048576 -or $Body.Contains("`r")){throw 'Source-frame input body/count bounds exceeded'}
+    $alphabet='^+`%<>;=';$cursor=0;$fallback=$false;$out=[Text.StringBuilder]::new()
+    for($i=0L;$i -lt $Count;$i++){
+        $end=$Body.IndexOf("`n",$cursor,[StringComparison]::Ordinal)
+        if($end -lt 0){throw 'Truncated source-frame input body'}
+        $at=$cursor
+        while($at -lt $end -and $Body[$at] -ceq ' '){$at++}
+        $core=$Body.Substring($at,$end-$at)
+        if($core.Length -gt 0 -and ($core[0] -ceq "`t" -or $alphabet.IndexOf($core[0]) -ge 0 -or $core -cmatch '\A\|[0-9]+\|')){$fallback=$true}
+        $spaces=$at-$cursor;$groups=[int][math]::Floor($spaces/4);$remainder=$spaces%4
+        if($groups -gt 0){
+            if($groups -le 8){[void]$out.Append($alphabet[$groups-1])}
+            else{[void]$out.Append('|').Append($groups.ToString([Globalization.CultureInfo]::InvariantCulture)).Append('|')}
+        }
+        [void]$out.Append([char]32,$remainder).Append($core).Append("`n")
+        $cursor=$end+1
+    }
+    if($cursor -ne $Body.Length){throw 'Excess source-frame input body'}
+    if($fallback){return $null}
+    return $out.ToString()
+}
+
+function ConvertFrom-CompactSourceFrameBody {
+    param([AllowEmptyString()][string]$Body,[long]$Count,[int]$MaxDecodedLength=1048576)
+    if($MaxDecodedLength -lt 1 -or $MaxDecodedLength -gt 1048576 -or $Count -le 0 -or
+        $Count -gt $Body.Length -or $Body.Length -gt 1048576 -or $Body.Contains("`r")){throw 'Source-frame body/count budget exceeded'}
+    $out=[Text.StringBuilder]::new();$cursor=0
+    for($i=0L;$i -lt $Count;$i++){
+        $row=Read-CompactSourceFrameRow -Body $Body -Position $cursor;$cursor=$row.Next
+        $needed=4L*$row.Groups+$row.Remainder.Length+$row.Core.Length+1L
+        if($needed -gt [long]$MaxDecodedLength-$out.Length){throw 'Source-frame decoded expansion budget exceeded'}
+        [void]$out.Append([char]32,[int](4L*$row.Groups)).Append($row.Remainder).Append($row.Core).Append("`n")
+    }
+    if($cursor -ne $Body.Length){throw 'Excess source-frame body data'}
+    $text=$out.ToString();$canonical=ConvertTo-CompactSourceFrameBody -Body $text -Count $Count
+    if($null -eq $canonical -or $canonical -cne $Body){throw 'Noncanonical source-frame body or reserved original core'}
+    return $text
+}
+
+# Pure envelope helpers: never change the legacy source-line frequency or dictionary state.
+function Get-CompactSourceFrameOriginalBody {
+    param([string]$Original,$Section)
+    $header=Get-CompactReviewOriginalHeader $Section.path $Section.mode $Section.index $Section.count
+    if(-not $Original.StartsWith($header,[StringComparison]::Ordinal)){throw 'Source-frame original header mismatch'}
+    $cursor=$header.Length;$out=[Text.StringBuilder]::new()
+    for($i=0L;$i -lt $Section.count;$i++){
+        $end=$Original.IndexOf("`n",$cursor,[StringComparison]::Ordinal)
+        if($end -lt 0 -or $cursor -ge $end -or $Original[$cursor] -cne '+'){throw 'Truncated source-frame original addition'}
+        $needed=[long]($end-$cursor)
+        if($needed -gt 1048576L-$out.Length){throw 'Source-frame original body budget exceeded'}
+        [void]$out.Append($Original,$cursor+1,$end-$cursor-1).Append("`n");$cursor=$end+1
+    }
+    if($cursor -ne $Original.Length){throw 'Excess source-frame original addition'}
+    return $out.ToString()
+}
+
+function ConvertTo-CompactSourceFrameLegacyPrefixBody {
+    param([string]$Body,[long]$Count)
+    $out=[Text.StringBuilder]::new();$cursor=0;$alphabet='^+`%<>;='
+    for($i=0L;$i -lt $Count;$i++){
+        $end=$Body.IndexOf("`n",$cursor,[StringComparison]::Ordinal)
+        if($end -lt 0){throw 'Truncated legacy source-frame body'}
+        $at=$cursor
+        while($at -lt $end -and $Body[$at] -ceq "`t"){$at++}
+        $groups=$at-$cursor
+        if($groups -gt 0){
+            if($groups -le 8){[void]$out.Append($alphabet[$groups-1])}
+            else{[void]$out.Append('|').Append($groups.ToString([Globalization.CultureInfo]::InvariantCulture)).Append('|')}
+        }
+        [void]$out.Append($Body,$at,$end-$at).Append("`n");$cursor=$end+1
+    }
+    if($cursor -ne $Body.Length){throw 'Excess legacy source-frame rows'}
+    return $out.ToString()
+}
+
+function ConvertTo-CompactSourceFrameDiff {
+    param([AllowEmptyString()][string]$Diff,[Parameter(Mandatory)]$Manifest)
+    if($Manifest.PSObject.Properties['source_frame_version']){throw 'Source-frame envelope already present'}
+    $original=Restore-CompactReviewDiff -Diff $Diff -Manifest $Manifest
+    $cursor=0;$originalCursor=0;$encodedCount=0;$sections=[Collections.Generic.List[object]]::new();$out=[Text.StringBuilder]::new()
+    foreach($section in $Manifest.sections){
+        $part=$Diff.Substring($cursor,$section.rendered_length);$cursor+=$section.rendered_length
+        $originalPart=$original.Substring($originalCursor,$section.original_length);$originalCursor+=$section.original_length
+        $replacement=$part;$entry=$section
+        if($section.compact -and $section.PSObject.Properties['encoding'] -and $section.encoding -cin @('indent','indent-lines') -and
+            $section.mode -ceq '100644' -and $section.index -cmatch '\A0000000\.\.[0-9a-f]{7}\z'){
+            $source=Get-CompactSourceFrameOriginalBody -Original $originalPart -Section $section
+            $eligible=ConvertTo-CompactSourceFrameBody -Body $source -Count $section.count
+            if($null -ne $eligible){
+                $end=$part.IndexOf("`n",[StringComparison]::Ordinal)
+                $short=ConvertTo-CompactSourceFrameLegacyPrefixBody -Body $part.Substring($end+1) -Count $section.count
+                $line=$section.encoding -ceq 'indent-lines';$kind=if($line){'FL'}else{'F'}
+                $fields=@($kind,$section.path,$section.index.Substring(9),$section.count)
+                if($line){$fields+=@($section.source_line_start,$section.source_line_end)}
+                $candidate=(ConvertTo-Json -InputObject $fields -Compress)+"`n"+$short
+                if($candidate.Length -lt $part.Length -and [Text.Encoding]::UTF8.GetByteCount($candidate) -lt [Text.Encoding]::UTF8.GetByteCount($part)){
+                    $replacement=$candidate;$entry=$section.PSObject.Copy()
+                    $entry.encoding=if($line){'source-frame-lines'}else{'source-frame'}
+                    $entry.rendered_length=$candidate.Length;$entry.rendered_sha256=Get-ReviewTextHash $candidate;$encodedCount++
+                }
+            }
+        }
+        $sections.Add($entry);[void]$out.Append($replacement)
+    }
+    if($encodedCount -eq 0){return [pscustomobject]@{Diff=$Diff;Manifest=$Manifest}}
+    $rendered=$out.ToString();$coverage=$Manifest.PSObject.Copy();$coverage.sections=$sections.ToArray()
+    $coverage.rendered_sha256=Get-ReviewTextHash $rendered
+    $coverage|Add-Member -NotePropertyName source_frame_version -NotePropertyValue 1
+    if((Restore-CompactReviewDiff -Diff $rendered -Manifest $coverage) -cne $original){throw 'Source-frame reconstruction mismatch'}
+    return [pscustomobject]@{Diff=$rendered;Manifest=$coverage}
+}
+
+function Restore-CompactSourceFrameDiff {
+    param([AllowEmptyString()][string]$Diff,[Parameter(Mandatory)]$Manifest)
+    foreach($name in @('version','source_frame_version')){
+        if(-not $Manifest.PSObject.Properties[$name] -or ($Manifest.$name -isnot [int] -and $Manifest.$name -isnot [long]) -or $Manifest.$name -ne 1){throw 'Invalid source-frame manifest version'}
+    }
+    if($Manifest.base -cnotmatch '^[0-9a-f]{40}$' -or $Manifest.head -cnotmatch '^[0-9a-f]{40}$' -or
+        $Manifest.newline_normalization -cne 'CRLF to LF only'){throw 'Invalid source-frame root identity'}
+    $lf=$Diff.Replace("`r`n","`n")
+    if($lf.Contains("`r") -or (Get-ReviewTextHash $lf) -cne $Manifest.rendered_sha256){throw 'Source-frame rendered digest mismatch'}
+    $total=0L
+    foreach($section in $Manifest.sections){
+        if(($section.original_length -isnot [int] -and $section.original_length -isnot [long]) -or
+            $section.original_length -le 0 -or $section.original_length -gt 4194304L-$total){throw 'Source-frame aggregate original budget exceeded'}
+        $total+=$section.original_length
+    }
+    $derived=$Manifest.PSObject.Copy();$derived.PSObject.Properties.Remove('source_frame_version')
+    $sections=[Collections.Generic.List[object]]::new();$out=[Text.StringBuilder]::new();$cursor=0;$wrapped=0
+    foreach($section in $Manifest.sections){
+        if($section.compact -isnot [bool] -or ($section.rendered_length -isnot [int] -and $section.rendered_length -isnot [long]) -or
+            $section.rendered_length -le 0 -or $section.rendered_length -gt $lf.Length-$cursor){throw 'Invalid source-frame section length bounds'}
+        $part=$lf.Substring($cursor,$section.rendered_length);$cursor+=$section.rendered_length
+        if((Get-ReviewTextHash $part) -cne $section.rendered_sha256){throw 'Source-frame section digest mismatch'}
+        $entry=$section;$replacement=$part
+        if($section.PSObject.Properties['encoding'] -and $section.encoding -cin @('source-frame','source-frame-lines')){
+            $wrapped++
+            if(-not $section.compact -or $section.path -isnot [string] -or $section.path.Length -gt $section.original_length -or
+                -not (Test-CompactReviewPath $section.path) -or $section.path -cnotmatch '^src/.+\.(kt|java|asm)$' -or
+                $section.mode -cne '100644' -or $section.index -cnotmatch '\A0000000\.\.([0-9a-f]{7})\z' -or
+                $section.blob -cnotmatch '^[0-9a-f]{40}$' -or ($section.count -isnot [int] -and $section.count -isnot [long]) -or
+                $section.count -le 0 -or $section.count -gt 1048576){throw 'Invalid source-frame section identity/count bounds'}
+            $abbreviation=$section.index.Substring(9)
+            if(-not $section.blob.StartsWith($abbreviation,[StringComparison]::Ordinal)){throw 'Source-frame index/full blob mismatch'}
+            $line=$section.encoding -ceq 'source-frame-lines';$kind=if($line){'FL'}else{'F'}
+            $fields=@($kind,$section.path,$abbreviation,$section.count)
+            if($line){
+                foreach($name in @('source_line_start','source_line_end')){
+                    if(-not $section.PSObject.Properties[$name] -or ($section.$name -isnot [int] -and $section.$name -isnot [long]) -or
+                        $section.$name -lt 0 -or $section.$name -gt 65536){throw 'Invalid source-frame dictionary bound'}
+                }
+                $fields+=@($section.source_line_start,$section.source_line_end)
+            }
+            $end=$part.IndexOf("`n",[StringComparison]::Ordinal)
+            if($end -lt 0 -or $part.Substring(0,$end) -cne (ConvertTo-Json -InputObject $fields -Compress)){throw 'Source-frame header mismatch'}
+            $body=$part.Substring($end+1)
+            if($body.Length -gt 1048576 -or $section.count -gt $body.Length){throw 'Source-frame encoded body/count bounds'}
+            $legacyFields=@($(if($line){'INDENT_LINES'}else{'INDENT'}),$section.path,'100644',$section.index,$section.count)
+            if($line){$legacyFields+=@($section.source_line_start,$section.source_line_end)}
+            $legacyHeader=(ConvertTo-Json -InputObject $legacyFields -Compress)+"`n"
+            $remaining=[math]::Min([long]$section.original_length,4194304L-$out.Length)
+            if($legacyHeader.Length -gt $remaining){throw 'Source-frame derived header budget exceeded'}
+            $rows=[Text.StringBuilder]::new();$position=0
+            for($i=0L;$i -lt $section.count;$i++){
+                $row=Read-CompactSourceFrameRow -Body $body -Position $position;$position=$row.Next
+                $needed=[long]$row.Groups+$row.Remainder.Length+$row.Core.Length+1L
+                if($needed -gt $remaining-$legacyHeader.Length-$rows.Length -or $needed -gt 1048576L-$rows.Length){throw 'Source-frame derived append budget exceeded'}
+                [void]$rows.Append([char]9,[int]$row.Groups).Append($row.Remainder).Append($row.Core).Append("`n")
+            }
+            if($position -ne $body.Length){throw 'Excess source-frame counted rows'}
+            $legacyBody=$rows.ToString()
+            if((ConvertTo-CompactSourceFrameLegacyPrefixBody -Body $legacyBody -Count $section.count) -cne $body){throw 'Noncanonical source-frame prefix roundtrip'}
+            $replacement=$legacyHeader+$legacyBody
+            if($part.Length -ge $replacement.Length -or [Text.Encoding]::UTF8.GetByteCount($part) -ge [Text.Encoding]::UTF8.GetByteCount($replacement)){throw 'Non-shortening source-frame envelope'}
+            $entry=$section.PSObject.Copy();$entry.encoding=if($line){'indent-lines'}else{'indent'}
+            $entry.rendered_length=$replacement.Length;$entry.rendered_sha256=Get-ReviewTextHash $replacement
+        }
+        if($replacement.Length -gt $section.original_length -or $replacement.Length -gt 4194304L-$out.Length){throw 'Source-frame derived section/aggregate budget exceeded'}
+        $sections.Add($entry);[void]$out.Append($replacement)
+    }
+    if($cursor -ne $lf.Length -or $wrapped -eq 0){throw 'Source-frame complete coverage/version mismatch'}
+    $legacy=$out.ToString();$derived.sections=$sections.ToArray();$derived.rendered_sha256=Get-ReviewTextHash $legacy
+    $original=Restore-CompactReviewDiff -Diff $legacy -Manifest $derived
+    $at=0
+    foreach($section in $Manifest.sections){
+        if($section.PSObject.Properties['encoding'] -and $section.encoding -cin @('source-frame','source-frame-lines')){
+            $source=Get-CompactSourceFrameOriginalBody -Original $original.Substring($at,$section.original_length) -Section $section
+            if($null -eq (ConvertTo-CompactSourceFrameBody -Body $source -Count $section.count)){throw 'Source-frame original eligibility mismatch'}
+        }
+        $at+=$section.original_length
+    }
+    return $original
+}
+
 function ConvertTo-CompactReviewDiff {
     param([Parameter(Mandatory)][string]$RepoRoot,[Parameter(Mandatory)][string]$BaseOid,
-          [Parameter(Mandatory)][string]$HeadSha,[AllowEmptyString()][string]$Diff,[switch]$CompactIndentation,[switch]$CompactRepeatedLines)
+          [Parameter(Mandatory)][string]$HeadSha,[AllowEmptyString()][string]$Diff,[switch]$CompactIndentation,[switch]$CompactRepeatedLines,[switch]$CompactSourceFrames)
+    if($CompactSourceFrames -and -not $CompactIndentation){throw 'Source frames require compact indentation'}
     if ($BaseOid -cnotmatch '^[0-9a-f]{40}$' -or $HeadSha -cnotmatch '^[0-9a-f]{40}$') { throw 'Invalid compact base/head identity' }
     $lf=$Diff.Replace("`r`n","`n")
     if ($lf.Contains("`r")) { throw 'Standalone carriage return is unsupported' }
@@ -3142,12 +3370,17 @@ function ConvertTo-CompactReviewDiff {
     $result=[pscustomobject]@{Diff=$rendered;Manifest=[pscustomobject]@{version=1;base=$BaseOid;head=$HeadSha
         original_sha256=(Get-ReviewTextHash $lf);rendered_sha256=(Get-ReviewTextHash $rendered)
         newline_normalization='CRLF to LF only';sections=$sections.ToArray()}}
-    if($CompactRepeatedLines){return ConvertTo-CompactSourceLineDiff -Diff $result.Diff -Manifest $result.Manifest}
+    if($CompactRepeatedLines){$result=ConvertTo-CompactSourceLineDiff -Diff $result.Diff -Manifest $result.Manifest}
+    if($CompactSourceFrames){$result=ConvertTo-CompactSourceFrameDiff -Diff $result.Diff -Manifest $result.Manifest}
     return $result
 }
 
 function Restore-CompactReviewDiff {
     param([AllowEmptyString()][string]$Diff,[Parameter(Mandatory)]$Manifest)
+    if($Manifest.PSObject.Properties['source_frame_version'] -or
+        @($Manifest.sections|Where-Object {$_.PSObject.Properties['encoding'] -and $_.encoding -cin @('source-frame','source-frame-lines')}).Count -gt 0){
+        return Restore-CompactSourceFrameDiff -Diff $Diff -Manifest $Manifest
+    }
     if ($Manifest.version -cne 1 -or $Manifest.base -cnotmatch '^[0-9a-f]{40}$' -or
         $Manifest.head -cnotmatch '^[0-9a-f]{40}$' -or $Manifest.newline_normalization -cne 'CRLF to LF only') { throw 'Invalid compact manifest identity' }
     $lf=$Diff.Replace("`r`n","`n")

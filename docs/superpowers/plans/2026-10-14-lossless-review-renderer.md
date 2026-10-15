@@ -87,3 +87,24 @@ authority. Execute focused/full offline tests, one scoped source review, live
 schema/security/actual-reader/capacity certification, source equality and one
 backed-up installation. Then measure the actual complete installed payload and
 resume original round 6. Do not create a new SID review loop or alter its limits.
+
+## Continuation: complete source-frame envelope
+
+The verified d329d4809ec439965fc9e11c3e502b393579e6a5 SID candidate passed
+1121 required tests and 14 packaged CLI checks. The complete round-8 request is
+1067829 bytes and 1067384 scalars, exceeding the unchanged 1048576 caps. All
+208 sections, 169 complete additions, 44 canonical findings and 67 prior
+history/ledger files are retained; no round-8 attempt has run.
+
+Implement only the optional CompactSourceFrames envelope described in
+`docs/build-log/2026-10-15-source-frame-renderer.md`. Apply after unchanged
+source-line processing. Preserve actual seven-character index spelling, full
+Git blob/mode proof and every source character; no synthetic full-index diff.
+Keep all existing formats/defaults/protocols and all safety/review limits.
+
+Run revised red/green tests, one scoped acceptance pass, complete offline suite,
+actual old/new hermetic reader cases, runtime capacity and schema/security
+gates. Verify clean source, back up and install once, compare every installed
+file, and recompose the complete actual installed SID request before resuming
+original round 8. Preserve the refused over-budget baseline and all earlier
+receipts. No pruning, history reset, base/head shift for size, or extra attempt.

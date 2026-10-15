@@ -33,6 +33,16 @@ must strictly shorten its prior representation; disabled options preserve the
 old wire format. Both complete request caps and all freshness/capacity gates
 remain unchanged. The additional protocol hash is bound in attempt metadata.
 
+`-CompactSourceFrames` optionally wraps eligible `INDENT`/`INDENT_LINES`
+frames after the existing source-line pass. It requires both `-CompactAddedFiles`
+and `-CompactIndentation`, in local or PR mode. F/FL encode common tab-indentation
+counts and the repeated regular-file mode/index prefix once in the protocol.
+They reconstruct the actual `0000000..7hex` index spelling exactly; full HEAD
+blob/mode/base-absence proof remains unchanged. Other index spellings, literal
+leading tabs and reserved source prefixes keep legacy framing. All prior
+protocols, defaults, history and limits remain unchanged. The separate source
+frame protocol is included in the prompt and fingerprinted in attempt metadata.
+
 ### Verified duplicate controlling-spec references (local mode, opt-in)
 
 `invoke-codex.ps1 -VerifiedReferenceFile <json>` can represent one complete added

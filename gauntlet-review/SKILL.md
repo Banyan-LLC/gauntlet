@@ -204,6 +204,33 @@ live ledger never enters the source dictionary. Include the separate protocol
 in both fixed prompt limits and bind its hash in immutable attempt metadata.
 Disabled options retain the exact old format and coverage shape.
 
+`-CompactSourceFrames` is an optional outer envelope after the existing
+source-line pass, requiring `-CompactAddedFiles` and `-CompactIndentation` in
+local or PR mode. It wraps only complete regular `src/` `.kt`, `.java` and `.asm`
+INDENT/INDENT_LINES frames whose actual index is exactly `0000000..7lowerhex`.
+F has `[F,path,abbreviation,count]`; FL adds the original dictionary start/end
+counters. Both imply mode 100644 and the exact seven-zero original index.
+The full HEAD blob and original index/mode remain independently bound in the
+coverage manifest. Other index spellings retain their original representation.
+
+Unwrap each counted row's short indentation prefix into canonical leading TABs,
+restore its legacy header, then use the existing INDENT/source-line decoders.
+The ordered symbols caret, plus, backtick, percent, less-than, greater-than,
+semicolon and equals represent one through eight TABs; canonical `|N|` represents
+nine or more. Remainder spaces stay literal. Original source cores beginning
+with a reserved symbol/numeric marker, and literal leading TABs, fall back as a
+whole file. Tilde is never indentation: original tilde declaration/reference
+lookalikes stay literal in F; valid source-line forms use FL. Dictionary content
+and counters never change in this envelope.
+
+Require canonical prefix roundtrip, exact decoded source eligibility, typed
+outer metadata and header shapes, derived legacy lengths charged before append,
+all ordered hashes and full source identities. Every existing body/dictionary/
+aggregate/prompt/capacity/round/attempt limit remains unchanged. Bind the new
+Get-CompactSourceFrameProtocol hash in compact_source_frame_protocol_sha256.
+The option is disabled by default and does not alter any older protocol or
+coverage shape when disabled. Certification precedes installation and dispatch.
+
 `-CompactReviewMetadata` is an additional opt-in layer in both local and PR
 modes and requires `-CompactAddedFiles`. Only complete added regular JSON/JSONL
 files under `docs/superpowers/reviews/` qualify. An unquoted `@N@` in a
