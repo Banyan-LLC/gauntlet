@@ -597,7 +597,7 @@ if ($carryText) {
         $carryText, [Text.UTF8Encoding]::new($false))
 }
 
-$run = Invoke-CodexProcess -CliPath $cli.Path -CodexArgs $codexArgs -PromptText $prompt -HarnessDir $harness -TimeoutSec $TimeoutSec
+$run = Invoke-CodexProcess -CliPath $cli.Path -CodexArgs $codexArgs -PromptText $prompt -HarnessDir $harness -TimeoutSec $TimeoutSec -RequireProcessTreeRetirement
 try { Write-AttemptProcessResult -StateDir $StateDir -Round $Round -Attempt $attempt -Meta $meta -Run $run -PromptText $prompt }
 catch {
     Write-RoundState -StateDir $StateDir -Patch @{ status='failed_attempt'; failure_reason="round $Round attempt ${attempt}: process diagnostic receipt could not be persisted" }
@@ -605,9 +605,11 @@ catch {
     exit 11
 }
 $run.StdoutLines | Set-Content -Path (Join-Path $StateDir "$stem-events.jsonl") -Encoding utf8
-if ($run.StartFailed -or $run.TimedOut -or $run.ExitCode -ne 0 -or -not (Test-Path $rawPath)) {
+if ($run.StartFailed -or $run.TimedOut -or $run.ExitCode -ne 0 -or $run.ProcessTreeRetired -isnot [bool] -or -not $run.ProcessTreeRetired -or $run.ErrorMessage -or -not (Test-Path $rawPath)) {
     $reason = if ($run.StartFailed) { "codex failed to start: $($run.ErrorMessage)" }
               elseif ($run.TimedOut) { "codex timed out" }
+              elseif ($run.ProcessTreeRetired -isnot [bool] -or -not $run.ProcessTreeRetired) { "codex process-tree retirement is unconfirmed: $($run.ErrorMessage)" }
+              elseif ($run.ErrorMessage) { "codex runner failed: $($run.ErrorMessage)" }
               else { "codex exit $($run.ExitCode) or no verdict file" }
     Write-RoundState -StateDir $StateDir -Patch @{ status='failed_attempt'; failure_reason="round $Round attempt ${attempt}: $reason" }
     Write-Error "$reason. Retry this round once (recorded as the next attempt); a further attempt returns 14."

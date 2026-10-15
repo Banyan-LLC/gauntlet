@@ -960,6 +960,10 @@ Assert-Eq $LASTEXITCODE 0 "round 1 ok"
 Assert-True (Test-Path "$stateDir\round-1-verdict.json") "canonical normalized verdict written"
 Assert-True (Test-Path "$stateDir\round-1-attempt-1-verdict.raw.json") "attempt-scoped raw verdict"
 Assert-True (Test-Path "$stateDir\round-1-attempt-1-meta.json") "attempt-scoped immutable meta"
+Assert-True (Test-Path "$stateDir\round-1-attempt-1-process.json") "accepted fake review retains its process retirement receipt"
+$acceptedProcess = Get-Content -Raw "$stateDir\round-1-attempt-1-process.json" | ConvertFrom-Json
+Assert-True ($acceptedProcess.ProcessTreeRetired -is [bool] -and $acceptedProcess.ProcessTreeRetired) "accepted production-path fake review proves owned process-tree retirement"
+Assert-Eq $acceptedProcess.ExitCode 0 "accepted process receipt records clean exit"
 Assert-True (Test-Path "$stateDir\round-1-attempt-1-events.jsonl") "attempt-scoped event stream"
 Assert-True (Test-Path "$stateDir\cli-pin.json") "pin written on round 1"
 $m1 = Get-Content -Raw "$stateDir\round-1-attempt-1-meta.json" | ConvertFrom-Json
