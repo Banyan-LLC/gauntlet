@@ -358,10 +358,18 @@ working directory is a single-use, unpredictably named, empty harness outside ev
 Every CLI feature is disabled unless explicitly allowlisted, so a feature introduced by a future
 CLI version is denied by default.
 
-The live security battery independently control-verifies shell, web, MCP, apps, and plugins.
-Computer-use, skill-search, and subagent spawning were configured off but did not produce an
-independently observable positive signal on the verified CLI, so the guarantee is deliberately
-narrower for those three classes. See [`docs/design.md`](docs/design.md) for the exact claim.
+The live security battery requires independent positive, hermetic-negative and pairwise-isolation
+controls for shell, web, MCP, apps, plugins and computer-use. Skill-search and subagent spawning
+remain configured off without independently observable controls. This corrects the older five-class
+claim: newer CLIs expose a distinct computer-use event. Each selected stack must pass all six
+controls before certification. See [`docs/design.md`](docs/design.md) for the historical evidence.
+
+Owned security-profile cleanup has one finite 60-second deadline per attempt; schema and empty
+harness cleanup retain their 10-second limits. A failed attempt retains ownership and blocks
+producers and readers. An explicit retry is admitted only after the original native work settles,
+using its original handles; unresolved work and disposal intent refuse retries. Successful native
+delete dispositions are retained across a deadline so a retry can verify completion without
+reopening or deleting a replacement path. No automatic retry loop or pathname fallback is used.
 
 All reviewed material—including PR titles, descriptions, diffs, and check summaries—is treated
 as untrusted. Only explicitly approved controlling documents enter trusted context.

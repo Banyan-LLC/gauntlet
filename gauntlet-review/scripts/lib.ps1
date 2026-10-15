@@ -308,12 +308,14 @@ namespace GauntletLive {
             return info;
         }
         public sealed class Custody : IDisposable {
-            sealed class Entry { public string Path; public SafeFileHandle Handle; public bool Directory, Deleted; }
+            sealed class Entry { public string Path; public SafeFileHandle Handle; public bool Directory, DeleteRequested, Deleted; }
             readonly List<SafeFileHandle> parents=new List<SafeFileHandle>();
             readonly Dictionary<string,Entry> produced=new Dictionary<string,Entry>(StringComparer.OrdinalIgnoreCase);
             Entry root;
-            Task pending;
-            bool disposed, mutationBegun;
+            volatile Task pending;
+            readonly object operationGate=new object();
+            volatile bool disposed;
+            int releaseRequested, closeScheduled;
             string cleanupFailure;
             public bool Created { get { return root != null && root.Handle != null && !root.Handle.IsInvalid; } }
             public bool Busy { get { return pending != null && !pending.IsCompleted; } }
@@ -323,7 +325,7 @@ namespace GauntletLive {
             }
             public void Create(string path) { Create(path, null); }
             public void Create(string path, byte[] securityDescriptor) {
-                if (root != null || disposed) throw new InvalidOperationException("Custody cannot be reused");
+                if (root != null || disposed || Volatile.Read(ref releaseRequested) != 0) throw new InvalidOperationException("Custody cannot be reused");
                 string full=System.IO.Path.GetFullPath(path), parent=System.IO.Path.GetDirectoryName(full), drive=System.IO.Path.GetPathRoot(full);
                 if (drive.Length != 3 || drive[1] != ':' || new DriveInfo(drive).DriveType != DriveType.Fixed)
                     throw new InvalidOperationException("Live-gate custody requires a local fixed drive");
@@ -347,7 +349,7 @@ namespace GauntletLive {
                 Regular(root.Handle);
             }
             Entry DirectoryEntry(string path) {
-                if (disposed || cleanupFailure != null || Busy) throw new InvalidOperationException("Owned custody is released, failed or busy");
+                if (disposed || Volatile.Read(ref releaseRequested) != 0 || cleanupFailure != null || Busy) throw new InvalidOperationException("Owned custody is released, failed or busy");
                 Entry entry;
                 if (!produced.TryGetValue(System.IO.Path.GetFullPath(path), out entry) || !entry.Directory || entry.Deleted)
                     throw new InvalidOperationException("Directory is outside this run's private creation records");
@@ -370,7 +372,7 @@ namespace GauntletLive {
                 Regular(child.Handle);
             }
             public string FileSha256(string path) {
-                if (disposed || Busy || cleanupFailure != null) throw new InvalidOperationException("Original custody is unavailable");
+                if (disposed || Volatile.Read(ref releaseRequested) != 0 || Busy || cleanupFailure != null) throw new InvalidOperationException("Original custody is unavailable");
                 Entry entry;
                 if (!produced.TryGetValue(System.IO.Path.GetFullPath(path),out entry) || entry.Directory || entry.Deleted)
                     throw new InvalidOperationException("File has no private producer record");
@@ -405,9 +407,15 @@ namespace GauntletLive {
                 Check(clock,milliseconds); return entries;
             }
             static void DeleteObject(Entry entry, Stopwatch clock, int milliseconds) {
-                Check(clock,milliseconds); Regular(entry.Handle);
-                uint flags=0x13; // DELETE, POSIX_SEMANTICS, IGNORE_READONLY_ATTRIBUTE. No pathname fallback.
-                Require(SetFileInformationByHandle(entry.Handle,21,ref flags,4)); Check(clock,milliseconds);
+                Check(clock,milliseconds);
+                if (!entry.DeleteRequested) {
+                    Regular(entry.Handle);
+                    uint flags=0x13; // DELETE, POSIX_SEMANTICS, IGNORE_READONLY_ATTRIBUTE. No pathname fallback.
+                    // Record the native side effect before observing a deadline. A later
+                    // explicit retry finishes this original handle, never reopens its path.
+                    entry.DeleteRequested=SetFileInformationByHandle(entry.Handle,21,ref flags,4);
+                    Require(entry.DeleteRequested); Check(clock,milliseconds);
+                }
                 StandardInfo info; Require(GetFileInformationByHandleEx(entry.Handle,1,out info,(uint)Marshal.SizeOf<StandardInfo>()));
                 if (info.DeletePending == 0 && info.Links != 0) throw new InvalidOperationException("Owned object's deletion is unresolved");
                 entry.Handle.Dispose(); entry.Deleted=true; Check(clock,milliseconds);
@@ -416,17 +424,27 @@ namespace GauntletLive {
                 Check(clock,milliseconds);
             }
             void Bounded(Action<Stopwatch> operation, int milliseconds, bool cleanup) {
-                if (milliseconds < 1 || milliseconds > 10000) throw new ArgumentOutOfRangeException(nameof(milliseconds));
-                if (disposed || Busy || cleanupFailure != null) throw new InvalidOperationException("Original custody is released, failed or has unresolved work");
-                var clock=Stopwatch.StartNew();
-                pending=Task.Run(() => operation(clock));
+                if (milliseconds < 1 || milliseconds > (cleanup ? 60000 : 10000)) throw new ArgumentOutOfRangeException(nameof(milliseconds));
+                // Admission never waits behind another observer or an unresolved native task.
+                if (!System.Threading.Monitor.TryEnter(operationGate)) throw new InvalidOperationException("Original custody has an active observer");
                 try {
-                    if (!pending.Wait(Math.Max(0,milliseconds-(int)clock.ElapsedMilliseconds)))
-                        throw new TimeoutException("Owned cleanup exceeded its monotonic deadline; completion is unresolved");
-                    Check(clock,milliseconds);
-                } catch (Exception error) {
-                    if (cleanup && (mutationBegun || error.GetBaseException() is TimeoutException)) cleanupFailure=error.GetBaseException().Message;
-                    throw new InvalidOperationException(error.GetBaseException().Message,error);
+                    if (Volatile.Read(ref releaseRequested) != 0 || Busy || (disposed && !(cleanup && root != null && root.Deleted)) || (!cleanup && cleanupFailure != null))
+                        throw new InvalidOperationException("Original custody is released, failed or has unresolved work");
+                    // Only a new explicit cleanup observation can reconcile a settled failed
+                    // attempt. The producer/read failure fence is never cleared by retries.
+                    var clock=Stopwatch.StartNew();
+                    pending=Task.Run(() => operation(clock));
+                    try {
+                        if (!pending.Wait(Math.Max(0,milliseconds-(int)clock.ElapsedMilliseconds)))
+                            throw new TimeoutException("Owned cleanup exceeded its monotonic deadline; completion is unresolved");
+                        Check(clock,milliseconds);
+                    } catch (Exception error) {
+                        if (cleanup) cleanupFailure=error.GetBaseException().Message;
+                        throw new InvalidOperationException(error.GetBaseException().Message,error);
+                    }
+                } finally {
+                    System.Threading.Monitor.Exit(operationGate);
+                    if (Volatile.Read(ref releaseRequested) != 0) ScheduleRelease(true);
                 }
             }
             public void Inspect(int maximum, int milliseconds) {
@@ -435,22 +453,47 @@ namespace GauntletLive {
             }
             public void Cleanup(string kind, int milliseconds) {
                 Bounded(clock => {
+                    // A late prior attempt may already have deleted the original root. Confirm
+                    // absence only; this branch never deletes an entry that replaced its name.
+                    if (root != null && root.Deleted) {
+                        Check(clock,milliseconds);
+                        try { System.IO.File.GetAttributes(root.Path); throw new InvalidOperationException("Owned pathname was replaced after object deletion"); }
+                        catch (FileNotFoundException) { } catch (DirectoryNotFoundException) { }
+                        Check(clock,milliseconds); CloseHandles(); return;
+                    }
                     if (!Created) { CloseHandles(); return; }
+                    // A successful disposition can outlive its observer's deadline. Finish
+                    // pending producer objects through held handles before any inventory.
+                    foreach (var entry in produced.Values)
+                        if (entry != root && entry.DeleteRequested && !entry.Deleted) DeleteObject(entry,clock,milliseconds);
+                    if (root.DeleteRequested) { DeleteObject(root,clock,milliseconds); CloseHandles(); return; }
                     var opened=new List<Entry>();
                     try {
                         var entries=Inventory(kind,kind == "Schema" ? 2 : 10000,clock,milliseconds,opened);
-                        for (int index=entries.Count-1; index>=0; index--) { mutationBegun=true; DeleteObject(entries[index],clock,milliseconds); }
-                        mutationBegun=true; DeleteObject(root,clock,milliseconds); CloseHandles();
+                        for (int index=entries.Count-1; index>=0; index--) DeleteObject(entries[index],clock,milliseconds);
+                        DeleteObject(root,clock,milliseconds); CloseHandles();
                     } finally { foreach (var entry in opened) entry.Handle.Dispose(); }
                 },milliseconds,true);
             }
             void CloseHandles() {
-                disposed=true; foreach (var entry in produced.Values) entry.Handle?.Dispose(); root?.Handle?.Dispose();
+                foreach (var entry in produced.Values) entry.Handle?.Dispose(); root?.Handle?.Dispose();
                 for (int index=parents.Count-1;index>=0;index--) parents[index].Dispose();
+                disposed=true;
+            }
+            void ScheduleRelease(bool asynchronous) {
+                if (Interlocked.CompareExchange(ref closeScheduled,1,0) != 0) return;
+                var work=pending;
+                if (work != null && !work.IsCompleted) work.ContinueWith(task => CloseHandles(),TaskScheduler.Default);
+                else if (asynchronous) Task.Run(() => CloseHandles());
+                else CloseHandles();
             }
             public void Dispose() {
-                if (Busy) { pending.ContinueWith(task => CloseHandles(),TaskScheduler.Default); }
-                else CloseHandles();
+                // Irreversible intent blocks every new operation immediately. If an observer
+                // holds admission (including before task publication), its finally schedules
+                // closure after the actual native task settles. Never close active handles.
+                Interlocked.Exchange(ref releaseRequested,1);
+                if (!System.Threading.Monitor.TryEnter(operationGate)) return;
+                try { ScheduleRelease(false); } finally { System.Threading.Monitor.Exit(operationGate); }
             }
         }
         [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
@@ -548,7 +591,10 @@ function Complete-LiveGateDirectories {
     foreach ($kind in $Kinds) {
         foreach ($record in $records) {
             if ($record.Kind -eq $kind) {
-                Remove-LiveGateDirectory -Record $record -ProcessTreeRetired $ProcessTreeRetired -AllowSecurityTreeCleanup:$AllowSecurityTreeCleanup
+                # Security profiles include CLI-created cache/skill trees. Their larger finite
+                # budget belongs to this one cleanup attempt, not to every individual entry.
+                $cleanupMs = if ($kind -eq 'Security') { 60000 } else { 10000 }
+                Remove-LiveGateDirectory -Record $record -ProcessTreeRetired $ProcessTreeRetired -AllowSecurityTreeCleanup:$AllowSecurityTreeCleanup -TimeoutMs $cleanupMs
             }
         }
     }
@@ -587,12 +633,13 @@ function Assert-LiveGateTreeSafe {
 
 function Remove-LiveGateDirectory {
     param([Parameter(Mandatory)]$Record, [Parameter(Mandatory)]$ProcessTreeRetired, [switch]$AllowSecurityTreeCleanup,
-          [ValidateRange(1,10000)][int]$TimeoutMs=10000)
+          [ValidateRange(1,60000)][int]$TimeoutMs=10000)
     $result = [pscustomobject]@{ Accepted=$false; Path=$null; Error=$null }
     try {
         if ($ProcessTreeRetired -isnot [bool] -or -not $ProcessTreeRetired) { throw 'Process-tree retirement is unresolved; cleanup is refused' }
         if ($null -eq $Record -or -not $script:LiveGateDirectories.ContainsKey([string]$Record.Token)) { throw 'Unknown or consumed cleanup ownership token' }
         $owner = $script:LiveGateDirectories[[string]$Record.Token]
+        if ($owner.Kind -ne 'Security' -and $TimeoutMs -gt 10000) { throw 'Only security-profile cleanup permits a budget above ten seconds' }
         $result.Path = $owner.Path
         if (-not [StringComparer]::OrdinalIgnoreCase.Equals([string]$Record.Path, $owner.Path)) { throw 'Cleanup path differs from its exclusive creation record' }
         if ($owner.Kind -eq 'Security' -and -not $AllowSecurityTreeCleanup) { throw 'Security-tree cleanup requires explicit run-level authorization' }

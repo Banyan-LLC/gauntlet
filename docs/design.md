@@ -260,3 +260,27 @@ Defaults live in the orchestrator SKILL.md: author `geoffroth`, reviewer `Banyan
 - Flag surfaces verified: 0.147 `exec` supports the full round-one set; 0.147 `exec resume` supports `--output-schema`, `-o`, `--json`, `--ignore-user-config`, `--ignore-rules`, `--skip-git-repo-check`, `--enable/--disable`, `-m`, `-c` but **not** `-s`/`-C` (sandbox and working root persist from session creation). 0.147 exposes **no registered-tool roster** in the `--json` event stream or app-server protocol (established by live testing in review round 6) — the reason hermeticity verification is a layered composite rather than a roster assertion. Further round-7 live findings: command execution routes through `code_mode_host` (denying it disables the shell); `web_search` is a top-level setting defaulting to `"cached"`; spawned commands can read parent-process environment variables under the default environment policy; and `exec --json` emits no MCP startup events even with a server enabled (hence the control-backed canary test). Round-8 live finding: the `read-only` sandbox restricts writes only — a session launched from `%TEMP%` read a repository file outside its harness — which is why the reviewer gets no shell at all and review material is prompt-embedded. `codex exec review --base <branch>` exists but is not used (it cannot publish as a different GitHub identity, and publication is deliberately kept outside Codex).
 - Account-level `~/.codex/AGENTS.md` exists (PR-workflow, review-presentation, and turn-completion preferences) and remains active in reviewer sessions; treated as trusted user-authored input.
 - `gh` authenticated for both `BanyanLLC` (currently active) and `geoffroth`; git protocol SSH for both. Superpowers plugin installed at 6.0.2.
+
+
+## Live compatibility correction (2026-10-14)
+
+The current security battery requires six independently observable classes: shell, web,
+MCP, apps, plugins and computer-use. This supersedes the older five-class requirement
+above: newer CLIs expose a distinct computer-use event. Skill-search and subagent
+spawning remain narrowed. Every required class must fire positively, remain absent
+under the canonical hermetic invocation, and pass pairwise isolation; an extra class
+is never ignored to make certification pass.
+
+Security setup needs an owned directory boundary, not synthetic Git metadata or a
+commit identity. Security-profile cleanup uses one 60-second monotonic deadline per
+attempt for inventory, mutation and verification together; schema and empty harness
+cleanup retain ten-second limits. An unresolved attempt retains custody and refuses
+new work. Only a fresh explicit cleanup observation after native work settles can
+reconcile its original handles. A failed attempt permanently fences producers and
+readers even if a later retry fails before mutation. Successful native disposition is
+recorded before deadline checks, allowing original pending root and producer handles
+to finish before inventory. Already-deleted roots receive absence checks only; no
+replacement is adopted. Disposal intent is irreversible and prevents all new work;
+handle closure is scheduled once, after the active native worker physically settles.
+There is no automatic retry loop, widened entry budget or pathname deletion fallback.
+See docs/build-log/2026-10-14-live-review-compatibility.md for regression and live evidence.
