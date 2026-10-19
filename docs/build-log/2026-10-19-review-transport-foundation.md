@@ -1,0 +1,9 @@
+# Bounded review transport foundation
+
+This change adds the dormant GauntletTransport C# component and its direct fixture. Existing production PowerShell callers continue to use their current execution path; this foundation does not activate a new provider or change security claims, fingerprints, configuration or installation.
+
+The component preserves complete prompt content while enforcing bounded requests, bodies, aggregate traffic and a shared deadline. It validates fixed upstream routes, requires its loopback capability, handles authenticated Responses/SSE exchanges and 401 challenges, and retains typed failures and physical transport-retirement evidence. All terminal compatibility and ownership corrections from the preserved implementation ship together.
+
+The direct test compiles the component and fixture into one assembly. Its upstream seam and clients use in-memory responses and literal loopback traffic; it does not require an account, credentials or a real model call. A missing-implementation run failed as expected before this source was added.
+
+Production integration, source-bound calibration and live-stack certification belong to later dependency-safe changes. No global installation, runtime setup or fresh active-stack certification is claimed here.
