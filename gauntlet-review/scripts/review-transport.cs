@@ -232,8 +232,10 @@ namespace GauntletTransport
         readonly string capability;
         readonly TcpListener listener;
         readonly HttpClient http;
+        readonly Func<TcpClient,NetworkStream> clientStreamFactory;
         readonly CancellationTokenSource cancel = new CancellationTokenSource();
         readonly CancellationTokenSource failureSignal = new CancellationTokenSource();
+        readonly TaskCompletionSource<bool> gracefulFinish = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         readonly CancellationTokenRegistration registration;
         TcpClient active;
         string error = "";
@@ -242,7 +244,7 @@ namespace GauntletTransport
         readonly List<SanitizedFailure> cleanupFailures=new List<SanitizedFailure>();
         readonly List<object> unresolvedResources=new List<object>();
         bool networkCleanupFailed;
-        bool retired, promptSeen, explicitClose, deadlineCancellation,finishing,terminalForwarded;
+        bool retired, promptSeen, explicitClose, deadlineCancellation,finishing,terminalForwarded,terminalDeliveryPending;
         bool pendingCatalogAuthChallenge,pendingResponseAuthChallenge;
         int catalogAuthChallenges,responseAuthChallenges;
         int responses, models, textBlocks, pieces, maxOriginal, maxPiece;
@@ -271,6 +273,9 @@ namespace GauntletTransport
         internal Bridge(string expectedPrompt, int timeoutMilliseconds, HttpMessageHandler handler)
             : this(expectedPrompt,DeadlineForHandler(timeoutMilliseconds,handler),handler) { }
         internal Bridge(string expectedPrompt,long originalDeadlineTimestamp,HttpMessageHandler handler)
+            : this(expectedPrompt,originalDeadlineTimestamp,handler,null) { }
+        // Internal fixture seam only; the owner still selects, awaits and disposes the stream.
+        internal Bridge(string expectedPrompt,long originalDeadlineTimestamp,HttpMessageHandler handler,Func<TcpClient,NetworkStream> clientStreamFactory)
         {
             FailureToken=failureSignal.Token;
             try {
@@ -281,6 +286,7 @@ namespace GauntletTransport
                 if(Utf8.GetByteCount(expectedPrompt)>RequestByteLimit) throw new TransportException("prompt_limit","startup");
                 promptHash = HashString(expectedPrompt);
                 this.expectedPrompt = expectedPrompt;
+                this.clientStreamFactory=clientStreamFactory??(client=>client.GetStream());
                 capability = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
                 http = new HttpClient(handler, true) { Timeout = Timeout.InfiniteTimeSpan };
                 listener = new TcpListener(IPAddress.Loopback, 0);
@@ -339,17 +345,18 @@ namespace GauntletTransport
             } catch (ObjectDisposedException) { }
         }
         // Called only by the attempt worker after successful native consumer/tree retirement.
-        // Terminal bytes must already have been written; this permits validation of EOF/heartbeats,
-        // and never turns an early consumer exit into proof of an undelivered model response.
+        // An in-flight terminal write remains owned by RunAsync under its original deadline.
+        // Only that original await can acknowledge delivery before EOF/heartbeat validation.
         public void FinishClient()
         {
             bool early;
             lock(sync) {
                 if(finishing) return;
                 Volatile.Write(ref finishing,true);
-                early=active!=null&&!terminalForwarded;
+                early=active!=null&&!terminalForwarded&&!terminalDeliveryPending;
             }
             if(early) {Fail("client_finish_early","client_finish");Close();return;}
+            gracefulFinish.TrySetResult(true);
             StopListener();
         }
         void OnCancellation()
@@ -385,6 +392,9 @@ namespace GauntletTransport
             lock(sync) {
                 if(failure.Code=="cleanup") AddCleanup(cleanupFailures,failure.Stage,failure.Cause);
                 if(error.Length==0) {error=failure.Code;errorStage=failure.Stage;errorCause=failure.Cause;}
+                // The timer may publish deadline before its original awaited I/O
+                // resumes. Retain that I/O cause without replacing the primary.
+                else if(error=="deadline"&&failure.Code=="deadline"&&errorCause==null) errorCause=failure.Cause;
             }
             PublishFailureSignal();
         }
@@ -417,7 +427,7 @@ namespace GauntletTransport
                     stage="accept";
                     TcpClient client = await listener.AcceptTcpClientAsync(cancel.Token).ConfigureAwait(false);
                     activeTransaction=true;
-                    lock(sync) {active=client;terminalForwarded=false;}
+                    lock(sync) {active=client;terminalForwarded=false;terminalDeliveryPending=false;}
                     // One overflow sentinel accepts no HTTP bytes. Exactly eight completed
                     // exchanges may still finish normally; an actual ninth connection must
                     // latch the shared native-job failure before parsing or upstream work.
@@ -426,7 +436,7 @@ namespace GauntletTransport
                     NetworkStream stream=null;
                     try {
                         if (!((IPEndPoint)client.Client.RemoteEndPoint).Address.Equals(IPAddress.Loopback)) throw new Rejection("peer");
-                        stream=client.GetStream();
+                        stream=clientStreamFactory(client);
                             try { await HandleAsync(stream).ConfigureAwait(false); }
                             catch(Rejection e) { Fail(e); if(e.CanReply) await SafeError(stream,e.Upstream ? 502 : 400).ConfigureAwait(false); }
                             catch(TransportException e) { Fail(e); await SafeError(stream,400).ConfigureAwait(false); }
@@ -569,16 +579,21 @@ namespace GauntletTransport
             readonly BoundedBuffer data=new BoundedBuffer(SseEventByteLimit,"sse_event_limit","sse_validate");
             readonly int promptCharacters;
             internal long WorkingByteCharge {get;private set;}
-            internal bool TerminalSeen {get{return completed;}}
             string eventName,responseId;bool completed,done;
             internal SseValidator(int promptCharacters) {this.promptCharacters=promptCharacters;WorkingByteCharge=ResponseCharge(0,0,promptCharacters);}
             void Reject(string code) {throw new TransportException(code,"sse_validate");}
-            internal void Feed(byte[] bytes,int count) {
+            internal int Feed(byte[] bytes,int count) {
+                int terminalBoundary=0;
                 for(int i=0;i<count;i++) {
                     byte b=bytes[i];
-                    if(b==10) {int n=lineLength;if(n>0&&line[n-1]==13) n--;ProcessLine(n);lineLength=0;}
+                    if(b==10) {
+                        bool wasCompleted=completed;
+                        int n=lineLength;if(n>0&&line[n-1]==13) n--;ProcessLine(n);lineLength=0;
+                        if(!wasCompleted&&completed) terminalBoundary=i+1;
+                    }
                     else {if(lineLength==line.Length) Reject("sse_line_limit");line[lineLength++]=b;}
                 }
+                return terminalBoundary;
             }
             void ProcessLine(int length) {
                 try {Utf8.GetCharCount(line.AsSpan(0,length));}catch(Exception cause) {throw new TransportException("sse_utf8","sse_validate",cause);}
@@ -717,13 +732,41 @@ namespace GauntletTransport
                                 if(n==0) break;
                                 if(n>limit-total) throw new Rejection("response_limit",true);
                                 total+=n;
-                                if(post) {events.Feed(buffer,n);lock(sync) responseWorkingByteCharge=Math.Max(responseWorkingByteCharge,events.WorkingByteCharge);}else catalog.Write(buffer,0,n);
-                                bool drainOnly;lock(sync) drainOnly=finishing&&terminalForwarded;
-                                if(drainOnly) {lock(sync) drainedTailBytes+=n;}
-                                else {
-                                    await stream.WriteAsync(buffer.AsMemory(0,n),cancel.Token).ConfigureAwait(false);
-                                    if(post&&events.TerminalSeen) lock(sync) terminalForwarded=true;
+                                int terminalBoundary=0;
+                                if(post) {terminalBoundary=events.Feed(buffer,n);lock(sync) responseWorkingByteCharge=Math.Max(responseWorkingByteCharge,events.WorkingByteCharge);}else catalog.Write(buffer,0,n);
+                                if(terminalBoundary>0) {
+                                    // Register before exposing any terminal bytes. FinishClient may
+                                    // race the original await, but cannot replace its failure cause.
+                                    lock(sync) terminalDeliveryPending=true;
+                                    await stream.WriteAsync(buffer.AsMemory(0,terminalBoundary),cancel.Token).ConfigureAwait(false);
+                                    lock(sync) {terminalForwarded=true;terminalDeliveryPending=false;}
                                     await stream.FlushAsync(cancel.Token).ConfigureAwait(false);
+                                }
+                                int remaining=n-terminalBoundary;
+                                bool drainOnly;lock(sync) drainOnly=finishing&&terminalForwarded;
+                                if(drainOnly) {lock(sync) drainedTailBytes+=remaining;}
+                                else if(remaining>0) {
+                                    bool delivered=true;
+                                    try {await stream.WriteAsync(buffer.AsMemory(terminalBoundary,remaining),cancel.Token).ConfigureAwait(false);}
+                                    catch(IOException failure) {
+                                        bool acknowledged;lock(sync) acknowledged=terminalForwarded;
+                                        if(!acknowledged) throw;
+                                        // Native-exit observation can follow the tail error. Keep
+                                        // settlement in this owner and its original cancellation.
+                                        try {await gracefulFinish.Task.WaitAsync(cancel.Token).ConfigureAwait(false);}
+                                        catch(OperationCanceledException) {
+                                            lock(sync) {
+                                                if(!explicitClose&&RemainingMilliseconds==0) throw new TransportException("deadline",stage,failure);
+                                            }
+                                            throw failure;
+                                        }
+                                        lock(sync) {
+                                            if(!explicitClose&&RemainingMilliseconds==0) throw new TransportException("deadline",stage,failure);
+                                            if(explicitClose||!finishing||cancel.IsCancellationRequested) throw failure;
+                                            drainedTailBytes+=remaining;delivered=false;
+                                        }
+                                    }
+                                    if(delivered) await stream.FlushAsync(cancel.Token).ConfigureAwait(false);
                                 }
                                 lock(sync) responseBytes+=n;
                             }
@@ -742,6 +785,9 @@ namespace GauntletTransport
             catch(OperationCanceledException e) {Fail(RemainingMilliseconds==0 ? "deadline" : "cancelled_active",stage,e);throw;}
             catch(Exception e) {Fail("transport_io",stage,e);throw;}
             finally {
+                // On failure the catch above publishes the original cause before a
+                // concurrent FinishClient can classify this delivery as early.
+                lock(sync) terminalDeliveryPending=false;
                 if(DisposeOwned(input,"cleanup_response_stream")) DisposeOwned(response,"cleanup_response");else Hold(response);
                 DisposeOwned(upstream,"cleanup_request");
             }

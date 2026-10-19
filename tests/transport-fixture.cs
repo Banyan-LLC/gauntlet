@@ -11,6 +11,7 @@ namespace GauntletTransportTests
     using System.Text.Json;
     using System.Threading;
     using System.Threading.Tasks;
+    using System.Threading.Tasks.Sources;
 
     public sealed class Check { public string Name; public bool Passed; }
 
@@ -123,6 +124,80 @@ namespace GauntletTransportTests
         protected override Task<Stream> CreateContentReadStreamAsync() {ReadAttempts++;throw new IOException("secret-upstream-body");}
     }
 
+    // Return this source directly to HandleAsync. The observation is published
+    // only after its registered await continuation has processed the exception.
+    internal sealed class ObservedTailFailure : IValueTaskSource,IDisposable
+    {
+        ManualResetValueTaskSourceCore<bool> completion;
+        readonly TaskCompletionSource<bool> registered,settled;
+        readonly CancellationTokenRegistration cancellation;
+        int completed;
+        internal readonly TaskCompletionSource<bool> Observed=new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal ObservedTailFailure(CancellationToken ct,TaskCompletionSource<bool> registered,TaskCompletionSource<bool> settled) {
+            this.registered=registered;this.settled=settled;
+            completion.RunContinuationsAsynchronously=false;
+            cancellation=ct.Register(()=>Complete(new OperationCanceledException(ct)));
+        }
+        internal ValueTask Pending {get {return new ValueTask(this,completion.Version);}}
+        internal void Fail() {Complete(new IOException("synthetic-tail-before-native-observation"));}
+        void Complete(Exception failure) {if(Interlocked.CompareExchange(ref completed,1,0)==0) completion.SetException(failure);}
+        public ValueTaskSourceStatus GetStatus(short token) {return completion.GetStatus(token);}
+        public void GetResult(short token) {try {completion.GetResult(token);}finally {settled.TrySetResult(true);}}
+        public void OnCompleted(Action<object> continuation,object state,short token,ValueTaskSourceOnCompletedFlags flags) {
+            completion.OnCompleted(value=>{try {continuation(value);}finally {Observed.TrySetResult(true);}},state,token,flags);
+            registered.TrySetResult(true);
+        }
+        public void Dispose() {cancellation.Dispose();}
+    }
+
+    // Hold the original socket write after a known byte boundary, rather than
+    // relying on a continuation winning a scheduling race against FinishClient.
+    internal sealed class ControlledDeliveryStream : NetworkStream
+    {
+        readonly byte[] terminal;readonly string mode;readonly MemoryStream delivered=new MemoryStream();
+        bool headerWritten,terminalWritten;
+        ObservedTailFailure tailFailure;
+        internal readonly TaskCompletionSource<bool> AtBoundary=new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource<bool> Release=new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource<bool> Settled=new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal bool DisposedBeforeSettlement;
+        internal ControlledDeliveryStream(Socket socket,byte[] terminal,string mode) : base(socket,false) {this.terminal=terminal;this.mode=mode;}
+        internal byte[] Delivered {get {lock(delivered) return delivered.ToArray();}}
+        internal bool HasTailFailureProbe {get {return tailFailure!=null;}}
+        internal Task TailFailureObserved {get {return tailFailure.Observed.Task;}}
+        internal void FailTail() {tailFailure.Fail();}
+        async Task Publish(ReadOnlyMemory<byte> bytes,CancellationToken ct) {
+            await base.WriteAsync(bytes,ct).ConfigureAwait(false);
+            lock(delivered) {byte[] copy=bytes.ToArray();delivered.Write(copy,0,copy.Length);}
+        }
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> bytes,CancellationToken ct=default(CancellationToken)) {
+            if(mode.StartsWith("tail-before-",StringComparison.Ordinal)&&headerWritten&&terminalWritten) {
+                if(tailFailure!=null) throw new InvalidOperationException("Synthetic tail write was repeated.");
+                tailFailure=new ObservedTailFailure(ct,AtBoundary,Settled);
+                return tailFailure.Pending;
+            }
+            return WriteCoreAsync(bytes,ct);
+        }
+        async ValueTask WriteCoreAsync(ReadOnlyMemory<byte> bytes,CancellationToken ct) {
+            if(!headerWritten) {headerWritten=true;await Publish(bytes,ct).ConfigureAwait(false);return;}
+            if(!terminalWritten&&mode!="undelivered") {
+                if(bytes.Length<terminal.Length||!bytes.Span.Slice(0,terminal.Length).SequenceEqual(terminal)) throw new InvalidOperationException("Synthetic terminal boundary was not supplied.");
+                await Publish(bytes.Slice(0,terminal.Length),ct).ConfigureAwait(false);terminalWritten=true;
+                if((mode=="tail-in-flight"||mode.StartsWith("tail-before-",StringComparison.Ordinal))&&bytes.Length==terminal.Length) return;
+            }
+            try {
+                AtBoundary.TrySetResult(true);
+                await Release.Task.WaitAsync(ct).ConfigureAwait(false);
+                if(mode=="undelivered"||mode=="write-failure"||mode=="tail-in-flight"||bytes.Length>terminal.Length) throw new IOException("synthetic-consumer-retired");
+            } finally {Settled.TrySetResult(true);}
+        }
+        protected override void Dispose(bool disposing) {
+            if(AtBoundary.Task.IsCompleted&&!Settled.Task.IsCompleted) DisposedBeforeSettlement=true;
+            if(tailFailure!=null) tailFailure.Dispose();
+            base.Dispose(disposing);
+        }
+    }
+
     public static class Suite
     {
         static readonly List<Check> Checks = new List<Check>();
@@ -162,6 +237,107 @@ namespace GauntletTransportTests
         }
         static string Body(byte[] response) { var text=Encoding.UTF8.GetString(response); int pos=text.IndexOf("\r\n\r\n",StringComparison.Ordinal); return pos<0 ? "" : text.Substring(pos+4); }
         static byte[] BodyBytes(byte[] response) {for(int i=0;i+3<response.Length;i++) if(response[i]==13&&response[i+1]==10&&response[i+2]==13&&response[i+3]==10) return response.Skip(i+4).ToArray(); return Array.Empty<byte>();}
+        static async Task TerminalDeliveryFinish(string mode)
+        {
+            var handler=new Upstream();byte[] terminal=handler.Reply,tail=Encoding.UTF8.GetBytes(": heartbeat\n\n");
+            bool coalesced=mode=="coalesced-tail"||mode=="tail-in-flight";
+            if(coalesced) handler.Reply=terminal.Concat(tail).ToArray();
+            long deadline=System.Diagnostics.Stopwatch.GetTimestamp()+(mode=="deadline" ? System.Diagnostics.Stopwatch.Frequency : System.Diagnostics.Stopwatch.Frequency*5);
+            ControlledDeliveryStream controlled=null;
+            var selected=new TaskCompletionSource<ControlledDeliveryStream>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var bridge=new GauntletTransport.Bridge("prompt",deadline,handler,client=>{
+                controlled=new ControlledDeliveryStream(client.Client,terminal,mode);selected.TrySetResult(controlled);return controlled;
+            });
+            using(var consumer=new TcpClient(AddressFamily.InterNetwork)) {
+                try {
+                    await consumer.ConnectAsync(IPAddress.Loopback,new Uri(bridge.Endpoint).Port);
+                    await consumer.GetStream().WriteAsync(Request(bridge,Payload("prompt")));
+                    await Task.WhenAny(selected.Task,bridge.Completion);
+                    Check(selected.Task.IsCompleted,"terminal delivery "+mode+" selects its owned client stream");
+                    if(!selected.Task.IsCompleted) return;
+                    controlled=await selected.Task;
+                    await Task.WhenAny(controlled.AtBoundary.Task,bridge.Completion);
+                    Check(controlled.AtBoundary.Task.IsCompleted,"terminal delivery "+mode+" reaches controlled original write");
+                    if(!controlled.AtBoundary.Task.IsCompleted) return;
+                    if(mode!="undelivered") {
+                        byte[] expected=Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n").Concat(terminal).ToArray();
+                        byte[] received=new byte[expected.Length];int count=0;
+                        using(var bound=new CancellationTokenSource(bridge.RemainingMilliseconds)) {
+                            while(count<received.Length) {int n=await consumer.GetStream().ReadAsync(received.AsMemory(count),bound.Token);if(n==0) break;count+=n;}
+                        }
+                        Check(count==expected.Length&&received.SequenceEqual(expected),"terminal delivery "+mode+" consumer receives the exact terminal before write settlement");
+                    }
+                    Check(!controlled.Settled.Task.IsCompleted,"terminal delivery "+mode+" original write is still pending at consumer retirement");
+                    consumer.Close();
+                    bridge.FinishClient();
+                    Check(bridge.GetProof().ErrorCode=="","terminal delivery "+mode+" does not replace a pending write with client_finish_early");
+                    Check(!bridge.GetProof().Success&&bridge.GetProof().Responses==0,"terminal delivery "+mode+" remains provisional before original write settlement");
+                    if(mode!="deadline") controlled.Release.TrySetResult(true);
+                    await bridge.Completion;
+                    var proof=bridge.GetProof();
+                    bool success=mode=="delivered-pending"||mode=="coalesced-tail"||mode=="tail-in-flight";
+                    Check(proof.Retired&&proof.Completed&&proof.Success==success&&proof.Responses==(success ? 1 : 0)&&bridge.DeadlineTimestamp==deadline,"terminal delivery "+mode+" settles the owned worker under its original deadline");
+                    Check(controlled.Settled.Task.IsCompleted&&!controlled.DisposedBeforeSettlement,"terminal delivery "+mode+" retires the original write before disposing its stream");
+                    if(success) Check(proof.ErrorCode==""&&BodyBytes(controlled.Delivered).SequenceEqual(terminal),"terminal delivery "+mode+" acknowledges exactly the delivered terminal");
+                    else if(mode=="deadline") Check(proof.ErrorCode=="deadline"&&bridge.RemainingMilliseconds==0,"terminal delivery deadline cannot start a fresh settlement budget");
+                    else Check(proof.ErrorCode=="transport_io"&&proof.ErrorCause!=null&&proof.ErrorCause.Type=="System.IO.IOException","terminal delivery "+mode+" preserves the original write failure cause");
+                    if(mode=="undelivered") Check(BodyBytes(controlled.Delivered).Length==0,"terminal delivery undelivered never acknowledges unwritten terminal bytes");
+                    if(coalesced) Check(proof.DrainedTailBytes==tail.Length,"terminal delivery "+mode+" validates and accounts for the coalesced heartbeat");
+                } finally {
+                    if(controlled!=null) controlled.Release.TrySetResult(true);
+                    bridge.Close();await bridge.Completion;
+                    if(controlled!=null) controlled.Dispose();
+                }
+            }
+        }
+        static async Task TailFailureBeforeRetirement(string mode)
+        {
+            var handler=new Upstream();byte[] terminal=handler.Reply,tail=Encoding.UTF8.GetBytes(": heartbeat\n\n");
+            handler.Reply=terminal.Concat(tail).ToArray();
+            long deadline=System.Diagnostics.Stopwatch.GetTimestamp()+System.Diagnostics.Stopwatch.Frequency*(mode=="tail-before-deadline" ? 1 : 5);
+            ControlledDeliveryStream controlled=null;
+            var selected=new TaskCompletionSource<ControlledDeliveryStream>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var bridge=new GauntletTransport.Bridge("prompt",deadline,handler,client=>{
+                controlled=new ControlledDeliveryStream(client.Client,terminal,mode);selected.TrySetResult(controlled);return controlled;
+            });
+            using(var consumer=new TcpClient(AddressFamily.InterNetwork)) {
+                try {
+                    await consumer.ConnectAsync(IPAddress.Loopback,new Uri(bridge.Endpoint).Port);
+                    await consumer.GetStream().WriteAsync(Request(bridge,Payload("prompt")));
+                    await Task.WhenAny(selected.Task,bridge.Completion);
+                    Check(selected.Task.IsCompleted,mode+" selects the original owned stream");
+                    if(!selected.Task.IsCompleted) return;
+                    controlled=await selected.Task;
+                    await Task.WhenAny(controlled.AtBoundary.Task,bridge.Completion);
+                    Check(controlled.AtBoundary.Task.IsCompleted&&controlled.HasTailFailureProbe,mode+" registers the real HandleAsync tail await before failure");
+                    if(!controlled.AtBoundary.Task.IsCompleted||!controlled.HasTailFailureProbe) return;
+                    byte[] expected=Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n").Concat(terminal).ToArray();
+                    byte[] received=new byte[expected.Length];int count=0;
+                    using(var bound=new CancellationTokenSource(bridge.RemainingMilliseconds)) {
+                        while(count<received.Length) {int n=await consumer.GetStream().ReadAsync(received.AsMemory(count),bound.Token);if(n==0) break;count+=n;}
+                    }
+                    Check(count==expected.Length&&received.SequenceEqual(expected),mode+" consumer receives the exact terminal before native-exit observation");
+                    consumer.Close();controlled.FailTail();
+                    await controlled.TailFailureObserved;
+                    var pending=bridge.GetProof();
+                    Check(pending.ErrorCode==""&&!pending.Success&&!pending.Retired&&pending.Responses==0,mode+" keeps proof provisional after the real tail-error continuation and before native-exit observation");
+                    if(mode=="tail-before-finish") bridge.FinishClient();
+                    else if(mode=="tail-before-close") bridge.Close();
+                    await bridge.Completion;
+                    var proof=bridge.GetProof();bool success=mode=="tail-before-finish";
+                    Check(proof.Retired&&proof.Completed&&proof.Success==success&&proof.Responses==(success ? 1 : 0)&&bridge.DeadlineTimestamp==deadline,mode+" settles the original owner under the unchanged deadline");
+                    Check(controlled.Settled.Task.IsCompleted&&!controlled.DisposedBeforeSettlement,mode+" observes original write settlement before stream disposal");
+                    Check(BodyBytes(controlled.Delivered).SequenceEqual(terminal)&&proof.DrainedTailBytes==(success ? tail.Length : 0),mode+" accounts for exactly the delivered terminal and admitted tail drain");
+                    if(success) Check(proof.ErrorCode=="",mode+" accepts graceful native retirement observed after tail I/O failure");
+                    else if(mode=="tail-before-deadline") Check(proof.ErrorCode=="deadline"&&bridge.RemainingMilliseconds==0,mode+" cannot replace missing graceful finish with a fresh wait budget");
+                    else Check(proof.ErrorCode=="transport_io"&&proof.ErrorCause!=null&&proof.ErrorCause.Type=="System.IO.IOException",mode+" preserves the original tail IOException on unsuccessful close");
+                } finally {
+                    if(controlled!=null) controlled.Release.TrySetResult(true);
+                    bridge.Close();await bridge.Completion;
+                    if(controlled!=null) controlled.Dispose();
+                }
+            }
+        }
         static async Task Bad(string name, Func<GauntletTransport.Bridge, byte[]> request, bool allowClosed=false, string expectedError=null)
         {
             var handler=new Upstream(); var bridge=new GauntletTransport.Bridge("prompt",1500,handler);
@@ -558,6 +734,8 @@ namespace GauntletTransportTests
             var finishMethod=typeof(GauntletTransport.Bridge).GetMethod("FinishClient");
             Check(finishMethod!=null,"graceful client retirement can drain active validated upstream EOF");
             if(finishMethod!=null) {
+                foreach(string mode in new [] {"delivered-pending","coalesced-tail","undelivered","write-failure","deadline","tail-in-flight"}) await TerminalDeliveryFinish(mode);
+                foreach(string mode in new [] {"tail-before-finish","tail-before-deadline","tail-before-close"}) await TailFailureBeforeRetirement(mode);
                 foreach(string mode in new [] {"valid-heartbeat","bad-trailer","bad-length","deadline"}) {
                     var handler=new Upstream();byte[] trailer=Encoding.UTF8.GetBytes(mode=="bad-trailer" ? "data: {\"type\":\"response.created\"}\n\n" : mode=="valid-heartbeat" ? ": heartbeat\n\n" : "");
                     var controlled=new ControlledTailStream(handler.Reply,trailer);handler.ResponseOverride=new StreamContent(controlled);
