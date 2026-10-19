@@ -45,24 +45,66 @@ namespace GauntletOwnedWork {
   public long ChannelCount(int channel){return Interlocked.Read(ref counts[channel]);}
   static ReadOnlyDictionary<string,object> Record(Dictionary<string,object> values){return new ReadOnlyDictionary<string,object>(values);}
   static bool Code(string value){if(value==null||value.Length==0||value.Length>64||value[0]<'a'||value[0]>'z')return false;foreach(char c in value)if((c<'a'||c>'z')&&(c<'0'||c>'9')&&c!='_')return false;return true;}
+  // No exception or diagnostic formatter participates in admission. These
+  // fixed runtime fields expose existing primitive strings without invoking a
+  // virtual Message/Data getter, expanding an aggregate, or copying its text.
+  // A missing/changed runtime storage contract refuses initialization/admission.
+  static FieldInfo StoredField(Type type,string name,Type expected){
+   var field=type.GetField(name,BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.DeclaredOnly);
+   if(field==null||field.FieldType!=expected)throw new InvalidOperationException("Unsupported stored diagnostic contract");
+   return field;
+  }
+  static readonly FieldInfo messageField=StoredField(typeof(Exception),"_message",typeof(string));
+  static readonly FieldInfo dataField=StoredField(typeof(Exception),"_data",typeof(System.Collections.IDictionary));
+  static readonly FieldInfo jsonMessageField=StoredField(typeof(System.Text.Json.JsonException),"_message",typeof(string));
+  static readonly FieldInfo errorIdField=StoredField(typeof(ErrorRecord),"_errorId",typeof(string));
+  static readonly FieldInfo serializedErrorIdField=StoredField(typeof(ErrorRecord),"_serializedFullyQualifiedErrorId",typeof(string));
+  static readonly FieldInfo detailsMessageField=StoredField(typeof(ErrorDetails),"_message",typeof(string));
+  static readonly FieldInfo detailsActionField=StoredField(typeof(ErrorDetails),"_recommendedAction",typeof(string));
+  static readonly Type dataType=typeof(Exception).Assembly.GetType("System.Collections.ListDictionaryInternal",true);
   static bool TrustedException(Exception error){
-   var a=error.GetType().Assembly;
-   return a==typeof(Exception).Assembly||a==typeof(RuntimeException).Assembly||a==typeof(Win32Exception).Assembly||a==typeof(System.Net.Sockets.SocketException).Assembly||a==typeof(System.Net.Http.HttpRequestException).Assembly||a==typeof(System.Text.Json.JsonException).Assembly;
+   var type=error.GetType();var assembly=type.Assembly;
+   if(!(assembly==typeof(Exception).Assembly||assembly==typeof(RuntimeException).Assembly||assembly==typeof(Win32Exception).Assembly||assembly==typeof(System.Net.Sockets.SocketException).Assembly||assembly==typeof(System.Net.Http.HttpRequestException).Assembly||assembly==typeof(System.Text.Json.JsonException).Assembly))return false;
+   // These two exact numeric-cause types override Message. Their fixed stored
+   // strings/numeric fields are handled explicitly; neither getter is called.
+   if(type==typeof(System.Net.Sockets.SocketException)||type==typeof(System.Text.Json.JsonException))return true;
+   // Reject AggregateException and every other composite/overridden producer
+   // before reading diagnostic storage or walking its first InnerException.
+   return type.GetProperty("Message").GetMethod.DeclaringType==typeof(Exception)&&type.GetProperty("Data").GetMethod.DeclaringType==typeof(Exception);
+  }
+  static System.Collections.IDictionary SafeData(Exception error){
+   var data=(System.Collections.IDictionary)dataField.GetValue(error);
+   if(data==null)return null;
+   if(data.GetType()!=dataType||data.Count>8)throw new InvalidOperationException("Unsupported exception data");
+   int count=0;
+   foreach(System.Collections.DictionaryEntry pair in data){
+    if(++count>8||!(pair.Key is string key)||key.Length>64)throw new InvalidOperationException("Unsupported exception data");
+    if(pair.Value!=null&&!(pair.Value is int)&&!(pair.Value is long)&&!(pair.Value is bool)&&!(pair.Value is string))throw new InvalidOperationException("Unsupported exception data graph");
+    if(pair.Value is string value&&value.Length>64)throw new InvalidOperationException("Unsupported exception data text");
+   }
+   return data;
   }
   static ReadOnlyDictionary<string,object> Fault(string code,string stage,Exception error){
    Exception cause=error;
-   for(int i=0;i<8&&cause!=null;i++){
-    // Read only standard framework/SMA exception Data implementations. Never
-    // call an arbitrary override, formatter or ToString on a worker object.
-    var assembly=cause.GetType().Assembly;
-    if(TrustedException(cause)){
-     var data=cause.Data;
-     if(data.Contains("ReviewCode")&&data["ReviewCode"] is string c&&Code(c)){
-      code=c;if(data.Contains("ReviewStage")&&data["ReviewStage"] is string s&&Code(s))stage=s;break;
+   try{
+    for(int i=0;i<8&&cause!=null;i++){
+     if(!TrustedException(cause)){cause=null;break;}
+     // Repeat structural validation here: Fault also handles stop failures,
+     // and a worker may mutate its Data after the earlier admission check.
+     // Never call Contains/indexers, which dispatch Equals on arbitrary keys.
+     var data=SafeData(cause);string safeCode=null,safeStage=null;
+     if(data!=null){
+      int count=0;
+      foreach(System.Collections.DictionaryEntry pair in data){
+       if(++count>8||!(pair.Key is string key))throw new InvalidOperationException("Unsupported exception data");
+       if(String.Equals(key,"ReviewCode",StringComparison.Ordinal)&&pair.Value is string c&&Code(c))safeCode=c;
+       if(String.Equals(key,"ReviewStage",StringComparison.Ordinal)&&pair.Value is string s&&Code(s))safeStage=s;
+      }
      }
+     if(safeCode!=null){code=safeCode;if(safeStage!=null)stage=safeStage;break;}
+     if(cause.InnerException==null)break;cause=cause.InnerException;
     }
-    if(cause.InnerException==null)break;cause=cause.InnerException;
-   }
+   }catch{cause=null;}
    string type=cause==null?null:cause.GetType().FullName;
    if(type!=null&&(type.Length>256||!SafeType(type)))type="System.Exception";
    object safe=cause==null?null:Record(new Dictionary<string,object>(StringComparer.Ordinal){
@@ -82,16 +124,29 @@ namespace GauntletOwnedWork {
      var ex=e.Exception;
      long exceptionBytes=0;
      for(int depth=0;ex!=null;depth++,ex=ex.InnerException){
-      if(depth>=8||!TrustedException(ex)||ex.Data.Count>8)throw new InvalidOperationException("Unsupported exception graph");
-      foreach(System.Collections.DictionaryEntry pair in ex.Data){
-       if(!(pair.Key is string key)||key.Length>64)throw new InvalidOperationException("Unsupported exception data");
+      if(depth>=8||!TrustedException(ex))throw new InvalidOperationException("Unsupported exception graph");
+      var data=SafeData(ex);
+      // Data remains worker-mutable after SafeData returns. Bound and
+      // validate this consumption independently; earlier validation is not
+      // authority for a later enumeration of the same mutable dictionary.
+      int dataCount=0;
+      if(data!=null)foreach(System.Collections.DictionaryEntry pair in data){
+       if(++dataCount>8||!(pair.Key is string key)||key.Length>64)throw new InvalidOperationException("Unsupported exception data");
        if(pair.Value!=null&&!(pair.Value is int)&&!(pair.Value is long)&&!(pair.Value is bool)&&!(pair.Value is string))throw new InvalidOperationException("Unsupported exception data graph");
        if(pair.Value is string value&&value.Length>64)throw new InvalidOperationException("Unsupported exception data text");
+       exceptionBytes+=TextBytes(key)+TextBytes(pair.Value as string);
       }
-      exceptionBytes+=TextBytes(ex.Message);
+      exceptionBytes+=TextBytes((string)messageField.GetValue(ex));
+      if(ex.GetType()==typeof(System.Text.Json.JsonException)){
+       exceptionBytes+=TextBytes((string)jsonMessageField.GetValue(ex))+TextBytes(((System.Text.Json.JsonException)ex).Path);
+      }
      }
-     ex=e.Exception;
-     return header+exceptionBytes+TextBytes(e.FullyQualifiedErrorId)+TextBytes(e.ErrorDetails==null?null:e.ErrorDetails.Message);
+     var details=e.ErrorDetails;
+     // FullyQualifiedErrorId may construct text from invocation metadata.
+     // Charge its existing stored inputs instead; never invoke that formatter.
+     return header+exceptionBytes+TextBytes((string)errorIdField.GetValue(e))+TextBytes((string)serializedErrorIdField.GetValue(e))+
+      (details==null?0:TextBytes((string)detailsMessageField.GetValue(details))+TextBytes((string)detailsActionField.GetValue(details)));
+
     case 2:return header+TextBytes(((WarningRecord)item).Message);
     case 3:return header+TextBytes(((VerboseRecord)item).Message);
     case 4:return header+TextBytes(((DebugRecord)item).Message);
@@ -100,7 +155,7 @@ namespace GauntletOwnedWork {
      if(info.MessageData!=null&&!(info.MessageData is string))throw new InvalidOperationException("Unsupported information graph");
      if(info.Tags.Count>16)throw new InvalidOperationException("Unsupported information tags");
      long bytes=header+TextBytes((string)info.MessageData)+TextBytes(info.Source);
-     foreach(var tag in info.Tags){if(tag!=null&&tag.Length>64)throw new InvalidOperationException("Unsupported information tag");bytes+=TextBytes(tag);}
+     int tagCount=0;foreach(var tag in info.Tags){if(++tagCount>16)throw new InvalidOperationException("Unsupported information tags");if(tag!=null&&tag.Length>64)throw new InvalidOperationException("Unsupported information tag");bytes+=TextBytes(tag);}
      return bytes;
     case 6:
      var p=(ProgressRecord)item;return header+TextBytes(p.Activity)+TextBytes(p.StatusDescription)+TextBytes(p.CurrentOperation);
@@ -696,7 +751,11 @@ namespace GauntletLive {
                 bool attributesDeleted=!attributesReady;
                 if(attributesReady&&AdmitCleanup(result,custody,attributes)){try{DeleteProcThreadAttributeList(attributes);attributesDeleted=true;}catch(Exception error){RecordFailure(result,"native_cleanup","attribute_cleanup",error,true);custody.Unresolved.Add(attributes);}}
                 if(attributesDeleted&&attributes!=IntPtr.Zero&&AdmitCleanup(result,custody,attributes)){try{Marshal.FreeHGlobal(attributes);}catch(Exception error){RecordFailure(result,"native_cleanup","memory_cleanup",error,true);custody.Unresolved.Add(attributes);}}
-                if(handles!=IntPtr.Zero&&AdmitCleanup(result,custody,handles)){try{Marshal.FreeHGlobal(handles);}catch(Exception error){RecordFailure(result,"native_cleanup","memory_cleanup",error,true);custody.Unresolved.Add(handles);}}
+                // UpdateProcThreadAttribute borrows this exact lpValue allocation
+                // until the initialized attribute list is confirmed destroyed.
+                // Failed/refused destruction already retains attributes above.
+                if(!attributesDeleted&&handles!=IntPtr.Zero)custody.Unresolved.Add(handles);
+                if(attributesDeleted&&handles!=IntPtr.Zero&&AdmitCleanup(result,custody,handles)){try{Marshal.FreeHGlobal(handles);}catch(Exception error){RecordFailure(result,"native_cleanup","memory_cleanup",error,true);custody.Unresolved.Add(handles);}}
                 if(environment!=IntPtr.Zero&&AdmitCleanup(result,custody,environment)){try{Marshal.FreeHGlobal(environment);}catch(Exception error){RecordFailure(result,"native_cleanup","memory_cleanup",error,true);custody.Unresolved.Add(environment);}}
                 // Serialize close with the original overflow/cancellation callback so a
                 // late signal cannot target a recycled numeric handle.
@@ -1379,7 +1438,17 @@ function Complete-ReviewOwnedWork {
         if(-not $owner['StartupSettled']){
             $faults=Get-ReviewOwnedWorkFailures -Owner $owner
             $owner['Failure']=$faults.Failure;$owner['CleanupFailures']=$faults.CleanupFailures
-            $snapshots.Add((New-ReviewReadOnlyRecord -Values @{Token=$key;Completed=$false;Retired=$false;TimedOut=[bool]$owner['TimedOut'];Result=$null;Failure=$faults.Failure;CleanupFailures=$faults.CleanupFailures}))
+            $snapshot=New-ReviewReadOnlyRecord -Values @{Token=$key;Completed=$false;Retired=$false;TimedOut=[bool]$owner['TimedOut'];Result=$null;Failure=$faults.Failure;CleanupFailures=$faults.CleanupFailures}
+            # The original owner lock serializes the final publication decision, including
+            # a not-yet-settled startup snapshot. Preparing its DTO may itself cross expiry.
+            if((Get-ReviewRemainingMilliseconds $owner['Deadline']) -le 0){
+                $owner['Abandoned']=$true;$owner['TimedOut']=$true;$state['Abandoned']=$true
+                if($null -eq $owner['DeadlineFailure']){$null=$owner.TryAdd('DeadlineFailure',(New-ReviewTransportFault 'owned_deadline' 'owned_observer' $null))}
+                $faults=Get-ReviewOwnedWorkFailures -Owner $owner
+                $owner['Failure']=$faults.Failure;$owner['CleanupFailures']=$faults.CleanupFailures
+                $snapshot=New-ReviewReadOnlyRecord -Values @{Token=$key;Completed=$false;Retired=$false;TimedOut=$true;Result=$null;Failure=$faults.Failure;CleanupFailures=$faults.CleanupFailures}
+            }
+            $snapshots.Add($snapshot)
             continue
         }
         $created=$owner['CreationTask'];$invoked=$owner['InvokeTask'];$dispose=$owner['DisposeTask']
@@ -1421,6 +1490,16 @@ function Complete-ReviewOwnedWork {
         $result=if($null -eq $failure -and -not $owner['Abandoned'] -and $null -ne $invoked -and $invoked.IsCompletedSuccessfully -and $state.ContainsKey('Result')){$state['Result']}else{$null}
         $snapshot=New-ReviewReadOnlyRecord -Values @{Token=$key;Completed=(-not $owner['Abandoned'] -and $null -ne $invoked -and $invoked.IsCompletedSuccessfully);Retired=[bool]$retired;TimedOut=[bool]$owner['TimedOut'];Result=$result;Failure=$failure;CleanupFailures=$faults.CleanupFailures}
         if($retired){$owner['RetirementConfirmed']=$true;$null=Remove-ReviewOwnedWorkEntry -OwnerRegistry $OwnerRegistry -Token $key -Owner $owner}
+        # This is the acceptance linearization point under the original owner lock.
+        # Disposal, projection, DTO construction and retirement bookkeeping above
+        # cannot turn entry-time budget into permission to publish after expiry.
+        if((Get-ReviewRemainingMilliseconds $owner['Deadline']) -le 0){
+            $owner['Abandoned']=$true;$owner['TimedOut']=$true;$state['Abandoned']=$true
+            if($null -eq $owner['DeadlineFailure']){$null=$owner.TryAdd('DeadlineFailure',(New-ReviewTransportFault 'owned_deadline' 'owned_observer' $null))}
+            $faults=Get-ReviewOwnedWorkFailures -Owner $owner
+            $owner['Failure']=$faults.Failure;$owner['CleanupFailures']=$faults.CleanupFailures
+            $snapshot=New-ReviewReadOnlyRecord -Values @{Token=$key;Completed=$false;Retired=[bool]$retired;TimedOut=$true;Result=$null;Failure=$faults.Failure;CleanupFailures=$faults.CleanupFailures}
+        }
         $snapshots.Add($snapshot)
         }finally{[Threading.Monitor]::Exit($owner)}
     }

@@ -51,6 +51,9 @@ $regressions+=@{Name='native-11';File='early-dispose-probe.ps1';Arguments=@('-So
 foreach($projectionCase in @('ordinary','foreign','transport','metadata')){
     $regressions+=@{Name=('projection-'+$projectionCase);File='dormant-native-projection-case.ps1';Arguments=@('-RepoRoot',$repo,'-Case',$projectionCase)}
 }
+$regressions+=@{Name='stream-admission';File='dormant-stream-admission.ps1';Arguments=@('-RepoRoot',$repo,'-Source',$source)}
+$regressions+=@{Name='completion-deadline';File='dormant-native-completion-deadline.ps1';Arguments=@('-RepoRoot',$repo,'-Source',$source)}
+$regressions+=@{Name='real-observer';File='dormant-native-real-observer.ps1';Arguments=@('-RepoRoot',$repo)}
 foreach($test in $regressions){
     $fixture=Join-Path $PSScriptRoot ('fixtures/'+$test.File)
     Assert-True ([IO.File]::Exists($fixture)) ($test.Name+' complete isolated regression fixture exists')

@@ -83,6 +83,48 @@ function Read-RealReceipt($Result,[string]$Case){
   [pscustomobject]@{pid=$pidValue;started_utc=$started;observed_alive=$parent.GetProperty('observed_alive').GetBoolean()}
  }finally{foreach($document in $documents){$document.Dispose()}}
 }
+function Test-RealOriginalDescendantAlive {
+ param(
+  [Parameter(Mandatory)][int]$ProcessId,
+  [Parameter(Mandatory)][string]$StartedUtc,
+  [scriptblock]$Lookup={param($Id) [Diagnostics.Process]::GetProcessById($Id)},
+  [scriptblock]$ReadStart={param($Observed) $Observed.StartTime},
+  [scriptblock]$ReadExited={param($Observed) $Observed.HasExited},
+  [scriptblock]$Dispose={param($Observed) $Observed.Dispose()}
+ )
+ if($ProcessId -le 0){throw [ArgumentOutOfRangeException]::new('ProcessId')}
+ $observed=$null
+ # Only the actual positive-PID lookup's known missing-process exception is absence.
+ try{$observed=& $Lookup $ProcessId}catch [ArgumentException]{return $false}
+ if($null -eq $observed){throw [InvalidOperationException]::new('Process lookup returned no observation')}
+ $primary=$null
+ try{
+  $exited=& $ReadExited $observed
+  if($exited -isnot [bool]){throw [InvalidOperationException]::new('Process exit observation was not Boolean')}
+  if($exited){return $false}
+  $start=$null;$startFailure=$null
+  try{$start=& $ReadStart $observed}catch [InvalidOperationException]{$startFailure=$_}
+  if($null -ne $startFailure -or $null -eq $start){
+   $exited=& $ReadExited $observed
+   if($exited -isnot [bool]){throw [InvalidOperationException]::new('Process exit observation was not Boolean')}
+   if($exited){return $false}
+   if($null -ne $startFailure){throw $startFailure}
+   throw [InvalidOperationException]::new('Live process has no start-time observation')
+  }
+  if($start -isnot [datetime]){throw [InvalidOperationException]::new('Process start observation was not DateTime')}
+  $exited=& $ReadExited $observed
+  if($exited -isnot [bool]){throw [InvalidOperationException]::new('Process exit observation was not Boolean')}
+  if($exited){return $false}
+  return [string]::Equals($start.ToUniversalTime().ToString('o'),$StartedUtc,[StringComparison]::Ordinal)
+ }catch{$primary=$_;throw}finally{
+  try{& $Dispose $observed}catch{
+   if($null -ne $primary){
+    $previous=@();if($primary.Exception.Data.Contains('DormantFixtureCleanupFailures')){$previous=@($primary.Exception.Data['DormantFixtureCleanupFailures'])}
+    $primary.Exception.Data['DormantFixtureCleanupFailures']=[Array]::AsReadOnly([object[]]@($previous+$_.Exception))
+   }else{throw [AggregateException]::new('Descendant observation cleanup failed',[Exception[]]@($_.Exception))}
+  }
+ }
+}
 function Run-RealFixture([string]$Mode,[string]$InputText,[int]$Timeout=15){
     Invoke-BoundedProcess -FileName $exe -ArgList @('-NoProfile','-File',$scriptPath,'-Mode',$Mode,'-ChildPath',$descendantPath,'-Executable',$exe) -StdinText $InputText -WorkingDirectory $root -TimeoutSec $Timeout -RequireProcessTreeRetirement
 }
@@ -137,15 +179,13 @@ try{
     Assert-True (-not [string]::IsNullOrWhiteSpace($tree.Stdout)) 'descendant executed and delivered actual stdout identity before retirement check'
     $receipt=Read-RealReceipt $tree tree_timeout
     Assert-True ($receipt.observed_alive -is [bool] -and $receipt.observed_alive) 'timeout parent confirmed its exact descendant alive before sleep'
-    $sameAlive=$false
-    try{$process=[Diagnostics.Process]::GetProcessById([int]$receipt.pid);$sameAlive=$process.StartTime.ToUniversalTime().ToString('o') -ceq $receipt.started_utc -and -not $process.HasExited;$process.Dispose()}catch [ArgumentException]{}
+    $sameAlive=Test-RealOriginalDescendantAlive -ProcessId ([int]$receipt.pid) -StartedUtc $receipt.started_utc
     Assert-True (-not $sameAlive) 'the exact original descendant has exited after native retirement proof'
     $parentExit=Run-RealFixture 'tree-exit' ''
     Assert-True ($parentExit.ExitCode -eq 0 -and -not $parentExit.TimedOut -and $parentExit.ProcessTreeRetired -and $null -eq $parentExit.Failure) 'successful original parent exit also retires remaining job descendants and IO'
     $receipt=Read-RealReceipt $parentExit parent_exit
     Assert-True ($receipt.observed_alive -is [bool] -and $receipt.observed_alive) 'original successful parent confirms descendant alive before parent exit'
-    $sameAlive=$false
-    try{$process=[Diagnostics.Process]::GetProcessById([int]$receipt.pid);$sameAlive=$process.StartTime.ToUniversalTime().ToString('o') -ceq $receipt.started_utc -and -not $process.HasExited;$process.Dispose()}catch [ArgumentException]{}
+    $sameAlive=Test-RealOriginalDescendantAlive -ProcessId ([int]$receipt.pid) -StartedUtc $receipt.started_utc
     Assert-True (-not $sameAlive) 'exact PID and start-time descendant from successful parent is dead after actual native job retirement'
     Assert-NativeSix $parentExit parent_exit_descendant
     $cancel=[Threading.CancellationTokenSource]::new()
