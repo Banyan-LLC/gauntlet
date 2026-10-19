@@ -12,4 +12,8 @@ Graceful client retirement now distinguishes terminal delivery from trailing str
 
 The native-disposal fixture now deletes its temporary lease through the original DeleteOnClose handle. A deterministic replacement control verifies that original disposal preserves a later file at the same name; the replacement is also cleaned through its own handle. Existing exclusivity and disposal-failure controls remain intact.
 
+Final transport cleanup now rechecks the original monotonic deadline before disposing the failure signal and when publishing retirement. A retired transport can therefore still fail deadline acceptance. Deterministic actual-clock fixtures withhold only the timer callback, retain timely and prior-failure controls, and preserve typed primary and cleanup causes.
+
+Cancellation classification also reads the original cancellation owner before its notification callback can run. Controlled inline read continuations distinguish that deadline signal from explicit Close and an unrelated cancellation exception, while preserving the original clock and typed cause. Existing stream-timeout assertions retain their budgets and now include failure-only state diagnostics.
+
 Production integration, source-bound calibration and live-stack certification belong to later dependency-safe changes. No global installation, runtime setup or fresh active-stack certification is claimed here.

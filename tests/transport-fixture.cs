@@ -37,6 +37,7 @@ namespace GauntletTransportTests
         internal readonly TaskCompletionSource<bool> SecondEntered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         internal bool Disposed;
         internal bool DisposeFailure=false;
+        internal Action DuringDispose;
         internal Action<HttpResponseMessage> BeforeReturn;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
@@ -59,7 +60,7 @@ namespace GauntletTransportTests
             if(BeforeReturn!=null) BeforeReturn(result);
             return result;
         }
-        protected override void Dispose(bool disposing) { Disposed = true; base.Dispose(disposing);if(DisposeFailure) throw new IOException("secret-cleanup"); }
+        protected override void Dispose(bool disposing) { Disposed = true; base.Dispose(disposing);if(DuringDispose!=null) DuringDispose();if(DisposeFailure) throw new IOException("secret-cleanup"); }
     }
 
     internal sealed class NativeLease : IDisposable
@@ -201,6 +202,53 @@ namespace GauntletTransportTests
             if(tailFailure!=null) tailFailure.Dispose();
             base.Dispose(disposing);
         }
+    }
+
+    // Return the source directly to the real HandleAsync read await. Complete
+    // it inline only after OnCompleted has registered that actual continuation.
+    internal sealed class InlineCancellationReadStream : Stream,IValueTaskSource<int>
+    {
+        ManualResetValueTaskSourceCore<int> completion;
+        CancellationTokenRegistration cancellation;
+        int reads,completed;
+        internal CancellationToken ReadToken;
+        internal Exception Failure;
+        internal Action AfterConsumer;
+        internal bool Disposed;
+        internal long ConsumerEnteredAt,ConsumerReturnedAt;
+        internal readonly TaskCompletionSource<bool> AwaitRegistered=new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource<bool> ConsumerReturned=new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal InlineCancellationReadStream() {completion.RunContinuationsAsynchronously=false;}
+        public override bool CanRead {get{return true;}}public override bool CanWrite {get{return false;}}public override bool CanSeek {get{return false;}}
+        public override long Length {get{throw new NotSupportedException();}}public override long Position {get{throw new NotSupportedException();}set{throw new NotSupportedException();}}
+        public override void Flush() {}public override long Seek(long n,SeekOrigin o) {throw new NotSupportedException();}public override void SetLength(long n) {throw new NotSupportedException();}public override void Write(byte[] b,int o,int n) {throw new NotSupportedException();}public override int Read(byte[] b,int o,int n) {throw new NotSupportedException();}
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer,CancellationToken ct=default(CancellationToken)) {
+            if(Interlocked.Increment(ref reads)!=1) throw new InvalidOperationException("fixture expects one original pending read");
+            ReadToken=ct;
+            // This registration follows Bridge.OnCancellation and the scheduler's
+            // sentinel; the owned CTS invokes this newer callback first.
+            cancellation=ct.Register(()=>Complete(new OperationCanceledException(ct)));
+            return new ValueTask<int>(this,completion.Version);
+        }
+        internal void FailUnrelated() {Complete(new OperationCanceledException("synthetic-unrelated-cancellation"));}
+        void Complete(Exception failure) {
+            if(Interlocked.CompareExchange(ref completed,1,0)==0) {Failure=failure;completion.SetException(failure);}
+        }
+        public ValueTaskSourceStatus GetStatus(short token) {return completion.GetStatus(token);}
+        public int GetResult(short token) {return completion.GetResult(token);}
+        public void OnCompleted(Action<object> continuation,object state,short token,ValueTaskSourceOnCompletedFlags flags) {
+            completion.OnCompleted(value=>{
+                ConsumerEnteredAt=System.Diagnostics.Stopwatch.GetTimestamp();
+                try {continuation(value);}
+                finally {
+                    ConsumerReturnedAt=System.Diagnostics.Stopwatch.GetTimestamp();
+                    if(AfterConsumer!=null) AfterConsumer();
+                    ConsumerReturned.TrySetResult(true);
+                }
+            },state,token,flags);
+            AwaitRegistered.TrySetResult(true);
+        }
+        protected override void Dispose(bool disposing) {if(disposing) {cancellation.Dispose();Disposed=true;}base.Dispose(disposing);}
     }
 
     public static class Suite
@@ -502,6 +550,111 @@ namespace GauntletTransportTests
             } finally {await Retire(limited);}
         }
 
+        static async Task CancellationCallbackOrder(string mode)
+        {
+            long deadline=System.Diagnostics.Stopwatch.GetTimestamp()+System.Diagnostics.Stopwatch.Frequency*5;
+            // Observation gates use the same immutable raw-clock budget. A logical
+            // zero after cancellation must not manufacture a new cleanup budget.
+            Func<int> originalClockBudget=()=> (int)Math.Max(0m,Math.Ceiling(((decimal)deadline-System.Diagnostics.Stopwatch.GetTimestamp())*1000m/System.Diagnostics.Stopwatch.Frequency));
+            CancellationTokenSource scheduled=null;CancellationToken originalToken=default(CancellationToken);
+            CancellationTokenRegistration olderCallback=default(CancellationTokenRegistration);
+            int requestedDelay=0,olderCallbackRuns=0,olderCallbacksAtObservation=-1,remainingAtObservation=-1;
+            bool cancellationAtObservation=false;long observationAt=0;
+            GauntletTransport.Proof observed=null;
+            var input=new InlineCancellationReadStream();
+            var handler=new Upstream {ResponseOverride=new StreamContent(input)};
+            var bridge=new GauntletTransport.Bridge("prompt",deadline,handler,null,(owner,remaining)=>{
+                scheduled=owner;originalToken=owner.Token;requestedDelay=remaining;
+                // Older than the read callback, newer than Bridge.OnCancellation.
+                // Its absence at the observation proves neither older callback ran.
+                olderCallback=originalToken.Register(()=>Interlocked.Increment(ref olderCallbackRuns));
+            });
+            input.AfterConsumer=()=>{
+                observed=bridge.GetProof();remainingAtObservation=bridge.RemainingMilliseconds;
+                cancellationAtObservation=originalToken.IsCancellationRequested;
+                olderCallbacksAtObservation=Volatile.Read(ref olderCallbackRuns);
+                observationAt=System.Diagnostics.Stopwatch.GetTimestamp();
+            };
+            Task<byte[]> pending=null;
+            try {
+                pending=Exchange(bridge,Request(bridge,Payload("prompt")));
+                await Task.WhenAny(input.AwaitRegistered.Task,bridge.Completion,Task.Delay(originalClockBudget()));
+                Check(input.AwaitRegistered.Task.IsCompleted,mode+" registers the actual original read await before completing its ValueTask source");
+                if(!input.AwaitRegistered.Task.IsCompleted) return;
+                Check(scheduled!=null&&requestedDelay>0&&requestedDelay<=5000&&input.ReadToken==originalToken,mode+" retains the original cancellation owner and original remaining budget");
+                Check(!bridge.Completion.IsCompleted&&System.Diagnostics.Stopwatch.GetTimestamp()<deadline,mode+" starts cancellation while the original task is pending and raw clock has time remaining");
+                if(mode=="owned-deadline") scheduled.Cancel();
+                else if(mode=="explicit-close") bridge.Close();
+                else input.FailUnrelated();
+                Check(input.ConsumerReturned.Task.IsCompleted&&olderCallbacksAtObservation==0,mode+" observes the real inline consumer return before either older cancellation callback");
+                if(!input.ConsumerReturned.Task.IsCompleted) return;
+                Check(input.ConsumerEnteredAt<deadline&&input.ConsumerReturnedAt<deadline&&observationAt<deadline,mode+" classifies cancellation before the unchanged raw deadline actually expires");
+                bool ownedDeadline=mode=="owned-deadline";
+                string expected=ownedDeadline ? "deadline" : "cancelled_active";
+                Check(cancellationAtObservation==(mode!="unrelated-oce"),mode+" distinguishes original-owner cancellation from unrelated OperationCanceledException");
+                Check(ownedDeadline ? remainingAtObservation==0 : remainingAtObservation>0,mode+" reports deadline ownership without depending on the deferred bridge callback");
+                Check(observed!=null&&observed.ErrorCode==expected&&observed.ErrorStage=="response_stream"&&observed.ErrorCause!=null&&observed.ErrorCause.Type=="System.OperationCanceledException"&&observed.ErrorCause.HResult==input.Failure.HResult,mode+" publishes the original read cause with the correct cancellation class before older callbacks");
+                await Task.WhenAny(bridge.Completion,Task.Delay(originalClockBudget()));
+                Check(bridge.Completion.IsCompleted,mode+" physically completes its original owner within the unchanged raw-clock budget");
+                if(!bridge.Completion.IsCompleted) return;
+                await pending;
+                var proof=bridge.GetProof();
+                Check(proof.Retired&&proof.Completed&&!proof.Success&&handler.Disposed&&input.Disposed&&proof.Responses==0&&proof.Models==0,mode+" retires owned resources without authorizing a partial response");
+                Check(proof.ErrorCode==expected&&proof.ErrorStage=="response_stream"&&proof.ErrorCause!=null&&proof.ErrorCause.Type=="System.OperationCanceledException"&&proof.ErrorCause.HResult==input.Failure.HResult,mode+" retains the original typed primary cause through final cleanup");
+                Check(bridge.DeadlineTimestamp==deadline&&bridge.FailureToken.IsCancellationRequested&&proof.CleanupFailures.Length==0,mode+" preserves the immutable deadline and original fatal signal without cleanup faults");
+            } finally {
+                bridge.Close();await bridge.Completion;
+                if(pending!=null) await pending;
+                olderCallback.Dispose();input.Dispose();
+            }
+        }
+
+        static async Task FinalCleanupDeadline(string mode)
+        {
+            bool late=mode!="timely",prior=mode=="prior-upstream",cleanupFailure=prior||mode=="cleanup-primary";
+            long deadline=System.Diagnostics.Stopwatch.GetTimestamp()+System.Diagnostics.Stopwatch.Frequency*2;
+            CancellationTokenSource scheduled=null;int requestedDelay=0;
+            bool cleanupEntered=false,enteredBeforeDeadline=false,timerCanceledDuringCleanup=false;
+            long cleanupExit=0;
+            var upstreamFailure=new HttpRequestException("synthetic-upstream",new IOException("synthetic-inner"));
+            var handler=new Upstream {SendFailure=prior ? upstreamFailure : null,DisposeFailure=cleanupFailure};
+            handler.DuringDispose=()=>{
+                cleanupEntered=true;enteredBeforeDeadline=System.Diagnostics.Stopwatch.GetTimestamp()<deadline;
+                // Withhold only this fixture's timer; the owned cleanup crosses the
+                // actual original clock condition, not an assumed scheduling delay.
+                if(late) SpinWait.SpinUntil(()=>System.Diagnostics.Stopwatch.GetTimestamp()>=deadline);
+                cleanupExit=System.Diagnostics.Stopwatch.GetTimestamp();
+                timerCanceledDuringCleanup=scheduled.IsCancellationRequested;
+            };
+            var bridge=new GauntletTransport.Bridge("prompt",deadline,handler,null,(owner,remaining)=>{
+                scheduled=owner;requestedDelay=remaining;
+            });
+            try {
+                await Exchange(bridge,Request(bridge,Payload("prompt")));
+                if(!prior) bridge.FinishClient();
+                await bridge.Completion;
+                var proof=bridge.GetProof();
+                Check(scheduled!=null&&requestedDelay>0&&requestedDelay<=2000,"final cleanup "+mode+" schedules only the original owner and remaining budget");
+                Check(cleanupEntered&&enteredBeforeDeadline,"final cleanup "+mode+" enters owned disposal before the original deadline");
+                Check(late ? cleanupExit>=deadline&&bridge.RemainingMilliseconds==0 : cleanupExit<deadline,"final cleanup "+mode+" measures actual original-clock completion");
+                Check(!timerCanceledDuringCleanup,"final cleanup "+mode+" crosses cleanup without a deadline callback");
+                Check(bridge.Completion.IsCompleted&&handler.Disposed&&proof.Retired==!cleanupFailure&&proof.Completed==!cleanupFailure,"final cleanup "+mode+" preserves physical retirement separately from acceptance");
+                Check(proof.Success==(mode=="timely"),"final cleanup "+mode+" accepts only timely successful cleanup");
+                Check(proof.Responses==(prior ? 0 : 1)&&proof.Models==0,"final cleanup "+mode+" preserves original validated response accounting");
+                Check(bridge.DeadlineTimestamp==deadline,"final cleanup "+mode+" cannot restart or move the original deadline");
+                if(prior) {
+                    Check(proof.ErrorCode=="upstream_io"&&proof.ErrorStage=="upstream"&&proof.ErrorCause!=null&&proof.ErrorCause.Type=="System.Net.Http.HttpRequestException"&&proof.ErrorCause.HResult==upstreamFailure.HResult&&proof.ErrorCause.Inner!=null&&proof.ErrorCause.Inner.Type=="System.IO.IOException"&&proof.ErrorCause.Inner.HResult==upstreamFailure.InnerException.HResult,"final cleanup prior-upstream retains the original typed primary and inner cause after deadline");
+                    Check(proof.CleanupFailures.Length==1&&proof.CleanupFailures[0].Stage=="cleanup_http"&&proof.CleanupFailures[0].Cause!=null&&proof.CleanupFailures[0].Cause.Type=="System.IO.IOException","final cleanup prior-upstream retains the distinct cleanup secondary");
+                } else if(cleanupFailure) {
+                    Check(proof.ErrorCode=="cleanup"&&proof.ErrorStage=="cleanup_http"&&proof.ErrorCause!=null&&proof.ErrorCause.Type=="System.IO.IOException","final cleanup cleanup-primary retains its original cleanup cause after deadline");
+                    Check(proof.CleanupFailures.Length==1&&proof.CleanupFailures[0].Stage=="cleanup_http"&&proof.CleanupFailures[0].Cause!=null&&proof.CleanupFailures[0].Cause.Type=="System.IO.IOException","final cleanup cleanup-primary keeps bounded cleanup evidence");
+                } else {
+                    Check(mode=="timely" ? proof.ErrorCode=="" : proof.ErrorCode=="deadline"&&proof.ErrorStage=="cleanup_deadline","final cleanup "+mode+" applies the final original-clock acceptance gate");
+                    if(late) Check(bridge.FailureToken.IsCancellationRequested,"final cleanup late notifies the original owner before disposing the failure signal");
+                }
+            } finally {bridge.Close();await bridge.Completion;}
+        }
+
         static void NativeLeaseReplacementSafety()
         {
             byte[] marker=Encoding.ASCII.GetBytes("replacement-owned-by-regression\n");
@@ -536,6 +689,8 @@ namespace GauntletTransportTests
         public static async Task<Check[]> Run()
         {
             NativeLeaseReplacementSafety();
+            foreach(string mode in new [] {"timely","late","prior-upstream","cleanup-primary"}) await FinalCleanupDeadline(mode);
+            foreach(string mode in new [] {"owned-deadline","explicit-close","unrelated-oce"}) await CancellationCallbackOrder(mode);
             await ProbeNativeNoDrain();
             await RequestCountBoundary();
             await AuthSequence("catalog fallback to inference",new [] {"G401","P200"},true,1,0,false,false,"");
@@ -961,7 +1116,19 @@ namespace GauntletTransportTests
             try {await Exchange(incrementalBridge,Request(incrementalBridge,Payload("prompt"))); Check(incrementalBridge.GetProof().ErrorCode=="response_limit" && incrementalBridge.GetProof().ResponseBytes<=16777216,"actual streamed bytes capped without Content-Length");} finally {await Retire(incrementalBridge);}
             var streamStall=new Upstream {StreamStall=true}; var streamBridge=new GauntletTransport.Bridge("prompt",200,streamStall);
             var streamPending=Exchange(streamBridge,Request(streamBridge,Payload("prompt"))); await Task.WhenAny(streamBridge.Completion,Task.Delay(1500));
-            Check(streamBridge.Completion.IsCompleted&&streamBridge.GetProof().ErrorCode=="deadline","original deadline cancels stalled upstream stream"); await streamPending; await Retire(streamBridge);
+            bool streamCompletedAtPredicate=streamBridge.Completion.IsCompleted;
+            var streamProofAtPredicate=streamCompletedAtPredicate ? streamBridge.GetProof() : null;
+            bool streamDeadlinePredicate=streamCompletedAtPredicate&&streamProofAtPredicate.ErrorCode=="deadline";
+            string streamFailureDiagnostics=streamDeadlinePredicate ? "" : " [diagnostic "+JsonSerializer.Serialize(new {
+                CompletedAtPredicate=streamCompletedAtPredicate,
+                ErrorCode=streamProofAtPredicate==null ? null : streamProofAtPredicate.ErrorCode,
+                ErrorStage=streamProofAtPredicate==null ? null : streamProofAtPredicate.ErrorStage,
+                ErrorCause=streamProofAtPredicate==null ? null : streamProofAtPredicate.ErrorCause,
+                CompletionStatus=streamBridge.Completion.Status.ToString(),
+                RemainingMilliseconds=streamBridge.RemainingMilliseconds,
+                OriginalDeadline=streamBridge.DeadlineTimestamp,ObservedAt=System.Diagnostics.Stopwatch.GetTimestamp()
+            })+"]";
+            Check(streamDeadlinePredicate,"original deadline cancels stalled upstream stream"+streamFailureDiagnostics); await streamPending; await Retire(streamBridge);
             var maximumHandler=new Upstream();var maximum=new GauntletTransport.Bridge("prompt",5000,maximumHandler);
             try {
                 for(int i=0;i<8;i++) await Exchange(maximum,Request(maximum,Payload("prompt")));

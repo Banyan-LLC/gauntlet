@@ -258,6 +258,9 @@ namespace GauntletTransport
         {
             get {
                 if(Volatile.Read(ref deadlineCancellation)) return 0;
+                // Original I/O cancellation may settle before OnCancellation runs.
+                // Close marks its distinct intent before cancelling this owner.
+                if(cancel.IsCancellationRequested&&!Volatile.Read(ref explicitClose)) return 0;
                 decimal ticks=(decimal)deadlineTimestamp-Stopwatch.GetTimestamp();
                 if(ticks<=0) return 0;
                 return (int)Math.Min(int.MaxValue,Math.Ceiling(ticks*1000m/Stopwatch.Frequency));
@@ -276,6 +279,9 @@ namespace GauntletTransport
             : this(expectedPrompt,originalDeadlineTimestamp,handler,null) { }
         // Internal fixture seam only; the owner still selects, awaits and disposes the stream.
         internal Bridge(string expectedPrompt,long originalDeadlineTimestamp,HttpMessageHandler handler,Func<TcpClient,NetworkStream> clientStreamFactory)
+            : this(expectedPrompt,originalDeadlineTimestamp,handler,clientStreamFactory,null) { }
+        // Internal scheduling seam only; every existing constructor arms the original timer.
+        internal Bridge(string expectedPrompt,long originalDeadlineTimestamp,HttpMessageHandler handler,Func<TcpClient,NetworkStream> clientStreamFactory,Action<CancellationTokenSource,int> scheduleDeadline)
         {
             FailureToken=failureSignal.Token;
             try {
@@ -295,7 +301,7 @@ namespace GauntletTransport
                 Endpoint = "http://127.0.0.1:" + ((IPEndPoint)listener.LocalEndpoint).Port + "/backend-api/codex";
                 registration = cancel.Token.Register(OnCancellation);
                 if(RemainingMilliseconds==0) throw new TransportException("deadline","startup");
-                cancel.CancelAfter(RemainingMilliseconds);
+                if(scheduleDeadline==null) cancel.CancelAfter(RemainingMilliseconds);else scheduleDeadline(cancel,RemainingMilliseconds);
                 Completion = RunAsync();
             } catch(Exception failure) {
                 // No partially constructed owner may leave a bound socket or timer behind.
@@ -478,8 +484,18 @@ namespace GauntletTransport
                 try { cancel.Dispose(); } catch(Exception e) { Fail("cleanup","cleanup_cancellation",e); disposed=false; }
                 bool unresolvedAuth;lock(sync) unresolvedAuth=pendingCatalogAuthChallenge||pendingResponseAuthChallenge;
                 if(unresolvedAuth) Fail("auth_challenge_unresolved","auth_challenge",new HttpRequestException("",null,HttpStatusCode.Unauthorized));
+                // Notify before the fatal signal is disposed if owned cleanup ran late.
+                if(RemainingMilliseconds==0) Fail("deadline","cleanup_deadline");
                 try { failureSignal.Dispose(); } catch(Exception e) { Fail("cleanup","cleanup_failure_signal",e); disposed=false; }
-                lock(sync) retired=disposed&&!networkCleanupFailed&&unresolvedResources.Count==0;
+                bool lateCleanup;
+                lock(sync) {
+                    // Publish timeliness and physical retirement together. Keep
+                    // notification outside the lock, including disposal failures.
+                    lateCleanup=RemainingMilliseconds==0;
+                    if(lateCleanup&&error.Length==0) {error="deadline";errorStage="cleanup_deadline";errorCause=null;}
+                    retired=disposed&&!networkCleanupFailed&&unresolvedResources.Count==0;
+                }
+                if(lateCleanup) PublishFailureSignal();
             }
         }
 
