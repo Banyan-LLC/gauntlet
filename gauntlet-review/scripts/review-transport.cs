@@ -687,8 +687,8 @@ namespace GauntletTransport
                 catch(Exception failure) { throw new Rejection("upstream_io",true,failure); }
                 {
                     stage="response_headers";
+                    string responseFields=ReviewedResponseHeaders(response,response.StatusCode!=HttpStatusCode.Unauthorized);
                     if(response.StatusCode==HttpStatusCode.Unauthorized) {
-                        ReviewedResponseHeaders(response,false);
                         lock(sync) {
                             if(post) {pendingResponseAuthChallenge=true;responseAuthChallenges++;}
                             else {pendingCatalogAuthChallenge=true;catalogAuthChallenges++;}
@@ -696,14 +696,13 @@ namespace GauntletTransport
                         await SendAuthChallenge(stream).ConfigureAwait(false);
                         return;
                     }
-                    if((int)response.StatusCode<200||(int)response.StatusCode>299) throw new Rejection("upstream_status",true,new HttpRequestException("",null,response.StatusCode));
+                    if(response.StatusCode!=HttpStatusCode.OK) throw new Rejection("upstream_status",true,new HttpRequestException("",null,response.StatusCode));
                     if(response.Content.Headers.ContentEncoding.Count>0) throw new Rejection("upstream_encoding",true);
                     int limit=post ? ResponseByteLimit : CatalogByteLimit;
                     if(response.Content.Headers.ContentLength.HasValue&&response.Content.Headers.ContentLength.Value>limit) throw new Rejection("response_limit",true);
                     // Pinned clients consume route-specific bytes; upstream MIME is advisory.
                     // Emit one canonical local type while the bounded body validators prove the protocol.
                     string media=post ? "text/event-stream" : "application/json";
-                    string responseFields=ReviewedResponseHeaders(response,true);
                     byte[] responseHeader=Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Type: "+media+"\r\nConnection: close\r\nCache-Control: no-store\r\n"+responseFields+"\r\n");
                     await stream.WriteAsync(responseHeader,cancel.Token).ConfigureAwait(false);
                     stage=post ? "response_stream" : "catalog_stream";
@@ -750,7 +749,7 @@ namespace GauntletTransport
         static string ReviewedResponseHeaders(HttpResponseMessage response,bool forward)
         {
             var fields=new StringBuilder();long bytes=0;int count=0;
-            foreach(var field in response.Headers.Concat(response.Content.Headers)) foreach(string value in field.Value) {
+            foreach(var field in response.Headers.NonValidated.Concat(response.Content.Headers.NonValidated)) foreach(string value in field.Value) {
                 count++;bytes+=field.Key.Length+(long)value.Length+4;
                 if(count>HeaderCountLimit||bytes>HeaderByteLimit||!Token(field.Key)||!SafeValue(value)) throw new Rejection("upstream_headers",true);
                 if(forward&&ResponseHeaders.Contains(field.Key)) fields.Append(field.Key).Append(": ").Append(value).Append("\r\n");

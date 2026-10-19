@@ -36,6 +36,7 @@ namespace GauntletTransportTests
         internal readonly TaskCompletionSource<bool> SecondEntered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         internal bool Disposed;
         internal bool DisposeFailure=false;
+        internal Action<HttpResponseMessage> BeforeReturn;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Requests.Add(request);
@@ -54,6 +55,7 @@ namespace GauntletTransportTests
             result.Content.Headers.ContentType = MediaType==null ? null : System.Net.Http.Headers.MediaTypeHeaderValue.Parse(MediaType=="canonical" ? (request.Method == HttpMethod.Get ? "application/json" : "text/event-stream") : MediaType);
             foreach(var h in ReplyHeaders) result.Headers.TryAddWithoutValidation(h.Key,h.Value);
             if ((int)Status >= 300) result.Headers.Location = new Uri("https://invalid.example/secret");
+            if(BeforeReturn!=null) BeforeReturn(result);
             return result;
         }
         protected override void Dispose(bool disposing) { Disposed = true; base.Dispose(disposing);if(DisposeFailure) throw new IOException("secret-cleanup"); }
@@ -86,12 +88,14 @@ namespace GauntletTransportTests
     internal sealed class ReplyStream : Stream
     {
         readonly byte[] bytes; readonly bool stall; int offset;
+        internal int ReadAttempts;
         internal ReplyStream(byte[] bytes,bool stall) {this.bytes=bytes;this.stall=stall;}
         public override bool CanRead {get{return true;}} public override bool CanSeek {get{return false;}} public override bool CanWrite {get{return false;}}
         public override long Length {get{throw new NotSupportedException();}} public override long Position {get{throw new NotSupportedException();}set{throw new NotSupportedException();}}
         public override void Flush() {} public override long Seek(long x,SeekOrigin o) {throw new NotSupportedException();} public override void SetLength(long n) {throw new NotSupportedException();} public override void Write(byte[] b,int o,int n) {throw new NotSupportedException();}
         public override int Read(byte[] b,int o,int n) {throw new NotSupportedException();}
         public override async ValueTask<int> ReadAsync(Memory<byte> b,CancellationToken ct=default(CancellationToken)) {
+            ReadAttempts++;
             if(stall) await Task.Delay(Timeout.Infinite,ct);
             int n=Math.Min(b.Length,bytes.Length-offset); bytes.AsMemory(offset,n).CopyTo(b); offset+=n; return n;
         }
@@ -362,6 +366,29 @@ namespace GauntletTransportTests
                 else h.ReplyHeaders["x-extra"]="secret-header\ninvalid";
                 var b=new GauntletTransport.Bridge("prompt",3000,h);await Exchange(b,Request(b,AuthPayload()));await Retire(b);var p=b.GetProof();
                 Check(p.ErrorCode=="upstream_headers"&&!p.Success&&AuthCount(p,"ResponseAuthChallenges")==0&&AuthFlag(p,"PendingResponseAuthChallenge",false)&&hostile.ReadAttempts==0,"401 validates "+badHeaders+" header bound before status replacement");
+            }
+            foreach(var status in new [] {HttpStatusCode.OK,HttpStatusCode.Unauthorized})
+            foreach(string field in new [] {"x-extra","Content-Encoding","Content-Length"}) {
+                var hostile=new HostileChallengeContent();
+                var h=new Upstream {Status=status,ResponseOverride=hostile};bool injected=false;
+                string value=field=="Content-Length" ? "12\n34" : "secret-header\ninvalid";
+                h.BeforeReturn=response=>{
+                    var headers=field=="x-extra" ? (System.Net.Http.Headers.HttpHeaders)response.Headers : response.Content.Headers;
+                    if(!headers.TryAddWithoutValidation(field,value)) throw new InvalidOperationException("fixture header injection refused");
+                    System.Net.Http.Headers.HeaderStringValues raw;
+                    if(!headers.NonValidated.TryGetValues(field,out raw)||raw.Count!=1||raw.Single()!=value)
+                        throw new InvalidOperationException("fixture raw malformed header was not retained");
+                    injected=true;
+                };
+                var b=new GauntletTransport.Bridge("prompt",3000,h);
+                byte[] reply=await Exchange(b,Request(b,AuthPayload()));await Retire(b);var p=b.GetProof();
+                string label=((int)status)+" raw "+field;
+                Check(injected,label+" injection guard reached with exact unparsed LF");
+                Check(p.ErrorCode=="upstream_headers"&&p.ErrorStage=="upstream"&&!p.Success,label+" rejects before typed-header processing");
+                Check(p.ResponseAuthChallenges==0&&p.CatalogAuthChallenges==0&&!p.PendingResponseAuthChallenge&&!p.PendingCatalogAuthChallenge&&p.Responses==0&&p.Models==0,label+" never records challenge or completed response");
+                Check(hostile.ReadAttempts==0,label+" never reads hostile body");
+                Check(Encoding.ASCII.GetString(reply).StartsWith("HTTP/1.1 502 ",StringComparison.Ordinal)&&Body(reply)=="Transport request rejected.\n",label+" emits only static rejection");
+                Check(p.Retired&&h.Disposed&&p.CleanupFailures.Length==0,label+" retires original transport without cleanup fault");
             }
             foreach(bool catalogRecovery in new [] {false,true}) {
                 var h=new Upstream {Status=HttpStatusCode.Unauthorized};var b=new GauntletTransport.Bridge("prompt",5000,h);
@@ -692,6 +719,24 @@ namespace GauntletTransportTests
             foreach(var status in new [] {HttpStatusCode.Redirect,HttpStatusCode.Forbidden,HttpStatusCode.InternalServerError}) {
                 var h=new Upstream { Status=status, Reply=Encoding.UTF8.GetBytes("secret-upstream-error") }; var b=new GauntletTransport.Bridge("prompt",2000,h);
                 try { var r=Encoding.UTF8.GetString(await Exchange(b,Request(b,Payload("prompt")))); Check(r.StartsWith("HTTP/1.1 502 ",StringComparison.Ordinal) && !r.Contains("secret-upstream-error") && !r.Contains("Location:"),"upstream "+(int)status+" refused with safe static error"); } finally { await Retire(b); }
+            }
+            foreach(bool catalog in new [] {false,true})
+            foreach(bool afterSuccess in new [] {false,true}) {
+                var h=new Upstream();var b=new GauntletTransport.Bridge("prompt",5000,h);
+                long original=b.DeadlineTimestamp;
+                if(afterSuccess) {
+                    await Exchange(b,Request(b,AuthPayload()));
+                    Check(b.GetProof().Responses==1&&b.GetProof().ErrorCode=="","partial-status control completes prior inference "+catalog);
+                }
+                var content=new ReplyStream(catalog ? h.CatalogReply : h.Reply,false);
+                h.Status=HttpStatusCode.PartialContent;h.ResponseOverride=new StreamContent(content);
+                byte[] reply=await Exchange(b,Request(b,catalog ? "" : AuthPayload(),catalog ? "GET" : "POST",catalog ? "/backend-api/codex/models" : "/backend-api/codex/responses"));
+                await Retire(b);var p=b.GetProof();string label="206 "+(catalog ? "models" : "responses")+" afterSuccess="+afterSuccess;
+                Check(h.Requests.Count==(afterSuccess ? 2 : 1)&&p.PromptSeen==(afterSuccess||!catalog),label+" reaches actual upstream with valid route payload");
+                Check(!p.Success&&p.ErrorCode=="upstream_status"&&p.ErrorStage=="upstream"&&p.ErrorCause!=null&&p.ErrorCause.HttpStatus==206,label+" permanently rejects partial representation");
+                Check(p.Responses==(afterSuccess ? 1 : 0)&&p.Models==0&&p.ResponseAuthChallenges==0&&p.CatalogAuthChallenges==0&&!p.PendingResponseAuthChallenge&&!p.PendingCatalogAuthChallenge,label+" cannot count partial or rehabilitate prior success");
+                Check(content.ReadAttempts==0&&Encoding.ASCII.GetString(reply).StartsWith("HTTP/1.1 502 ",StringComparison.Ordinal)&&Body(reply)=="Transport request rejected.\n",label+" refuses before body with static error");
+                Check(p.Retired&&h.Disposed&&p.CleanupFailures.Length==0&&b.FailureToken.IsCancellationRequested&&b.DeadlineTimestamp==original,label+" retains fatal signal and original physical retirement/deadline");
             }
             foreach(int size in new [] { 4194305,16777217 }) {
                 var h=new Upstream { Reply=new byte[size],CatalogReply=new byte[size] }; var b=new GauntletTransport.Bridge("prompt",5000,h);
