@@ -10,4 +10,6 @@ Supported-floor verification exposed raw response headers discarded by .NET 6 ty
 
 Graceful client retirement now distinguishes terminal delivery from trailing stream bytes. The original owned write must settle before delivery is acknowledged; tail I/O waits for native retirement under the original deadline. Deterministic loopback fixtures cover delayed settlement, coalesced heartbeats, tail errors before retirement, unwritten bytes, original write failures and unsuccessful or missing graceful finish.
 
+The native-disposal fixture now deletes its temporary lease through the original DeleteOnClose handle. A deterministic replacement control verifies that original disposal preserves a later file at the same name; the replacement is also cleaned through its own handle. Existing exclusivity and disposal-failure controls remain intact.
+
 Production integration, source-bound calibration and live-stack certification belong to later dependency-safe changes. No global installation, runtime setup or fresh active-stack certification is claimed here.

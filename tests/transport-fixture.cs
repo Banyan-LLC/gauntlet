@@ -66,9 +66,14 @@ namespace GauntletTransportTests
     {
         readonly string path=Path.Combine(Path.GetTempPath(),"gauntlet-disposal-"+Guid.NewGuid().ToString("N"));
         readonly FileStream stream;
-        internal NativeLease() {stream=new FileStream(path,FileMode.CreateNew,FileAccess.ReadWrite,FileShare.None);}
+        readonly Action<string> afterClose;
+        internal NativeLease() : this(null) {}
+        internal NativeLease(Action<string> afterClose) {
+            this.afterClose=afterClose;
+            stream=new FileStream(path,FileMode.CreateNew,FileAccess.ReadWrite,FileShare.None,4096,FileOptions.DeleteOnClose);
+        }
         internal bool IsExclusive() {if(!File.Exists(path)) return false;try {using(var probe=new FileStream(path,FileMode.Open,FileAccess.ReadWrite,FileShare.None)) return false;}catch(IOException) {return true;}}
-        public void Dispose() {stream.Dispose();File.Delete(path);}
+        public void Dispose() {stream.Dispose();if(afterClose!=null) afterClose(path);}
     }
     internal sealed class LeasedContent : HttpContent
     {
@@ -497,8 +502,40 @@ namespace GauntletTransportTests
             } finally {await Retire(limited);}
         }
 
+        static void NativeLeaseReplacementSafety()
+        {
+            byte[] marker=Encoding.ASCII.GetBytes("replacement-owned-by-regression\n");
+            FileStream replacement=null;string replacementPath=null;
+            bool originalNameVacant=false,replacementPresentBeforeReturn=false,replacementPreserved=false;
+            try {
+                var lease=new NativeLease(path=>{
+                    replacementPath=path;originalNameVacant=!File.Exists(path);
+                    replacement=new FileStream(path,FileMode.CreateNew,FileAccess.ReadWrite,FileShare.ReadWrite|FileShare.Delete,4096,FileOptions.DeleteOnClose);
+                    replacement.Write(marker,0,marker.Length);replacement.Flush();
+                    replacementPresentBeforeReturn=File.Exists(path);
+                });
+                lease.Dispose();
+                Check(originalNameVacant,"lease replacement callback observes the original name vacant after its owned handle closes");
+                Check(replacementPresentBeforeReturn,"lease replacement exists before original Dispose returns from its callback");
+                if(File.Exists(replacementPath)) {
+                    FileStream reader=null;
+                    try {reader=new FileStream(replacementPath,FileMode.Open,FileAccess.Read,FileShare.ReadWrite|FileShare.Delete);}
+                    catch(IOException) {replacementPreserved=false;}
+                    catch(UnauthorizedAccessException) {replacementPreserved=false;}
+                    if(reader!=null) using(reader) {
+                        byte[] observed=new byte[marker.Length];int count=0;
+                        while(count<observed.Length) {int n=reader.Read(observed,count,observed.Length-count);if(n==0) break;count+=n;}
+                        replacementPreserved=count==marker.Length&&reader.Length==marker.Length&&observed.SequenceEqual(marker);
+                    }
+                }
+                Check(replacementPreserved,"original lease Dispose preserves the replacement name and exact replacement bytes");
+            } finally {if(replacement!=null) replacement.Dispose();}
+            Check(replacementPath!=null&&!File.Exists(replacementPath),"replacement cleanup uses only its own DeleteOnClose handle");
+        }
+
         public static async Task<Check[]> Run()
         {
+            NativeLeaseReplacementSafety();
             await ProbeNativeNoDrain();
             await RequestCountBoundary();
             await AuthSequence("catalog fallback to inference",new [] {"G401","P200"},true,1,0,false,false,"");
