@@ -1,100 +1,75 @@
-# Fixture cleanup preservation v1: primary and independent cleanup errors.
 param([Parameter(Mandatory)][string]$RepoRoot)
 $ErrorActionPreference='Stop'
 . (Join-Path $RepoRoot 'tests/helpers.ps1')
+. "$PSScriptRoot/dormant-scratch-helper.ps1"
 function Invoke-HeldCleanupFailure {
-    param([string]$Path)
-    $handle=$null
-    $fixturePrimary0=$null
-try {
-try{
-        $handle=[IO.File]::Open($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
-        throw [IO.IOException]::new('original fixture primary')
-    }
-catch{throw}
-}catch{$fixturePrimary0=$_;throw}finally{
-$fixtureCleanup0=[Collections.Generic.List[Exception]]::new()
-try{
-[IO.File]::Delete($Path)
-}catch{$fixtureCleanup0.Add($_.Exception)}
-try{
-if($null -ne $handle){$handle.Dispose()}
-}catch{$fixtureCleanup0.Add($_.Exception)}
-if($fixtureCleanup0.Count -gt 0){
- if($null -ne $fixturePrimary0){
-  $previous=@();if($fixturePrimary0.Exception.Data.Contains('DormantFixtureCleanupFailures')){$previous=@($fixturePrimary0.Exception.Data['DormantFixtureCleanupFailures'])}
-  $fixturePrimary0.Exception.Data['DormantFixtureCleanupFailures']=[Array]::AsReadOnly([object[]]@($previous+$fixtureCleanup0.ToArray()))
- }else{throw [AggregateException]::new('Fixture cleanup failed',[Exception[]]$fixtureCleanup0.ToArray())}
-}
-}
+ param($Owner,$Observation)
+ $handle=$null;$primary=$null
+ try{
+  $handle=[IO.File]::Open($Owner.FilePath('held.txt'),[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+  $Observation.Handle=$handle
+  $Observation.SafeHandle=$handle.SafeFileHandle
+  throw [IO.IOException]::new('original fixture primary')
+ }catch{$primary=$_;throw}finally{
+  $cleanup=[Collections.Generic.List[Exception]]::new()
+  try{$Owner.RemoveFile('held.txt')}catch{$cleanup.Add($_.Exception)}
+  try{if($null -ne $handle){$handle.Dispose()}}catch{$cleanup.Add($_.Exception)}
+  if($cleanup.Count){if($null -ne $primary){$primary.Exception.Data['DormantFixtureCleanupFailures']=[Array]::AsReadOnly([object[]]$cleanup.ToArray())}else{throw [AggregateException]::new('Fixture cleanup failed',[Exception[]]$cleanup.ToArray())}}
+ }
 }
 function Invoke-PartialSetupFailure {
-    param([string]$PartialPath,[string]$HeldPath)
-    $fixturePrimary1=$null
-try {
-try{
-        [IO.File]::WriteAllText($PartialPath,'partial actual setup')
-        [IO.File]::WriteAllText($HeldPath,'blocked actual setup')
-    }
-catch{throw}
-}catch{$fixturePrimary1=$_;throw}finally{
-$fixtureCleanup1=[Collections.Generic.List[Exception]]::new()
-try{
-if([IO.File]::Exists($PartialPath)){[IO.File]::Delete($PartialPath)}
-}catch{$fixtureCleanup1.Add($_.Exception)}
-try{
-[IO.File]::Delete($HeldPath)
-}catch{$fixtureCleanup1.Add($_.Exception)}
-if($fixtureCleanup1.Count -gt 0){
- if($null -ne $fixturePrimary1){
-  $previous=@();if($fixturePrimary1.Exception.Data.Contains('DormantFixtureCleanupFailures')){$previous=@($fixturePrimary1.Exception.Data['DormantFixtureCleanupFailures'])}
-  $fixturePrimary1.Exception.Data['DormantFixtureCleanupFailures']=[Array]::AsReadOnly([object[]]@($previous+$fixtureCleanup1.ToArray()))
- }else{throw [AggregateException]::new('Fixture cleanup failed',[Exception[]]$fixtureCleanup1.ToArray())}
+ param($Owner)
+ $primary=$null
+ try{
+  $Owner.WriteText('partial.txt','partial actual setup')
+  $Owner.WriteText('blocked.txt','must not replace external control')
+ }catch{$primary=$_;throw}finally{
+  $cleanup=[Collections.Generic.List[Exception]]::new()
+  try{$Owner.RemoveFile('partial.txt')}catch{$cleanup.Add($_.Exception)}
+  try{$Owner.RemoveFile('held.txt')}catch{$cleanup.Add($_.Exception)}
+  if($cleanup.Count){if($null -ne $primary){$primary.Exception.Data['DormantFixtureCleanupFailures']=[Array]::AsReadOnly([object[]]$cleanup.ToArray())}else{throw [AggregateException]::new('Fixture cleanup failed',[Exception[]]$cleanup.ToArray())}}
+ }
 }
-}
-}
-$root=Join-Path ([IO.Path]::GetTempPath()) ('dormant-fixture-cleanup-'+[guid]::NewGuid().ToString('n'))
-$path=Join-Path $root 'held.txt';$partial=Join-Path $root 'partial.txt'
-$handle=$null
-$fixturePrimary2=$null
-try {
+$owner=New-DormantScratchOwner -Prefix dormant-held-cleanup -TimeoutSec 90
+$primary=$null
 try{
-    [void][IO.Directory]::CreateDirectory($root)
-    [IO.File]::WriteAllText($path,'held actual fixture')
-    $failure=$null
-    try{Invoke-HeldCleanupFailure -Path $path}catch{$failure=$_.Exception}
-    Assert-True ($null -ne $failure -and $failure.Message -ceq 'original fixture primary' -and $failure -is [IO.IOException]) 'real held-share cleanup refusal never replaces original escaping exception'
-    $secondary=@($failure.Data['DormantFixtureCleanupFailures'])
-    Assert-True ($secondary.Count -eq 1 -and $secondary[0].GetBaseException() -is [IO.IOException]) 'actual held deletion error remains independent cleanup evidence'
-    $handle=[IO.File]::Open($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::None)
-    Assert-True ($null -ne $handle) 'later independent cleanup statement physically releases original held handle'
-    $failure=$null
-    try{Invoke-PartialSetupFailure -PartialPath $partial -HeldPath $path}catch{$failure=$_.Exception}
-    Assert-True ($null -ne $failure -and $failure.GetBaseException() -is [IO.IOException] -and $failure.Data.Contains('DormantFixtureCleanupFailures')) 'actual partial setup IO refusal remains primary when separate cleanup IO also fails'
-    Assert-True (-not [IO.File]::Exists($partial)) 'partial setup cleanup still removes its original created leaf before later independent refusal'
-    $secondary=@($failure.Data['DormantFixtureCleanupFailures'])
-    Assert-True ($secondary.Count -eq 1 -and $secondary[0].GetBaseException() -is [IO.IOException]) 'partial setup preserves independent actual held-share cleanup cause'
+ $owner.Initialize();$owner.WriteText('held.txt','held actual fixture')
+ $observation=@{Handle=$null;SafeHandle=$null};$failure=$null
+ try{Invoke-HeldCleanupFailure $owner $observation}catch{$failure=$_.Exception}
+ Assert-True ($null -ne $failure -and $failure.Message -ceq 'original fixture primary' -and $failure -is [IO.IOException]) 'actual original-handle disposition refusal cannot replace original escaping exception'
+ $secondary=@($failure.Data['DormantFixtureCleanupFailures'])
+ Assert-True ($secondary.Count -eq 1 -and $secondary[0].GetBaseException() -is [ComponentModel.Win32Exception] -and $secondary[0].GetBaseException().NativeErrorCode -eq 32) 'actual held deletion sharing error remains independent cleanup evidence'
+ [pscustomobject]@{case='actual_file_stream_disposal';original_safehandle_closed=$observation.SafeHandle.IsClosed;stream_can_read=$observation.Handle.CanRead}|ConvertTo-Json -Compress|Write-Output
+ Assert-True ($null -ne $observation.SafeHandle -and $observation.SafeHandle.IsClosed) 'later independent cleanup statement physically closes the same original held handle'
+}catch{$primary=$_;throw}finally{
+ $cleanup=[Collections.Generic.List[Exception]]::new()
+ try{$owner.Cleanup()}catch{$cleanup.Add($_.Exception)}
+ if($cleanup.Count){if($null -ne $primary){$primary.Exception.Data['DormantFixtureCleanupFailures']=[Array]::AsReadOnly([object[]]$cleanup.ToArray())}else{throw [AggregateException]::new('Fixture cleanup failed',[Exception[]]$cleanup.ToArray())}}
 }
-catch{throw}
-}catch{$fixturePrimary2=$_;throw}finally{
-$fixtureCleanup2=[Collections.Generic.List[Exception]]::new()
+Assert-True $owner.Retired 'explicit same-owner cleanup confirms original held root physically removed'
+
+$owner=New-DormantScratchOwner -Prefix dormant-partial-cleanup -TimeoutSec 90
+$guard=$null;$blocked=$null;$primary=$null
 try{
-if($null -ne $handle){$handle.Dispose()}
-}catch{$fixtureCleanup2.Add($_.Exception)}
-try{
-if([IO.File]::Exists($path)){[IO.File]::Delete($path)}
-}catch{$fixtureCleanup2.Add($_.Exception)}
-try{
-if([IO.File]::Exists($partial)){[IO.File]::Delete($partial)}
-}catch{$fixtureCleanup2.Add($_.Exception)}
-try{
-if([IO.Directory]::Exists($root)){[IO.Directory]::Delete($root,$false)}
-}catch{$fixtureCleanup2.Add($_.Exception)}
-if($fixtureCleanup2.Count -gt 0){
- if($null -ne $fixturePrimary2){
-  $previous=@();if($fixturePrimary2.Exception.Data.Contains('DormantFixtureCleanupFailures')){$previous=@($fixturePrimary2.Exception.Data['DormantFixtureCleanupFailures'])}
-  $fixturePrimary2.Exception.Data['DormantFixtureCleanupFailures']=[Array]::AsReadOnly([object[]]@($previous+$fixtureCleanup2.ToArray()))
- }else{throw [AggregateException]::new('Fixture cleanup failed',[Exception[]]$fixtureCleanup2.ToArray())}
+ $owner.Initialize();$owner.WriteText('held.txt','original held bytes')
+ $guard=[IO.File]::Open($owner.FilePath('held.txt'),[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+ # Root/ancestor handles remain pinned. This independent create-only control
+ # stream retains its original handle authority, never pathname deletion.
+ $blocked=[IO.FileStream]::new($owner.FilePath('blocked.txt'),[IO.FileMode]::CreateNew,[IO.FileAccess]::ReadWrite,[IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)
+ $bytes=[Text.Encoding]::UTF8.GetBytes('external original');$blocked.Write($bytes,0,$bytes.Length);$blocked.Flush()
+ $failure=$null;try{Invoke-PartialSetupFailure $owner}catch{$failure=$_.Exception}
+ Assert-True ($null -ne $failure -and $failure.GetBaseException() -is [ComponentModel.Win32Exception] -and $failure.GetBaseException().NativeErrorCode -eq 183) 'actual create-only collision remains primary after partial setup and independent cleanup refusal'
+ Assert-True ($owner.VerifyAbsent('partial.txt')) 'partial setup removes only its same original leaf and verifies absence'
+ $secondary=@($failure.Data['DormantFixtureCleanupFailures'])
+ Assert-True ($secondary.Count -eq 1 -and $secondary[0].GetBaseException() -is [ComponentModel.Win32Exception] -and $secondary[0].GetBaseException().NativeErrorCode -eq 32) 'partial setup preserves separate actual held-share cleanup cause'
+ $blocked.Position=0;$seen=[byte[]]::new(17);$count=$blocked.Read($seen,0,$seen.Length)
+ Assert-True ($count -eq 17 -and [Text.Encoding]::UTF8.GetString($seen) -ceq 'external original') 'create-only setup never truncates the independent replacement object'
+}catch{$primary=$_;throw}finally{
+ $cleanup=[Collections.Generic.List[Exception]]::new()
+ try{if($null -ne $guard){$guard.Dispose()}}catch{$cleanup.Add($_.Exception)}
+ try{if($null -ne $blocked){$owner.RemoveControlFile('blocked.txt',$blocked)}}catch{$cleanup.Add($_.Exception)}
+ try{$owner.Cleanup()}catch{$cleanup.Add($_.Exception)}
+ if($cleanup.Count){if($null -ne $primary){$primary.Exception.Data['DormantFixtureCleanupFailures']=[Array]::AsReadOnly([object[]]$cleanup.ToArray())}else{throw [AggregateException]::new('Fixture cleanup failed',[Exception[]]$cleanup.ToArray())}}
 }
-}
+Assert-True $owner.Retired 'partial setup custody retires only after independent original handles settle and root removal is verified'
 Write-TestResult

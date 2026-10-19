@@ -2,16 +2,23 @@
 param([Parameter(Mandatory)][string]$RepoRoot)
 $ErrorActionPreference='Stop'
 . (Join-Path $RepoRoot 'tests/helpers.ps1')
+. "$PSScriptRoot/dormant-scratch-helper.ps1"
 . (Join-Path $RepoRoot 'gauntlet-review/scripts/dormant-native.ps1')
 Assert-True ($null -eq ([Management.Automation.PSTypeName]::new('GauntletLive.Native')).Type) 'real test starts with cold native type'
 Initialize-LiveGateNative
-$root=Join-Path ([IO.Path]::GetTempPath()) ('dormant-native-real-'+[guid]::NewGuid().ToString('n'))
+$scratchOwner=New-DormantScratchOwner -Prefix dormant-native-real -TimeoutSec 150
+$root=$scratchOwner.Path
 $scriptPath=Join-Path $root 'child.ps1'
 $descendantPath=Join-Path $root 'descendant.ps1'
-$pidPath=Join-Path $root 'descendant.json'
 $exe=[Environment]::ProcessPath
 $child=@'
-param([string]$Mode,[string]$ChildPath,[string]$PidPath,[string]$Executable)
+param([string]$Mode,[string]$ChildPath,[string]$Executable)
+function Get-OriginalPipeHandles {
+ Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public static class DormantInheritedPipeStd { [DllImport("kernel32.dll")]public static extern IntPtr GetStdHandle(int kind);[DllImport("kernel32.dll")]public static extern uint GetFileType(IntPtr handle); }'
+ $record=@{}
+ foreach($pair in @(@{name='stdin';kind=-10},@{name='stdout';kind=-11},@{name='stderr';kind=-12})){$handle=[DormantInheritedPipeStd]::GetStdHandle($pair.kind);$record[$pair.name+'_handle']=$handle.ToInt64();$record[$pair.name+'_type']=[DormantInheritedPipeStd]::GetFileType($handle)}
+ return $record
+}
 switch($Mode){
  'echo' {[Console]::Out.Write([Console]::In.ReadToEnd());[Console]::Error.Write('fixture-stderr');exit 0}
  'exit23' {[Console]::In.ReadToEnd()|Out-Null;exit 23}
@@ -20,36 +27,64 @@ switch($Mode){
  'exact-cap' {[Console]::Out.Write(('x'*2097152));[Console]::Error.Write(('e'*2097152));exit 0}
  'split-overflow' {[Console]::Out.Write(('x'*2097152));[Console]::Error.Write(('e'*2097153));exit 0}
  'blocked' {Start-Sleep -Seconds 120}
- 'tree' {
-  $start=[Diagnostics.ProcessStartInfo]::new();$start.FileName=$Executable;$start.UseShellExecute=$false
-  foreach($arg in @('-NoProfile','-File',$ChildPath,'-PidPath',$PidPath)){$start.ArgumentList.Add($arg)}
-  $process=[Diagnostics.Process]::Start($start)
-  Start-Sleep -Seconds 120
- }
- 'tree-exit' {
-  $start=[Diagnostics.ProcessStartInfo]::new();$start.FileName=$Executable;$start.UseShellExecute=$false
-  foreach($arg in @('-NoProfile','-File',$ChildPath,'-PidPath',$PidPath)){$start.ArgumentList.Add($arg)}
-  $process=[Diagnostics.Process]::Start($start)
-  $clock=[Diagnostics.Stopwatch]::StartNew();$receipt=$null
-  while($clock.ElapsedMilliseconds -lt 5000 -and $null -eq $receipt){
-   try{if([IO.File]::Exists($PidPath)){$receipt=[IO.File]::ReadAllText($PidPath)|ConvertFrom-Json -ErrorAction Stop}}catch{}
-   if($null -eq $receipt){Start-Sleep -Milliseconds 10}
+ {$_ -cin @('tree','tree-exit')} {
+  $pipes=Get-OriginalPipeHandles
+  $readyName='Local\DormantNativeReady-'+[guid]::NewGuid().ToString('n');$created=$false
+  $ready=[Threading.EventWaitHandle]::new($false,[Threading.EventResetMode]::ManualReset,$readyName,[ref]$created)
+  $process=$null;$primary=$null
+  try{
+   if(-not $created){throw 'Fixture readiness event was not exclusively created'}
+   $start=[Diagnostics.ProcessStartInfo]::new();$start.FileName=$Executable;$start.UseShellExecute=$false
+   $start.RedirectStandardInput=$false;$start.RedirectStandardOutput=$false;$start.RedirectStandardError=$false
+   foreach($arg in @('-NoProfile','-File',$ChildPath,'-ReadyName',$readyName)){$start.ArgumentList.Add($arg)}
+   $process=[Diagnostics.Process]::Start($start)
+   if(-not $ready.WaitOne(5000)){throw 'Original descendant readiness was not observed'}
+   [Console]::Out.WriteLine((@{kind='parent';pid=$process.Id;started_utc=$process.StartTime.ToUniversalTime().ToString('o');observed_alive=(-not $process.HasExited);pipes=$pipes;redirect_stdin=$start.RedirectStandardInput;redirect_stdout=$start.RedirectStandardOutput;redirect_stderr=$start.RedirectStandardError;ready_name=$readyName}|ConvertTo-Json -Depth 4 -Compress))
+   if($Mode -ceq 'tree'){Start-Sleep -Seconds 120}else{exit 0}
+  }catch{$primary=$_;throw}finally{
+   $errors=[Collections.Generic.List[Exception]]::new()
+   try{$ready.Dispose()}catch{$errors.Add($_.Exception)}
+   try{if($null -ne $process){$process.Dispose()}}catch{$errors.Add($_.Exception)}
+   if($errors.Count){if($null -ne $primary){$primary.Exception.Data['DormantFixtureCleanupFailures']=$errors.ToArray()}else{throw [AggregateException]::new('Fixture readiness cleanup failed',[Exception[]]$errors.ToArray())}}
   }
-  if($null -eq $receipt){throw 'Original descendant receipt not observed before parent exit'}
-  [Console]::Out.Write((@{pid=$receipt.pid;started_utc=$receipt.started_utc;observed_alive=(-not $process.HasExited)}|ConvertTo-Json -Compress))
-  $process.Dispose();exit 0
  }
  default {throw 'Unknown harmless native fixture mode'}
 }
 '@
 $descendant=@'
-param([string]$PidPath)
+param([string]$ReadyName)
+Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public static class DormantInheritedPipeStd { [DllImport("kernel32.dll")]public static extern IntPtr GetStdHandle(int kind);[DllImport("kernel32.dll")]public static extern uint GetFileType(IntPtr handle); }'
+$pipes=@{}
+foreach($pair in @(@{name='stdin';kind=-10},@{name='stdout';kind=-11},@{name='stderr';kind=-12})){$handle=[DormantInheritedPipeStd]::GetStdHandle($pair.kind);$pipes[$pair.name+'_handle']=$handle.ToInt64();$pipes[$pair.name+'_type']=[DormantInheritedPipeStd]::GetFileType($handle)}
 $self=[Diagnostics.Process]::GetCurrentProcess()
-[IO.File]::WriteAllText($PidPath,(@{pid=$PID;started_utc=$self.StartTime.ToUniversalTime().ToString('o')}|ConvertTo-Json -Compress))
+[Console]::Out.WriteLine((@{kind='descendant';pid=$PID;started_utc=$self.StartTime.ToUniversalTime().ToString('o');pipes=$pipes;ready_name=$ReadyName}|ConvertTo-Json -Depth 4 -Compress))
+[Console]::Error.WriteLine('original-descendant-stderr '+$ReadyName)
+$ready=[Threading.EventWaitHandle]::OpenExisting($ReadyName)
+try{$ready.Set()|Out-Null}finally{$ready.Dispose()}
 Start-Sleep -Seconds 120
 '@
+function Read-RealReceipt($Result,[string]$Case){
+ $parent=$null;$descendant=$null;$documents=[Collections.Generic.List[object]]::new()
+ try{
+  foreach($line in ($Result.Stdout -split "`r?`n")){
+   if([string]::IsNullOrWhiteSpace($line)){continue}
+   $document=[Text.Json.JsonDocument]::Parse($line);$documents.Add($document)
+   switch -CaseSensitive ($document.RootElement.GetProperty('kind').GetString()){'parent'{$parent=$document.RootElement};'descendant'{$descendant=$document.RootElement};default{throw 'Unexpected descendant receipt kind'}}
+  }
+  if($null -eq $parent -or $null -eq $descendant){throw 'Actual parent and descendant stdout receipts required'}
+  $pidValue=$parent.GetProperty('pid').GetInt32();$started=$parent.GetProperty('started_utc').GetString();$readyName=$parent.GetProperty('ready_name').GetString()
+  Assert-True ($pidValue -eq $descendant.GetProperty('pid').GetInt32() -and [string]::Equals($started,$descendant.GetProperty('started_utc').GetString(),[StringComparison]::Ordinal) -and [string]::Equals($readyName,$descendant.GetProperty('ready_name').GetString(),[StringComparison]::Ordinal)) "$Case actual Process object and descendant agree on exact original identity"
+  foreach($channel in @('stdin','stdout','stderr')){
+   $original=$parent.GetProperty('pipes').GetProperty($channel+'_handle').GetInt64();$inherited=$descendant.GetProperty('pipes').GetProperty($channel+'_handle').GetInt64()
+   Assert-True (-not $parent.GetProperty('redirect_'+$channel).GetBoolean() -and $original -gt 0 -and $original -eq $inherited -and $parent.GetProperty('pipes').GetProperty($channel+'_type').GetInt32() -eq 3 -and $descendant.GetProperty('pipes').GetProperty($channel+'_type').GetInt32() -eq 3) "$Case exact original native $channel pipe is inherited without redirection"
+  }
+  Assert-True ($Result.Stderr.Contains('original-descendant-stderr '+$readyName)) "$Case descendant marker arrives on same original captured stderr"
+  [Console]::Out.WriteLine((@{case=('original_inherited_pipes_'+$Case);parent_json=$parent.GetRawText();descendant_json=$descendant.GetRawText();captured_stderr=$Result.Stderr;native=$Result.NativeProcessResult}|ConvertTo-Json -Depth 5 -Compress))
+  [pscustomobject]@{pid=$pidValue;started_utc=$started;observed_alive=$parent.GetProperty('observed_alive').GetBoolean()}
+ }finally{foreach($document in $documents){$document.Dispose()}}
+}
 function Run-RealFixture([string]$Mode,[string]$InputText,[int]$Timeout=15){
-    Invoke-BoundedProcess -FileName $exe -ArgList @('-NoProfile','-File',$scriptPath,'-Mode',$Mode,'-ChildPath',$descendantPath,'-PidPath',$pidPath,'-Executable',$exe) -StdinText $InputText -WorkingDirectory $root -TimeoutSec $Timeout -RequireProcessTreeRetirement
+    Invoke-BoundedProcess -FileName $exe -ArgList @('-NoProfile','-File',$scriptPath,'-Mode',$Mode,'-ChildPath',$descendantPath,'-Executable',$exe) -StdinText $InputText -WorkingDirectory $root -TimeoutSec $Timeout -RequireProcessTreeRetirement
 }
 function Assert-NativeSix($Result,[string]$Case){
     $native=$Result.NativeProcessResult
@@ -63,9 +98,9 @@ $cleanupAllowed=$false
 $fixturePrimary0=$null
 try {
 try{
-    [void][IO.Directory]::CreateDirectory($root)
-    [IO.File]::WriteAllText($scriptPath,$child)
-    [IO.File]::WriteAllText($descendantPath,$descendant)
+    $scratchOwner.Initialize()
+    $scratchOwner.WriteText('child.ps1',$child)
+    $scratchOwner.WriteText('descendant.ps1',$descendant)
     $text=('fixture input '*30000)
     $echo=Run-RealFixture 'echo' $text
     Assert-True (-not $echo.StartFailed -and -not $echo.TimedOut -and $echo.ExitCode -eq 0 -and $null -eq $echo.ErrorMessage -and $echo.ProcessTreeRetired -and $null -eq $echo.Failure -and $echo.CleanupFailures.Count -eq 0) 'actual native echo succeeds and retires original job'
@@ -97,18 +132,17 @@ try{
     $watch.Restart()
     $tree=Run-RealFixture 'tree' '' 4
     $watch.Stop()
+    [pscustomobject]@{case='actual_tree_stdout_receipt';result=$tree;elapsed_ms=$watch.ElapsedMilliseconds}|ConvertTo-Json -Depth 8 -Compress|Write-Output
     Assert-True ($tree.TimedOut -and $tree.ProcessTreeRetired -and $watch.Elapsed.TotalSeconds -lt 8) 'native timeout physically retires spawned descendants inside original bound'
-    Assert-True ([IO.File]::Exists($pidPath)) 'descendant executed before retirement check'
-    if([IO.File]::Exists($pidPath)){
-        $receipt=[IO.File]::ReadAllText($pidPath)|ConvertFrom-Json
-        $sameAlive=$false
-        try{$process=[Diagnostics.Process]::GetProcessById([int]$receipt.pid);$sameAlive=$process.StartTime.ToUniversalTime().ToString('o') -ceq $receipt.started_utc -and -not $process.HasExited;$process.Dispose()}catch [ArgumentException]{}
-        Assert-True (-not $sameAlive) 'the exact original descendant has exited after native retirement proof'
-    }
-    [IO.File]::Delete($pidPath)
+    Assert-True (-not [string]::IsNullOrWhiteSpace($tree.Stdout)) 'descendant executed and delivered actual stdout identity before retirement check'
+    $receipt=Read-RealReceipt $tree tree_timeout
+    Assert-True ($receipt.observed_alive -is [bool] -and $receipt.observed_alive) 'timeout parent confirmed its exact descendant alive before sleep'
+    $sameAlive=$false
+    try{$process=[Diagnostics.Process]::GetProcessById([int]$receipt.pid);$sameAlive=$process.StartTime.ToUniversalTime().ToString('o') -ceq $receipt.started_utc -and -not $process.HasExited;$process.Dispose()}catch [ArgumentException]{}
+    Assert-True (-not $sameAlive) 'the exact original descendant has exited after native retirement proof'
     $parentExit=Run-RealFixture 'tree-exit' ''
     Assert-True ($parentExit.ExitCode -eq 0 -and -not $parentExit.TimedOut -and $parentExit.ProcessTreeRetired -and $null -eq $parentExit.Failure) 'successful original parent exit also retires remaining job descendants and IO'
-    $receipt=$parentExit.Stdout|ConvertFrom-Json
+    $receipt=Read-RealReceipt $parentExit parent_exit
     Assert-True ($receipt.observed_alive -is [bool] -and $receipt.observed_alive) 'original successful parent confirms descendant alive before parent exit'
     $sameAlive=$false
     try{$process=[Diagnostics.Process]::GetProcessById([int]$receipt.pid);$sameAlive=$process.StartTime.ToUniversalTime().ToString('o') -ceq $receipt.started_utc -and -not $process.HasExited;$process.Dispose()}catch [ArgumentException]{}
@@ -149,16 +183,7 @@ try{
 if(-not $cleanupAllowed){throw [InvalidOperationException]::new('Original native fixture ownership remains unresolved; retain root')}
 }catch{$fixtureCleanup0.Add($_.Exception)}
 try{
-if($cleanupAllowed -and [IO.File]::Exists($scriptPath)){[IO.File]::Delete($scriptPath)}
-}catch{$fixtureCleanup0.Add($_.Exception)}
-try{
-if($cleanupAllowed -and [IO.File]::Exists($descendantPath)){[IO.File]::Delete($descendantPath)}
-}catch{$fixtureCleanup0.Add($_.Exception)}
-try{
-if($cleanupAllowed -and [IO.File]::Exists($pidPath)){[IO.File]::Delete($pidPath)}
-}catch{$fixtureCleanup0.Add($_.Exception)}
-try{
-if($cleanupAllowed -and [IO.Directory]::Exists($root)){[IO.Directory]::Delete($root,$false)}
+if($cleanupAllowed){$scratchOwner.Cleanup()}
 }catch{$fixtureCleanup0.Add($_.Exception)}
 if($fixtureCleanup0.Count -gt 0){
  if($null -ne $fixturePrimary0){

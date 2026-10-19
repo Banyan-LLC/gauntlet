@@ -49,7 +49,8 @@ function Start-ReviewPipelineDisposal {
  $scalars=@{ExitCode=$native.ExitCode;StartFailed=$native.StartFailed;TimedOut=$native.TimedOut;ErrorMessage=$native.ErrorMessage;StderrText=$native.Stderr;ProcessTreeRetired=$native.ProcessTreeRetired}
  $native.CleanupFailures=[GauntletLive.Native+NativeFailure[]]$faults
  $script:NativeSaturationSeen=@{Owner=$Owner;State=$state;Native=$native;Primary=$primary;First=$first;Stored=$native.CleanupFailures;Scalars=$scalars;Pipeline=$Pipeline;Deadline=$Owner['Deadline']}
- $dispose=[Delegate]::CreateDelegate([Action],$Pipeline,'Dispose')
+ $Owner['DisposalIntent']=$true
+        $dispose=Get-ReviewOwnedPipelineDisposalAction -Owner $Owner -Pipeline $Pipeline
  $task=[FacadeCauseFixture]::DisposeAfterRelease($dispose);$Owner['DisposeTask']=$task
  return ,$task
 }

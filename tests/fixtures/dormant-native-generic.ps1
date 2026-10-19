@@ -3,6 +3,7 @@
 param([Parameter(Mandatory)][string]$RepoRoot)
 $ErrorActionPreference='Stop'
 . (Join-Path $RepoRoot 'tests/helpers.ps1')
+. "$PSScriptRoot/dormant-scratch-helper.ps1"
 $library=Join-Path $RepoRoot 'gauntlet-review/scripts/dormant-native.ps1'
 . $library
 $ErrorActionPreference='Stop'
@@ -52,18 +53,19 @@ using System;
 using System.Threading;
 public static class OwnedWorkBarrier {
     public static ManualResetEventSlim Entered=new ManualResetEventSlim(false),Release=new ManualResetEventSlim(false);
-    public static IDisposable Pipeline;
+    public static Action Disposer;
     public static Func<object> Factory;
     public static object Registry;
     public static void HoldRegistry() {lock(Registry){Entered.Set();Release.Wait(TimeSpan.FromSeconds(5));}}
     public static object Create() {Entered.Set();Release.Wait(TimeSpan.FromSeconds(5));return Factory();}
-    public static void Dispose() {Entered.Set();Release.Wait(TimeSpan.FromSeconds(5));Pipeline.Dispose();}
+    public static void Dispose() {Entered.Set();Release.Wait(TimeSpan.FromSeconds(5));Disposer();}
 }
 '@
 $realDisposal=(Get-Command Start-ReviewPipelineDisposal).ScriptBlock
 function Start-ReviewPipelineDisposal {
     param($Owner,$Pipeline)
-    [OwnedWorkBarrier]::Pipeline=$Pipeline
+    $Owner['DisposalIntent']=$true
+    [OwnedWorkBarrier]::Disposer=Get-ReviewOwnedPipelineDisposalAction -Owner $Owner -Pipeline $Pipeline
     $method=[OwnedWorkBarrier].GetMethod('Dispose')
     $dispose=[Delegate]::CreateDelegate([Action],$method)
     $task=[Threading.Tasks.Task]::Run([Action]$dispose);$Owner['DisposeTask']=$task;return ,$task
@@ -103,7 +105,7 @@ $busy=Invoke-ReviewOwnedWork -Kind fixture -OwnerRegistry $registry -DeadlineTim
 Assert-True ($null -ne $busy.Failure -and $busy.Failure.Code -ceq 'registry_busy' -and $registry.Count -eq 0) 'actual locked shared registry refuses admission nonblocking without creating owner'
 [OwnedWorkBarrier]::Release.Set();$null=$holder.Wait(1000)
 $callerDefinitions=@{}
-foreach($name in @('Invoke-ReviewOwnedWork','Complete-ReviewOwnedWork','Get-ReviewOwnedWorkEntries','Remove-ReviewOwnedWorkEntry','Start-ReviewOwnedPipelineCreation','Start-ReviewOwnedPipelineInvocation','Start-ReviewPipelineDisposal','Get-ReviewRemainingMilliseconds','New-ReviewReadOnlyRecord','Get-ReviewSafeCause','New-ReviewTransportFault','Throw-ReviewCodedFailure','Get-ReviewOwnedWorkFailures','Invoke-OwnedFixtureWorker')){$callerDefinitions[$name]=(Get-Command $name).ScriptBlock}
+foreach($name in @('Initialize-ReviewOwnedStreams','Invoke-ReviewOwnedWork','Complete-ReviewOwnedWork','Get-ReviewOwnedWorkEntries','Remove-ReviewOwnedWorkEntry','Start-ReviewOwnedPipelineCreation','Start-ReviewOwnedPipelineInvocation','Start-ReviewPipelineDisposal','Get-ReviewOwnedPipelineDisposalAction','Get-ReviewRemainingMilliseconds','New-ReviewReadOnlyRecord','Get-ReviewSafeCause','New-ReviewTransportFault','Throw-ReviewCodedFailure','Get-ReviewOwnedWorkFailures','Invoke-OwnedFixtureWorker')){$callerDefinitions[$name]=(Get-Command $name).ScriptBlock}
 $start=[Threading.Barrier]::new(2);$simultaneous=New-FixtureArguments $true;$callers=@()
 $callerBootstrap=@'
 param($definitions,$registry,$start,$arguments)
@@ -149,12 +151,11 @@ if($fixtureCleanup0.Count -gt 0){
 Assert-Eq $registry.Count 0 'simultaneous admission owner retires only after actual worker cleanup'
 [OwnedWorkBarrier]::Entered.Reset();[OwnedWorkBarrier]::Release.Reset()
 $normalInvocation=$callerDefinitions['Start-ReviewOwnedPipelineInvocation']
+$callerDefinitions['Start-FixtureOriginalInvocation']=$normalInvocation
 $callerDefinitions['Start-ReviewOwnedPipelineInvocation']=[scriptblock]::Create(@'
-param($Pipeline)
+param($Pipeline,$Owner)
 [OwnedWorkBarrier]::Entered.Set();$null=[OwnedWorkBarrier]::Release.Wait(5000)
-$method=@($Pipeline.GetType().GetMethods()|Where-Object {$_.Name -ceq 'Invoke' -and -not $_.IsGenericMethod -and $_.GetParameters().Count -eq 0})[0]
-$invoke=[Delegate]::CreateDelegate([Func[object]],$Pipeline,$method)
-[Threading.Tasks.Task[object]]::Factory.StartNew([Func[object]]$invoke)
+Start-FixtureOriginalInvocation -Pipeline $Pipeline -Owner $Owner
 '@)
 $pausedArguments=New-FixtureArguments $false
 $pausedCaller=[Management.Automation.PowerShell]::Create()
@@ -198,11 +199,16 @@ if($fixtureCleanup1.Count -gt 0){
 function Test-OwnedExpiredPublication {
     $expiryRegistry=[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
     $expiryState=[Collections.Concurrent.ConcurrentDictionary[string,object]]::new()
-    $creation=Start-ReviewOwnedPipelineCreation;$null=$creation.Wait(1000);$pipeline=$creation.Result
-    $null=$pipeline.AddScript('param($state) try{$state["ActionEntered"]=$true;$state["Result"]="actual-late-result"}finally{$state["CoreRetired"]=$true}').AddArgument($expiryState)
-    $invocation=Start-ReviewOwnedPipelineInvocation -Pipeline $pipeline;$null=$invocation.Wait(1000)
     $expiredOwner=[Collections.Concurrent.ConcurrentDictionary[string,object]]::new()
-    foreach($pair in @{State=$expiryState;Deadline=([Diagnostics.Stopwatch]::GetTimestamp()-1);Abandoned=$false;Submitted=$true;StartupSettled=$true;StartupPublishPending=$true;Pipeline=$pipeline;CreationTask=$creation;InvokeTask=$invocation;DisposeTask=$null;Failure=$null;CleanupFailures=@()}.GetEnumerator()){$expiredOwner[$pair.Key]=$pair.Value}
+    $fixtureDeadline=[Diagnostics.Stopwatch]::GetTimestamp()+10L*[Diagnostics.Stopwatch]::Frequency
+    foreach($pair in @{State=$expiryState;Deadline=$fixtureDeadline;Abandoned=$false;Submitted=$true;StartupSettled=$true;StartupPublishPending=$true;Pipeline=$null;CreationTask=$null;InvokeTask=$null;DisposeTask=$null;Failure=$null;CleanupFailures=@()}.GetEnumerator()){$expiredOwner[$pair.Key]=$pair.Value}
+    $expiryState['OwnedWorkOwner']=$expiredOwner;$expiryState['Deadline']=$fixtureDeadline
+    $creation=Start-ReviewOwnedPipelineCreation -Owner $expiredOwner -Bootstrap 'param($state) try{$state["ActionEntered"]=$true;$state["Result"]="actual-late-result"}finally{$state["CoreRetired"]=$true}' -ArgumentList @($expiryState)
+    $expiredOwner['CreationTask']=$creation;$null=$creation.Wait(3000);$pipeline=$creation.Result;$expiredOwner['Pipeline']=$pipeline
+    $invocation=Start-ReviewOwnedPipelineInvocation -Pipeline $pipeline -Owner $expiredOwner
+    $expiredOwner['InvokeTask']=$invocation;$null=$invocation.Wait(1000)
+    # Explicit observer-expiry control after this exact original invocation settles.
+    $expiredOwner['Deadline']=[Diagnostics.Stopwatch]::GetTimestamp()-1
     $expiryRegistry.Add('expired',$expiredOwner)
     $expired=Complete-ReviewOwnedWork -OwnerRegistry $expiryRegistry
     $until=[Diagnostics.Stopwatch]::StartNew()
@@ -307,13 +313,15 @@ $dirs=Get-ReviewOwnerRegistry LiveGateDirectories;$readers=Get-ReviewOwnerRegist
 $token=[guid]::NewGuid().ToString('n')
 $reloadDirectoryOwner=[pscustomobject]@{Custody=[pscustomobject]@{ConsumersRetired=$false}}
 $reader=[pscustomobject]@{Retired=$false}
-$scratch=Join-Path ([IO.Path]::GetTempPath()) ('owned-reload-'+[guid]::NewGuid().ToString('n')+'.ps1')
+$scratchOwner=New-DormantScratchOwner -Prefix owned-reload -TimeoutSec 30
+$scratch=$scratchOwner.FilePath('reload.ps1')
 $fixturePrimary4=$null
 try {
 try{
+$scratchOwner.Initialize()
 $dirs.Add($token,$reloadDirectoryOwner)
 $readers.Add($reader)
-[IO.File]::WriteAllText($scratch,@'
+$scratchOwner.WriteText('reload.ps1',@'
 param($Library,$Directories,$Readers)
 . $Library
 [pscustomobject]@{DirectoriesSame=[object]::ReferenceEquals($Directories,(Get-ReviewOwnerRegistry LiveGateDirectories));ReadersSame=[object]::ReferenceEquals($Readers,(Get-ReviewOwnerRegistry SecurityAuthSourceReads -List));DirectoryCount=(Get-ReviewOwnerRegistry LiveGateDirectories).Count;ReaderCount=$Readers.Count}
@@ -337,7 +345,7 @@ for($readerIndex=$readers.Count-1;$readerIndex -ge 0;$readerIndex--){
 }
 }catch{$fixtureCleanup4.Add($_.Exception)}
 try{
-[IO.File]::Delete($scratch)
+$scratchOwner.Cleanup()
 }catch{$fixtureCleanup4.Add($_.Exception)}
 if($fixtureCleanup4.Count -gt 0){
  if($null -ne $fixturePrimary4){

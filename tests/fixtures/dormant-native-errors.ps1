@@ -86,7 +86,8 @@ try {
 try{
     function Start-ReviewPipelineDisposal {
         param($Owner,$Pipeline)
-        $dispose=[Delegate]::CreateDelegate([Action],$Pipeline,'Dispose')
+        $Owner['DisposalIntent']=$true
+        $dispose=Get-ReviewOwnedPipelineDisposalAction -Owner $Owner -Pipeline $Pipeline
         $task=[DormantWorkerCauseFixture]::DisposeAfterRelease($dispose)
         $Owner['DisposeTask']=$task
         return ,$task
@@ -142,7 +143,8 @@ try {
 try{
     function Start-ReviewPipelineDisposal {
         param($Owner,$Pipeline)
-        $dispose=[Delegate]::CreateDelegate([Action],$Pipeline,'Dispose')
+        $Owner['DisposalIntent']=$true
+        $dispose=Get-ReviewOwnedPipelineDisposalAction -Owner $Owner -Pipeline $Pipeline
         $task=[DormantDisposalFailureFixture]::DisposeThenFail($dispose)
         $Owner['DisposeTask']=$task
         return ,$task

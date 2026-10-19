@@ -1,12 +1,26 @@
 # Fixture cleanup preservation v1: primary and independent cleanup errors.
-param([Parameter(Mandatory)][string]$RepoRoot)
+param([Parameter(Mandatory)][string]$RepoRoot,[ValidateSet('creation','disposal')][string]$Phase)
 $ErrorActionPreference='Stop'
 . (Join-Path $RepoRoot 'tests/helpers.ps1')
 $library=Join-Path $RepoRoot 'gauntlet-review/scripts/dormant-native.ps1'
 . $library
+if(-not $Phase){
+ foreach($childPhase in @('creation','disposal')){
+  $child=Invoke-BoundedProcess -FileName ([Environment]::ProcessPath) -ArgList @('-NoProfile','-File',$PSCommandPath,'-RepoRoot',$RepoRoot,'-Phase',$childPhase) -WorkingDirectory $RepoRoot -TimeoutSec 180 -RequireProcessTreeRetirement
+  Write-Host $child.Stdout
+  if($child.Stderr){Write-Host $child.Stderr}
+  $childNative=$child.NativeProcessResult
+  Assert-True ($child.ExitCode -eq 0 -and -not $child.StartFailed -and -not $child.TimedOut -and $child.ProcessTreeRetired -and $null -eq $child.ErrorMessage -and $null -eq $child.Failure -and $child.CleanupFailures.Count -eq 0) "$childPhase isolated startup phase passes with actual original process-tree retirement"
+  Assert-True ($null -ne $childNative -and $childNative.ExitCode -eq 0 -and -not $childNative.StartFailed -and -not $childNative.TimedOut -and $childNative.ProcessTreeRetired -and $null -eq $childNative.ErrorMessage) "$childPhase phase has its own actual six-scalar native receipt"
+ }
+ Write-TestResult
+}
+
 Add-Type -TypeDefinition @'
 using System;
 using System.Reflection;
+using System.Management.Automation;
+using System.Threading.Tasks;
 using System.Threading;
 using System.Collections.Concurrent;
 public static class StartupDeadlineFixture {
@@ -24,13 +38,19 @@ public static class StartupDeadlineFixture {
 }
 public sealed class StartupPipelineFixture:IDisposable {
  readonly object inner;
- public volatile bool Disposed,InvocationComplete;
+ public volatile bool Disposed,InvocationComplete,InitializerComplete;
  public StartupPipelineFixture(object pipeline){inner=pipeline;}
  MethodInfo NoArgs(string name){foreach(var m in inner.GetType().GetMethods())if(m.Name==name&&!m.IsGenericMethod&&m.GetParameters().Length==0)return m;throw new MissingMethodException();}
  public StartupPipelineFixture AddScript(string text){StartupDeadlineFixture.Pause("configure");inner.GetType().GetMethod("AddScript",new[]{typeof(string)}).Invoke(inner,new object[]{text});return this;}
  public StartupPipelineFixture AddArgument(object value){inner.GetType().GetMethod("AddArgument",new[]{typeof(object)}).Invoke(inner,new[]{value});return this;}
- public object Streams {get{return inner.GetType().GetProperty("Streams").GetValue(inner);}}
- public object Invoke(){StartupDeadlineFixture.Pause("submit");try{return NoArgs("Invoke").Invoke(inner,Array.Empty<object>());}finally{InvocationComplete=true;}}
+ public PSDataStreams Streams {get{return ((PowerShell)inner).Streams;}}
+ public PSCommand Commands {get{return ((PowerShell)inner).Commands;}}
+ public System.Collections.ObjectModel.Collection<PSObject> Invoke(){StartupDeadlineFixture.Pause("stream_initialize");try{return ((PowerShell)inner).Invoke();}finally{InitializerComplete=true;}}
+ public void Invoke<TInput,TOutput>(PSDataCollection<TInput> input,PSDataCollection<TOutput> output,PSInvocationSettings settings){
+  StartupDeadlineFixture.Pause("submit");
+  try{((PowerShell)inner).Invoke<TInput,TOutput>(input,output,settings);}finally{InvocationComplete=true;}
+ }
+ public Task StopAsync(AsyncCallback callback,object state){return ((PowerShell)inner).StopAsync(callback,state);}
  public IAsyncResult BeginInvoke(){StartupDeadlineFixture.Pause("submit");return (IAsyncResult)NoArgs("BeginInvoke").Invoke(inner,Array.Empty<object>());}
  public void Dispose(){StartupDeadlineFixture.Pause("dispose");NoArgs("Dispose").Invoke(inner,Array.Empty<object>());Disposed=true;}
 }
@@ -83,6 +103,7 @@ function Close-StartupFixtureOwners {
  }
  Assert-Eq $Registry.Count 0 'fixture original workers physically settle before the next case'
 }
+if($Phase -ceq 'creation'){
 # Execute real generic creation/configuration/invocation/disposal before timing
 # intentionally blocked stages. This does not initialize native or launch a child.
 [StartupDeadlineFixture]::Reset('warmup')
@@ -97,7 +118,7 @@ $fixturePrimary0=$null
 try {
 try {
  foreach($kind in @('generic')){
-  foreach($stage in @('create','configure','submit')){
+  foreach($stage in @('create','stream_initialize','configure','submit')){
    [StartupDeadlineFixture]::Reset($stage)
    $registry=[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
    $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+[long](0.3*[Diagnostics.Stopwatch]::Frequency)
@@ -220,6 +241,12 @@ Assert-True ($null -ne $processRegistry -and $processRegistry.Count -eq 1) 'cold
 if($null -ne $processRegistry){Close-StartupFixtureOwners -Registry $processRegistry}
 Set-Item Function:Initialize-LiveGateNative $savedInitializer
 
+
+}else{
+ $savedInitializer=(Get-Command Initialize-LiveGateNative).ScriptBlock
+ $watch=[Diagnostics.Stopwatch]::StartNew()
+ Assert-True ($null -eq ('GauntletLive.Native' -as [type])) 'fresh disposal phase starts with an entirely cold native type'
+}
 # Isolate OS-creation startup from compilation: compile the ACTUAL native helper
 # with one sealed gate that always throws immediately before CreateProcessW.
 # Cold compilation was independently covered above; no process can be launched.
@@ -247,6 +274,7 @@ Initialize-LiveGateNative
 $warmNative=Invoke-BoundedProcess -FileName 'synthetic-never-executed.exe' -TimeoutSec 5 -RequireProcessTreeRetirement
 Assert-True ([GauntletLive.Native]::FixtureEntered.IsSet -and $warmNative.StartFailed -and -not $warmNative.TimedOut -and $warmNative.ProcessTreeRetired -and $null -ne $warmNative.NativeProcessResult -and $warmNative.Failure.Code -ceq 'native_failure' -and $warmNative.Failure.Stage -ceq 'process_creation' -and $warmNative.Failure.NativeError -eq 2 -and (Get-ReviewOwnerRegistry ReviewProcessOwners).Count -eq 0) 'same sealed actual pre-CreateProcess path physically settles before timed creation barrier'
 if(-not $warmNative.ProcessTreeRetired -or $null -eq $warmNative.NativeProcessResult){throw 'Fixture refuses creation barrier after unknown sealed setup'}
+if($Phase -ceq 'creation'){
 [GauntletLive.Native]::FixtureRelease.Reset();[GauntletLive.Native]::FixtureEntered.Reset()
 $watch.Restart()
 $start=Invoke-BoundedProcess -FileName 'synthetic-never-executed.exe' -TimeoutMilliseconds 700 -RequireProcessTreeRetirement
@@ -258,19 +286,83 @@ Assert-True ($start.TimedOut -and -not $start.ProcessTreeRetired) 'unknown nativ
 $processRegistry=$null
 try{$processRegistry=Get-ReviewOwnerRegistry ReviewProcessOwners}catch{}
 Assert-True ($null -ne $processRegistry -and $processRegistry.Count -eq 1) 'process creation retains original native owning worker'
+# Native startup consumed its original absolute deadline. The sealed pre-create
+# throw guarantees no child was created, but original precreation resources
+# remain in native custody. Observe completion; do not invent late cleanup.
+$originalEntries=@(Get-ReviewOwnedWorkEntries -OwnerRegistry $processRegistry)
+Assert-True ($originalEntries.Count -eq 1) 'expired creation preserves one exact original generic authority before release'
+$originalOwner=$originalEntries[0].Owner;$originalState=$originalOwner['State']
+$originalDeadline=$originalOwner['Deadline'];$originalPipeline=$originalOwner['Pipeline']
 [GauntletLive.Native]::FixtureRelease.Set()
-if($null -ne $processRegistry){Close-StartupFixtureOwners -Registry $processRegistry}
+$reconcile=[Diagnostics.Stopwatch]::StartNew()
+$lateObservation=$null
+while($reconcile.ElapsedMilliseconds -lt 5000){
+ $lateObservation=Complete-ReviewOwnedWork -OwnerRegistry $processRegistry -Token $originalEntries[0].Token
+ if($originalOwner['InvokeTask'].IsCompleted -and $null -ne $originalOwner['DisposeTask'] -and $originalOwner['DisposeTask'].IsCompleted){break}
+ Start-Sleep -Milliseconds 10
+}
+$lateNative=$originalState['Result']
+Assert-True ($originalOwner['CreationTask'].IsCompletedSuccessfully -and $originalOwner['InvokeTask'].IsCompletedSuccessfully -and $originalOwner['DisposeTask'].IsCompletedSuccessfully -and $originalOwner['OutputDisposed']) 'released creation settles the same actual worker and disposer on separate test observation clock'
+Assert-True ([object]::ReferenceEquals($processRegistry[$originalEntries[0].Token],$originalOwner) -and [object]::ReferenceEquals($originalOwner['State'],$originalState) -and [object]::ReferenceEquals($originalOwner['Pipeline'],$originalPipeline) -and $originalOwner['Deadline'] -eq $originalDeadline) 'postdeadline observation retains the same original state pipeline owner token and absolute deadline'
+Assert-True ($null -ne $lateNative -and $lateNative.GetType().FullName -ceq 'GauntletLive.Native+RunResult' -and $lateNative.StartFailed -and $lateNative.ExitCode -eq -1 -and -not $lateNative.ProcessTreeRetired -and -not $originalState['CoreRetired']) 'actual late native result remains unretired and cannot grant aggregate retirement'
+Assert-True ($null -ne $lateNative -and $lateNative.Failure.Code -ceq 'native_failure' -and $lateNative.Failure.Stage -ceq 'process_creation' -and $lateNative.Failure.NativeError -eq 2 -and @($lateNative.CleanupFailures|Where-Object Code -ceq 'native_cleanup_deadline').Count -eq 1) 'actual sealed Win32 creation cause and original native cleanup deadline both survive'
+Assert-True ($processRegistry.Count -eq 1 -and -not $originalOwner['RetirementConfirmed'] -and -not $lateObservation.Retired -and -not $lateObservation.Completed -and $null -eq $lateObservation.Result -and $start.TimedOut -and -not $start.ProcessTreeRetired -and $start.ExitCode -eq -1) 'expired native custody stays fenced after generic disposal and cannot rewrite original aggregate refusal'
+$nativeRuns=[GauntletLive.Native].GetField('runs',[Reflection.BindingFlags]'NonPublic,Static').GetValue($null)
+$nativeCustody=$null
+if($null -ne $lateNative -and $nativeRuns.ContainsKey($lateNative)){$nativeCustody=$nativeRuns[$lateNative]}
+$unresolved=$null;$cleanupExpired=$null;$nativeDeadline=$null
+if($null -ne $nativeCustody){
+ $unresolved=$nativeCustody.GetType().GetField('Unresolved').GetValue($nativeCustody)
+ $cleanupExpired=$nativeCustody.GetType().GetField('CleanupExpired').GetValue($nativeCustody)
+ $nativeDeadline=$nativeCustody.GetType().GetField('Deadline').GetValue($nativeCustody)
+}
+Assert-True ($null -ne $nativeCustody -and $cleanupExpired -eq 1 -and $unresolved.Count -gt 0 -and $nativeDeadline -eq $originalDeadline) 'same actual native result retains expired original resource custody under the original absolute deadline'
+$next=Invoke-BoundedProcess -FileName 'synthetic-never-executed.exe' -TimeoutSec 5 -RequireProcessTreeRetirement
+Assert-True ($next.StartFailed -and $next.ExitCode -eq -1 -and $null -eq $next.NativeProcessResult -and $next.Failure.Code -ceq 'prior_owner_unresolved' -and [object]::ReferenceEquals($processRegistry[$originalEntries[0].Token],$originalOwner)) 'expired native authority fences a new direct admission without dispatch or replacement cleanup'
+[ordered]@{case='expired_original_creation_custody';phase=$Phase;original_deadline=$originalDeadline;native_deadline=$nativeDeadline;generic_disposed=$originalOwner['DisposeTask'].IsCompletedSuccessfully;generic_registry_count=$processRegistry.Count;native_custody_retained=$null -ne $nativeCustody;unresolved_count=$(if($null -ne $unresolved){$unresolved.Count}else{$null});native_result=$lateNative;aggregate_retired=$start.ProcessTreeRetired}|ConvertTo-Json -Depth 10 -Compress|Write-Output
+# The containing phase process now exits. Its parent verifies actual original
+# job retirement. No pathname lookup, late kill, registry clear or new native
+# cleanup operation is used to make this expired attempt appear retired.
+Write-TestResult
 
+
+
+}
 # The native helper's sealed pre-create throw above proves no OS child exists.
 # Retain its actual scalar receipt independently while the ORIGINAL real pipeline
 # disposal is blocked; worker retirement must not be inferred from native retirement.
 Set-Item Function:Start-ReviewOwnedPipelineCreation $instrumentedStartupDefinitions['Start-ReviewOwnedPipelineCreation']
+# Stage the SAME wrapped native/full-definition path before timing only disposal.
+# Its original five-second bound is independent of the unchanged 700ms barrier.
+[StartupDeadlineFixture]::Reset('native_disposal_setup')
+$nativeDisposalPipelinesBefore=@([StartupDeadlineFixture]::Pipelines.ToArray())
+$nativeDisposalSetup=Invoke-BoundedProcess -FileName 'synthetic-never-executed.exe' -TimeoutSec 5 -RequireProcessTreeRetirement
+$setupPipelines=@([StartupDeadlineFixture]::Pipelines.ToArray())
+$setupNewPipelines=@($setupPipelines|Where-Object {
+    $candidatePipeline=$_;$known=$false
+    foreach($previousPipeline in $nativeDisposalPipelinesBefore){if([object]::ReferenceEquals($previousPipeline,$candidatePipeline)){$known=$true;break}}
+    -not $known
+})
+$setupDisposed=$setupNewPipelines.Count -eq 1 -and @($setupNewPipelines|Where-Object {$_.InvocationComplete -and $_.Disposed}).Count -eq 1
+$setupSettled=$nativeDisposalSetup.StartFailed -and -not $nativeDisposalSetup.TimedOut -and $nativeDisposalSetup.ProcessTreeRetired -and
+    $null -ne $nativeDisposalSetup.NativeProcessResult -and $nativeDisposalSetup.Failure.Code -ceq 'native_failure' -and
+    $nativeDisposalSetup.Failure.Stage -ceq 'process_creation' -and $nativeDisposalSetup.Failure.NativeError -eq 2 -and
+    (Get-ReviewOwnerRegistry ReviewProcessOwners).Count -eq 0 -and $setupDisposed
+Assert-True $setupSettled 'same original wrapped native path fully settles before isolated disposal clock'
+if(-not $setupSettled){
+ [pscustomobject]@{case='original_disposal_setup_failure';new_pipeline_count=$setupNewPipelines.Count;new_pipeline_settled=$setupDisposed;actual_aggregate=$nativeDisposalSetup}|ConvertTo-Json -Depth 10 -Compress|Write-Output
+ throw 'Fixture refuses timed disposal after unconfirmed same-path setup'
+}
 [StartupDeadlineFixture]::Reset('dispose')
 $watch.Restart()
 $fixturePrimary3=$null
 try {
 try {
  $disposing=Invoke-BoundedProcess -FileName 'synthetic-never-executed.exe' -TimeoutMilliseconds 700 -RequireProcessTreeRetirement
+ if(-not [StartupDeadlineFixture]::Entered.IsSet -or $null -eq $disposing.NativeProcessResult){
+  [pscustomobject]@{case='original_disposal_failure_diagnostic';elapsed_ms=$watch.ElapsedMilliseconds;barrier_entered=[StartupDeadlineFixture]::Entered.IsSet;fixture_stage=[StartupDeadlineFixture]::Stage;actual_aggregate=$disposing}|ConvertTo-Json -Depth 10 -Compress|Write-Output
+ }
+
  $watch.Stop()
  Assert-True ([StartupDeadlineFixture]::Entered.IsSet) 'actual direct process original pipeline reaches blocked disposal'
  Assert-True ($watch.ElapsedMilliseconds -lt 1650) 'direct process disposal shares its original entry deadline'

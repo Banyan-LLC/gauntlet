@@ -4,6 +4,165 @@
 # Keep this one definition AST intact: native workers copy its complete function pack.
 Set-StrictMode -Version Latest
 
+function Initialize-ReviewOwnedStreams {
+    # Called only by the retained original invocation before the caller action.
+    $source=@'
+using System;
+using System.Collections.Generic;
+using System.Collections.Concurrent;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Management.Automation;
+using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
+namespace GauntletOwnedWork {
+ public sealed class StreamGuard {
+  public static string SourceIdentity {get{return "__GAUNTLET_STREAM_SOURCE_IDENTITY__";}}
+  public const long ChannelEmissionBytes=32768, AggregateEmissionBytes=65536;
+  // Collector state is fixed: seven counters/delegates and winner-only safe
+  // error/refusal DTO builders. Losers allocate no diagnostic DTO. Cumulative
+  // admission charges at least256bytes/record, so at most128records/channel
+  // and256total can ever be inserted, even with concurrent producers. List
+  // capacities/references are therefore bounded, without ReadAll/ToArray copies.
+  // DataAdded removes raw references synchronously before a producer returns;
+  // arbitrary incoming worker object graphs are neither copied nor kept after
+  // that callback. Structural DTOs keep no raw message/target/exception graph.
+  // Bounds cover backing capacities, delegates/arrays and overlapping builder
+  // DTOs. Arbitrary memory allocated by a worker is not collector allocation.
+  public const long RecordTransferBytes=4096, ChannelRetainedBytes=16384, AggregateRetainedBytes=131072;
+  readonly ConcurrentDictionary<string,object> owner,state;
+  readonly object gate=new object();
+  readonly long[] admitted=new long[7],counts=new long[7];
+  long total;int stopped,errorClaim;
+  readonly Func<AsyncCallback,object,Task> stop;
+  ReadOnlyDictionary<string,object> firstError,failure;
+  public ReadOnlyDictionary<string,object> FirstError {get{return Volatile.Read(ref firstError);}}
+  public ReadOnlyDictionary<string,object> Failure {get{return Volatile.Read(ref failure);}}
+  public long ErrorCount {get{return Interlocked.Read(ref counts[1]);}}
+  public long TotalAdmittedBytes {get{return Interlocked.Read(ref total);}}
+  public long ChannelAdmittedBytes(int channel){return Interlocked.Read(ref admitted[channel]);}
+  public long ChannelCount(int channel){return Interlocked.Read(ref counts[channel]);}
+  static ReadOnlyDictionary<string,object> Record(Dictionary<string,object> values){return new ReadOnlyDictionary<string,object>(values);}
+  static bool Code(string value){if(value==null||value.Length==0||value.Length>64||value[0]<'a'||value[0]>'z')return false;foreach(char c in value)if((c<'a'||c>'z')&&(c<'0'||c>'9')&&c!='_')return false;return true;}
+  static bool TrustedException(Exception error){
+   var a=error.GetType().Assembly;
+   return a==typeof(Exception).Assembly||a==typeof(RuntimeException).Assembly||a==typeof(Win32Exception).Assembly||a==typeof(System.Net.Sockets.SocketException).Assembly||a==typeof(System.Net.Http.HttpRequestException).Assembly||a==typeof(System.Text.Json.JsonException).Assembly;
+  }
+  static ReadOnlyDictionary<string,object> Fault(string code,string stage,Exception error){
+   Exception cause=error;
+   for(int i=0;i<8&&cause!=null;i++){
+    // Read only standard framework/SMA exception Data implementations. Never
+    // call an arbitrary override, formatter or ToString on a worker object.
+    var assembly=cause.GetType().Assembly;
+    if(TrustedException(cause)){
+     var data=cause.Data;
+     if(data.Contains("ReviewCode")&&data["ReviewCode"] is string c&&Code(c)){
+      code=c;if(data.Contains("ReviewStage")&&data["ReviewStage"] is string s&&Code(s))stage=s;break;
+     }
+    }
+    if(cause.InnerException==null)break;cause=cause.InnerException;
+   }
+   string type=cause==null?null:cause.GetType().FullName;
+   if(type!=null&&(type.Length>256||!SafeType(type)))type="System.Exception";
+   object safe=cause==null?null:Record(new Dictionary<string,object>(StringComparer.Ordinal){
+    {"Type",type},{"HResult",cause.HResult},{"JsonLine",cause is System.Text.Json.JsonException json?(object)json.LineNumber:null},{"JsonByte",cause is System.Text.Json.JsonException jsonByte?(object)jsonByte.BytePositionInLine:null},{"SocketError",cause is System.Net.Sockets.SocketException socket?(object)(int)socket.SocketErrorCode:null},{"HttpStatus",cause is System.Net.Http.HttpRequestException http&&http.StatusCode.HasValue?(object)(int)http.StatusCode.Value:null},
+    {"NativeError",cause is Win32Exception native?(object)native.NativeErrorCode:null},{"Inner",null},{"OmittedInnerCauses",cause.InnerException==null?0:1}});
+   return Record(new Dictionary<string,object>(StringComparer.Ordinal){{"Code",code},{"Stage",stage},{"Cause",safe}});
+  }
+  static bool SafeType(string text){foreach(char c in text)if(!((c>='A'&&c<='Z')||(c>='a'&&c<='z')||(c>='0'&&c<='9')||"_.+`[], ".IndexOf(c)>=0))return false;return true;}
+  static long TextBytes(string text){return text==null?0:checked((long)text.Length*2);}
+  static long Charge(int channel,object item){
+   const long header=256;
+   switch(channel){
+    case 1:
+     var e=(ErrorRecord)item;
+     // A target/message-data graph is not an admitted diagnostic payload.
+     if(e.TargetObject!=null)throw new InvalidOperationException("Unsupported error target graph");
+     var ex=e.Exception;
+     long exceptionBytes=0;
+     for(int depth=0;ex!=null;depth++,ex=ex.InnerException){
+      if(depth>=8||!TrustedException(ex)||ex.Data.Count>8)throw new InvalidOperationException("Unsupported exception graph");
+      foreach(System.Collections.DictionaryEntry pair in ex.Data){
+       if(!(pair.Key is string key)||key.Length>64)throw new InvalidOperationException("Unsupported exception data");
+       if(pair.Value!=null&&!(pair.Value is int)&&!(pair.Value is long)&&!(pair.Value is bool)&&!(pair.Value is string))throw new InvalidOperationException("Unsupported exception data graph");
+       if(pair.Value is string value&&value.Length>64)throw new InvalidOperationException("Unsupported exception data text");
+      }
+      exceptionBytes+=TextBytes(ex.Message);
+     }
+     ex=e.Exception;
+     return header+exceptionBytes+TextBytes(e.FullyQualifiedErrorId)+TextBytes(e.ErrorDetails==null?null:e.ErrorDetails.Message);
+    case 2:return header+TextBytes(((WarningRecord)item).Message);
+    case 3:return header+TextBytes(((VerboseRecord)item).Message);
+    case 4:return header+TextBytes(((DebugRecord)item).Message);
+    case 5:
+     var info=(InformationRecord)item;
+     if(info.MessageData!=null&&!(info.MessageData is string))throw new InvalidOperationException("Unsupported information graph");
+     if(info.Tags.Count>16)throw new InvalidOperationException("Unsupported information tags");
+     long bytes=header+TextBytes((string)info.MessageData)+TextBytes(info.Source);
+     foreach(var tag in info.Tags){if(tag!=null&&tag.Length>64)throw new InvalidOperationException("Unsupported information tag");bytes+=TextBytes(tag);}
+     return bytes;
+    case 6:
+     var p=(ProgressRecord)item;return header+TextBytes(p.Activity)+TextBytes(p.StatusDescription)+TextBytes(p.CurrentOperation);
+    default:return 0;
+   }
+  }
+  void Refuse(string code){
+   if(Interlocked.CompareExchange(ref stopped,1,0)!=0)return;
+   owner["StopRequested"]=true;owner["Abandoned"]=true;state["Abandoned"]=true;
+   var value=Fault(code,"worker_stream",null);
+   owner.TryAdd("StreamFailure",value);Volatile.Write(ref failure,value);
+   try{owner["StopTask"]=stop(null,null);}
+   catch(Exception error){owner.TryAdd("StopFailure",Fault("owned_stop","worker_stop",error));}
+  }
+  void Adding(int channel,DataAddingEventArgs args){
+   if(Volatile.Read(ref stopped)!=0)throw new PipelineStoppedException();
+   if(channel==0){Refuse("owned_unexpected_output");throw new PipelineStoppedException();}
+   long charge;
+   try{charge=Charge(channel,args.ItemAdded);}catch{Refuse("owned_stream_shape");throw new PipelineStoppedException();}
+   bool entered=Monitor.TryEnter(gate),overflow=false;
+   if(!entered){Refuse("owned_stream_busy");throw new PipelineStoppedException();}
+   try{
+    if(charge>RecordTransferBytes||charge>ChannelEmissionBytes-admitted[channel]||charge>AggregateEmissionBytes-total)overflow=true;
+    else{admitted[channel]+=charge;total+=charge;counts[channel]++;}
+   }finally{Monitor.Exit(gate);}
+   if(overflow){Refuse("owned_stream_limit");throw new PipelineStoppedException();}
+   if(channel==1&&Interlocked.CompareExchange(ref errorClaim,1,0)==0){var e=(ErrorRecord)args.ItemAdded;Volatile.Write(ref firstError,Fault("owned_error_stream","worker_invoke",e.Exception));}
+  }
+  void Attach<T>(PSDataCollection<T> collection,int channel){
+   if(collection.Count!=0)throw new InvalidOperationException("Guard refuses preexisting stream data");
+   collection.DataAddedCount=1;
+   collection.DataAdding+=(sender,args)=>Adding(channel,args);
+   collection.DataAdded+=(sender,args)=>((PSDataCollection<T>)sender).Clear();
+  }
+  public StreamGuard(object pipeline,PSDataCollection<PSObject> output,ConcurrentDictionary<string,object> originalOwner){
+   owner=originalOwner;state=(ConcurrentDictionary<string,object>)owner["State"];
+   if(!Object.ReferenceEquals(owner["Pipeline"],pipeline)||!Object.ReferenceEquals(state["OwnedWorkOwner"],owner))throw new InvalidOperationException("Original worker authority required");
+   var streams=(PSDataStreams)pipeline.GetType().GetProperty("Streams").GetValue(pipeline);
+   var method=pipeline.GetType().GetMethod("StopAsync",new[]{typeof(AsyncCallback),typeof(object)});
+   if(method==null||method.ReturnType!=typeof(Task))throw new InvalidOperationException("Original pipeline stop required");
+   stop=(Func<AsyncCallback,object,Task>)Delegate.CreateDelegate(typeof(Func<AsyncCallback,object,Task>),pipeline,method);
+   Attach(output,0);Attach(streams.Error,1);Attach(streams.Warning,2);Attach(streams.Verbose,3);Attach(streams.Debug,4);Attach(streams.Information,5);Attach(streams.Progress,6);
+  }
+ }
+}
+'@
+    $identity=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($source))).ToLowerInvariant()
+    $loaded='GauntletOwnedWork.StreamGuard' -as [type]
+    if($null -ne $loaded){
+        $underlying=$null;$value=$null
+        try{
+            $property=$loaded.GetProperty('SourceIdentity',[Reflection.BindingFlags]'Public,Static')
+            if($null -ne $property -and $property.PropertyType -eq [string] -and $null -ne $property.GetMethod -and $property.GetMethod.IsStatic -and $property.GetIndexParameters().Count -eq 0){$value=$property.GetValue($null)}
+        }catch{$underlying=$_.Exception}
+        if($value -is [string] -and $value -cmatch '^[0-9a-f]{64}$' -and [string]::Equals($value,$identity,[StringComparison]::Ordinal)){return}
+        $error=[InvalidOperationException]::new('Loaded owned-stream helper differs from current source',$underlying)
+        $error.Data['ReviewCode']='owned_stream_source_mismatch';$error.Data['ReviewStage']='worker_stream_init';throw $error
+    }
+    Add-Type -TypeDefinition $source.Replace('__GAUNTLET_STREAM_SOURCE_IDENTITY__',$identity) -ErrorAction Stop
+}
+
+
 function Get-ReviewOwnerRegistry {
     param([Parameter(Mandatory)][ValidateSet('LiveGateDirectories','LiveGateInputs','ReviewTransportOwners','ReviewProcessOwners','ReviewCapacityOwners','ReviewInstallOwners','ReviewManifestWriters','ReviewFilesystemOwners','ReaderProducerCustodies','SecurityWorkOwners','SecurityGateOwners','SecurityProcessRuns','SecurityAuthSourceReads','SecurityHarnesses','SecurityCleanupResults')][string]$Name,[switch]$List)
     $domain=[AppDomain]::CurrentDomain;$entered=$false
@@ -26,7 +185,11 @@ function Get-ReviewOwnerRegistry {
 }
 
 function Initialize-LiveGateNative {
-    if (-not $IsWindows) { throw 'Live gate ownership and process containment require Windows' }
+    if (-not $IsWindows) {
+        $refusal=[PlatformNotSupportedException]::new('Live gate ownership and process containment require Windows')
+        $refusal.Data['ReviewCode']='native_platform_unsupported';$refusal.Data['ReviewStage']='native_initialization'
+        throw $refusal
+    }
     $source = @'
 using System;
 using System.ComponentModel;
@@ -67,8 +230,13 @@ namespace GauntletLive {
             var type=exception.GetType().FullName;
             var fault=new NativeFailure {Code=code,Stage=stage,Type=type.Length<=256?type:"System.Exception",HResult=exception.HResult,
                 NativeError=exception is Win32Exception native?(int?)native.NativeErrorCode:null};
-            if(result.Failure==null)result.Failure=fault;
-            else if(cleanup&&result.CleanupFailures.Length<2)result.CleanupFailures=result.CleanupFailures.Concat(new[]{fault}).ToArray();
+            if(Interlocked.CompareExchange(ref result.Failure,fault,null)!=null&&cleanup) {
+                while(true) {
+                    var previous=result.CleanupFailures;if(previous.Length>=2)break;
+                    var next=new NativeFailure[previous.Length+1];Array.Copy(previous,next,previous.Length);next[previous.Length]=fault;
+                    if(ReferenceEquals(Interlocked.CompareExchange(ref result.CleanupFailures,next,previous),previous))break;
+                }
+            }
         }
         [StructLayout(LayoutKind.Sequential)] struct SecurityAttributes {
             public int Length;
@@ -128,7 +296,61 @@ namespace GauntletLive {
             bool inherit, uint flags, IntPtr environment, string cwd, ref StartupInfoEx startup, out ProcessInfo process);
 
         static void Require(bool success) { if (!success) throw new Win32Exception(Marshal.GetLastWin32Error()); }
-        static void Close(ref IntPtr handle) { if (handle != IntPtr.Zero) { CloseHandle(handle); handle = IntPtr.Zero; } }
+        static void Close(ref IntPtr handle) {
+            if(handle==IntPtr.Zero)return;
+            if(!CloseHandle(handle))throw new Win32Exception(Marshal.GetLastWin32Error());
+            handle=IntPtr.Zero;
+        }
+        // A bounded registry retains the ORIGINAL run, handles and incomplete IO after
+        // failed cleanup. Exhaustion refuses new work; it never drops prior custody.
+        sealed class RunCustody {
+            public readonly object JobSync=new object();
+            public IntPtr Job;
+            public bool JobClosed;
+            public long Deadline=long.MaxValue;
+            public int CleanupExpired;
+            public readonly List<object> Unresolved=new List<object>();
+            public Exception TerminationError;
+            public Task CleanupTask;
+            public CancellationTokenRegistration Cancellation;
+            public void Terminate() {
+                // A close/termination already admitted on this exact original job
+                // owns its lifetime. Signaling cancellation must never wait behind
+                // that operation or extend the caller's original deadline.
+                if(!Monitor.TryEnter(JobSync))return;
+                try {
+                    if(JobClosed||Job==IntPtr.Zero||Volatile.Read(ref CleanupExpired)!=0||Stopwatch.GetTimestamp()>=Deadline)return;
+                    if(!TerminateJobObject(Job,1)&&TerminationError==null)
+                        TerminationError=new Win32Exception(Marshal.GetLastWin32Error());
+                }finally{Monitor.Exit(JobSync);}
+            }
+        }
+        const int MaximumRuns=8;
+        static int activeRuns;
+        static readonly System.Collections.Concurrent.ConcurrentDictionary<RunResult,RunCustody> runs=
+            new System.Collections.Concurrent.ConcurrentDictionary<RunResult,RunCustody>();
+        static bool AdmitCleanup(RunResult result,RunCustody custody,object resource) {
+            if(resource==null)return false;
+            if(Volatile.Read(ref custody.CleanupExpired)!=0||Stopwatch.GetTimestamp()>=custody.Deadline) {
+                // Retain the exact unattempted resource beyond task completion;
+                // closure captures alone are not continuing ownership evidence.
+                custody.Unresolved.Add(resource);
+                if(Interlocked.Exchange(ref custody.CleanupExpired,1)==0)
+                    RecordFailure(result,"native_cleanup_deadline","process_cleanup",new TimeoutException(),true);
+                return false;
+            }
+            return true;
+        }
+        static void DisposeOwned(RunResult result,RunCustody custody,IDisposable resource) {
+            if(!AdmitCleanup(result,custody,resource))return;
+            try{resource.Dispose();}
+            catch(Exception error){RecordFailure(result,"native_cleanup","stream_cleanup",error,true);custody.Unresolved.Add(resource);}
+        }
+        static void CloseOwned(RunResult result,RunCustody custody,ref IntPtr handle) {
+            if(handle==IntPtr.Zero||!AdmitCleanup(result,custody,handle))return;
+            try{Close(ref handle);}
+            catch(Exception error){RecordFailure(result,"native_cleanup","handle_cleanup",error,true);custody.Unresolved.Add(handle);}
+        }
         static string Quote(string value) {
             if (value.IndexOf('\0') >= 0) throw new ArgumentException("Child argument contains a null character");
             if (value.Length != 0 && value.IndexOfAny(new char[] { ' ', '\t', '"' }) < 0) return value;
@@ -150,20 +372,81 @@ namespace GauntletLive {
         }
         sealed class CaptureBudget {
             public int Used, Exceeded;
-            public const int MaximumBytes = 4 * 1024 * 1024;
+            long retained;
+            public long PeakRetained;
+            public const int MaximumBytes=4*1024*1024;
+            public const int MaximumInputBytes=1024*1024;
+            public const long MaximumRetainedBytes=16L*1024*1024;
+            // Storage metadata cannot grow with read fragmentation: chunks are
+            // filled before append. Raw caps bound <=1024 committed byte arrays,
+            // <=2 pending arrays and <=2048 combined List backing slots. Reserve
+            // 128KiB for their array/object headers, list slots, decoder state and
+            // string headers in addition to charged byte/UTF16 payload capacity.
+            // This is an IO-storage bound, not a bound on total CLR/OS heap use.
+            public const int CaptureMetadataReserve=128*1024;
+            public readonly RunCustody Custody;
+            public CaptureBudget(RunCustody custody){Custody=custody;Reserve(CaptureMetadataReserve);}
+            public void Limit() {
+                Interlocked.Exchange(ref Exceeded,1);
+                // The cap-crossing reader terminates this original job immediately.
+                Custody.Terminate();
+                throw new InvalidOperationException("Process IO exceeded its retention budget");
+            }
+            public void Reserve(long bytes) {
+                long next=Interlocked.Add(ref retained,bytes);
+                long peak;do{peak=Volatile.Read(ref PeakRetained);if(next<=peak)break;}
+                while(Interlocked.CompareExchange(ref PeakRetained,next,peak)!=peak);
+                if(next>MaximumRetainedBytes){Interlocked.Add(ref retained,-bytes);Limit();}
+            }
+            public void Release(long bytes){Interlocked.Add(ref retained,-bytes);}
         }
-        static async Task<string> Capture(FileStream stream, CaptureBudget budget) {
-            var buffer = new byte[4096];
-            using (var retained = new MemoryStream()) {
-                int count;
-                while ((count = await stream.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) != 0) {
-                    if (Interlocked.Add(ref budget.Used, count) > CaptureBudget.MaximumBytes) {
-                        Interlocked.Exchange(ref budget.Exceeded, 1);
-                        throw new InvalidOperationException("Aggregate process output exceeded its retention budget");
+        static async Task<string> Capture(Stream stream,CaptureBudget budget) {
+            // Payload accounting includes actual allocated byte capacities and final
+            // UTF16 strings while chunks coexist. There is no whole-buffer byte copy.
+            const int chunkSize=4096;
+            var chunks=new List<KeyValuePair<byte[],int>>();
+            long retainedChunks=0;
+            byte[] buffer=null;
+            try {
+                int channelBytes=0;
+                while(true) {
+                    budget.Reserve(chunkSize);buffer=new byte[chunkSize];retainedChunks+=chunkSize;
+                    int count=0;
+                    while(count<chunkSize) {
+                        int read=await stream.ReadAsync(buffer,count,chunkSize-count).ConfigureAwait(false);
+                        if(read==0)break;
+                        count+=read;channelBytes+=read;
+                        if(channelBytes>CaptureBudget.MaximumBytes||Interlocked.Add(ref budget.Used,read)>CaptureBudget.MaximumBytes)budget.Limit();
                     }
-                    retained.Write(buffer, 0, count);
+                    if(count!=0)chunks.Add(new KeyValuePair<byte[],int>(buffer,count));
+                    else {budget.Release(chunkSize);retainedChunks-=chunkSize;}
+                    buffer=null;
+                    if(count<chunkSize)break;
                 }
-                return Encoding.UTF8.GetString(retained.ToArray());
+                var decoder=Encoding.UTF8.GetDecoder();
+                // Decoder state retains no data beyond at most three pending UTF8 bytes.
+                budget.Reserve(16);
+                int chars=0;
+                try {
+                    for(int i=0;i<chunks.Count;i++)chars=checked(chars+decoder.GetCharCount(chunks[i].Key,0,chunks[i].Value,i==chunks.Count-1));
+                    long stringBytes=checked((long)chars*2);
+                    budget.Reserve(stringBytes);
+                    bool made=false;
+                    try {
+                        string text=string.Create(chars,chunks,(destination,items)=>{
+                            var writer=Encoding.UTF8.GetDecoder();int offset=0;
+                            for(int i=0;i<items.Count;i++){
+                                writer.Convert(items[i].Key.AsSpan(0,items[i].Value),destination.Slice(offset),i==items.Count-1,
+                                    out int consumed,out int written,out bool completed);
+                                if(consumed!=items[i].Value||!completed)throw new InvalidOperationException("UTF8 capture decoding did not complete");
+                                offset+=written;
+                            }
+                        });
+                        made=true;return text;
+                    }finally{if(!made)budget.Release(stringBytes);}
+                }finally{budget.Release(16);}
+            } finally {
+                buffer=null;chunks.Clear();budget.Release(retainedChunks);
             }
         }
         public static RunResult Run(ProcessStartInfo start, string input, int seconds) {
@@ -192,19 +475,49 @@ namespace GauntletLive {
             FileStream inputStream=null, outputStream=null, errorStream=null;
             Task<string> outputTask=null, errorTask=null;
             Task writeTask=null;
-            var budget = new CaptureBudget();
+            var custody=new RunCustody{Deadline=deadlineTimestamp};
+            if(Interlocked.Increment(ref activeRuns)>MaximumRuns) {
+                Interlocked.Decrement(ref activeRuns);
+                RecordFailure(result,"native_capacity","native_admission",new InvalidOperationException());
+                result.StartFailed=true;result.ExitCode=-1;result.ProcessTreeRetired=true;
+                result.ErrorMessage="Original native run capacity is exhausted";return result;
+            }
+            if(!runs.TryAdd(result,custody)){Interlocked.Decrement(ref activeRuns);throw new InvalidOperationException("Native run identity collision");}
+            var budget = new CaptureBudget(custody);
+            byte[] inputBytes=null;
+            long inputCharge=0;
+            CancellationTokenRegistration cancellationRegistration=default(CancellationTokenRegistration);
             string stage="native_setup";
+            bool abortRecorded=false;
             Func<bool> peerFailure = () => {
                 if(!failureCancellation.IsCancellationRequested) return false;
-                RecordFailure(result,"transport_abort",stage,new OperationCanceledException());
-                result.ErrorMessage="Paired review transport failed";
-                return true;
+                if(!abortRecorded){RecordFailure(result,"transport_abort",stage,new OperationCanceledException(),true);abortRecorded=true;}
+                result.ErrorMessage="Paired review transport failed";result.ExitCode=-1;
+                custody.Terminate();return true;
             };
             try {
                 if(peerFailure()) throw new OperationCanceledException("Paired review transport failed before launch");
+                stage="stdin_admission";
+                input=input??"";
+                if(input.Length>CaptureBudget.MaximumInputBytes) {
+                    RecordFailure(result,"stdin_limit",stage,new InvalidOperationException());
+                    throw new InvalidOperationException("Process stdin exceeded its UTF8 budget");
+                }
+                int inputByteCount=Encoding.UTF8.GetByteCount(input);
+                if(inputByteCount>CaptureBudget.MaximumInputBytes) {
+                    RecordFailure(result,"stdin_limit",stage,new InvalidOperationException());
+                    throw new InvalidOperationException("Process stdin exceeded its UTF8 budget");
+                }
+                inputCharge=checked((long)input.Length*2+inputByteCount);
+                budget.Reserve(inputCharge);
+                inputBytes=Encoding.UTF8.GetBytes(input);
+                stage="native_setup";
                 if (remaining() == 0) { result.TimedOut=true; throw new TimeoutException("Original process deadline expired before launch"); }
                 job = CreateJobObjectW(IntPtr.Zero, IntPtr.Zero);
                 if (job == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
+                custody.Job=job;
+                cancellationRegistration=failureCancellation.Register(custody.Terminate);
+                custody.Cancellation=cancellationRegistration;
                 var limits = new ExtendedLimits();
                 limits.Basic.Flags = 0x2000; // KILL_ON_JOB_CLOSE, without either breakaway flag.
                 Require(SetInformationJobObject(job, 9, ref limits, Marshal.SizeOf<ExtendedLimits>()));
@@ -248,29 +561,43 @@ namespace GauntletLive {
                 Require(CreateProcessW(start.FileName, command, IntPtr.Zero, IntPtr.Zero, true,
                     0x08080404, environment, start.WorkingDirectory, ref startup, out process));
                 created = true;
+                if(peerFailure())throw new OperationCanceledException("Paired review transport failed after creation");
+                if(remaining()==0){result.TimedOut=true;throw new TimeoutException("Original deadline expired before job assignment");}
                 Require(AssignProcessToJobObject(job, process.Process));
                 assigned = true;
-                Close(ref stdinRead); Close(ref stdoutWrite); Close(ref stderrWrite);
-                inputStream = new FileStream(new SafeFileHandle(stdinWrite, true), FileAccess.Write, 4096, false); stdinWrite=IntPtr.Zero;
-                outputStream = new FileStream(new SafeFileHandle(stdoutRead, true), FileAccess.Read, 4096, false); stdoutRead=IntPtr.Zero;
-                errorStream = new FileStream(new SafeFileHandle(stderrRead, true), FileAccess.Read, 4096, false); stderrRead=IntPtr.Zero;
+                CloseOwned(result,custody,ref stdinRead);CloseOwned(result,custody,ref stdoutWrite);CloseOwned(result,custody,ref stderrWrite);
+                if(result.Failure!=null||Volatile.Read(ref custody.CleanupExpired)!=0)throw new InvalidOperationException("Original process setup closure failed");
+                if(peerFailure())throw new OperationCanceledException("Paired review transport failed before stream setup");
+                inputStream = new FileStream(new SafeFileHandle(stdinWrite, false), FileAccess.Write, 4096, false);
+                outputStream = new FileStream(new SafeFileHandle(stdoutRead, false), FileAccess.Read, 4096, false);
+                errorStream = new FileStream(new SafeFileHandle(stderrRead, false), FileAccess.Read, 4096, false);
                 outputTask=Capture(outputStream, budget); errorTask=Capture(errorStream, budget);
                 if(peerFailure()) throw new OperationCanceledException("Paired review transport failed before resume");
                 if (executionRemaining() == 0) { result.TimedOut=true; throw new TimeoutException("Original process deadline expired before resume"); }
                 if (ResumeThread(process.Thread) == uint.MaxValue) throw new Win32Exception(Marshal.GetLastWin32Error());
-                Close(ref process.Thread);
-                var bytes = Encoding.UTF8.GetBytes(input ?? "");
+                CloseOwned(result,custody,ref process.Thread);
+                if(result.Failure!=null||Volatile.Read(ref custody.CleanupExpired)!=0)throw new InvalidOperationException("Original process thread closure failed");
                 stage="stdin";
-                writeTask = inputStream.WriteAsync(bytes, 0, bytes.Length);
+                writeTask = inputStream.WriteAsync(inputBytes, 0, inputBytes.Length);
                 while (!writeTask.IsCompleted && executionRemaining() > 0 && Volatile.Read(ref budget.Exceeded) == 0 && !failureCancellation.IsCancellationRequested)
                     Thread.Sleep(Math.Min(10, executionRemaining()));
+                if(Volatile.Read(ref budget.Exceeded)!=0) {
+                    RecordFailure(result,"capture_limit","process_capture",new InvalidOperationException());
+                    result.ErrorMessage="Aggregate process output exceeded its retention budget";
+                }
                 peerFailure();
                 bool stdinDone = writeTask.IsCompletedSuccessfully;
                 if (result.ErrorMessage==null && (writeTask.IsFaulted || writeTask.IsCanceled)) {
                     result.ErrorMessage="stdin transport failed before the complete prompt was delivered: " + writeTask.Exception?.GetBaseException().Message;
                     RecordFailure(result,"stdin_failure",stage,(Exception)writeTask.Exception??new OperationCanceledException());
                 }
-                if (stdinDone) { inputStream.Dispose(); inputStream=null; }
+                if(stdinDone) {
+                    // EOF is the checked close of the original raw pipe, after its
+                    // write is terminal. The non-owning managed wrapper is disposed
+                    // only by the existing bounded original cleanup task.
+                    CloseOwned(result,custody,ref stdinWrite);
+                    if(result.Failure!=null||Volatile.Read(ref custody.CleanupExpired)!=0)throw new InvalidOperationException("Original stdin EOF closure failed");
+                }
                 bool exited = false;
                 stage="process_exit";
                 while (stdinDone && result.ErrorMessage == null && executionRemaining() > 0 && Volatile.Read(ref budget.Exceeded) == 0 && !failureCancellation.IsCancellationRequested) {
@@ -279,16 +606,24 @@ namespace GauntletLive {
                 peerFailure();
                 result.TimedOut = !exited && executionRemaining() == 0;
                 uint exitCode;
-                if (exited) { Require(GetExitCodeProcess(process.Process, out exitCode)); result.ExitCode=unchecked((int)exitCode); }
+                if(exited&&remaining()>0) { Require(GetExitCodeProcess(process.Process, out exitCode)); result.ExitCode=unchecked((int)exitCode); }
+                else if(remaining()==0){result.TimedOut=true;result.ExitCode=-1;}
                 else { result.ExitCode=-1; }
                 // Parent exit is insufficient: terminate and query the entire owned job.
                 stage="process_retirement";
-                if (ActiveCount(job) != 0) Require(TerminateJobObject(job, 1));
-                while (ActiveCount(job) != 0 && remaining() > 0) Thread.Sleep(Math.Min(10, remaining()));
-                result.ProcessTreeRetired = ActiveCount(job) == 0;
+                // Execution stopped at the existing reserved-quarter cutoff. A
+                // normal timeout still retires here before the ABSOLUTE deadline;
+                // a stage stalled through that reserve starts no late kill/query.
+                if(AdmitCleanup(result,custody,job)&&remaining()>0&&ActiveCount(job)!=0&&AdmitCleanup(result,custody,job))Require(TerminateJobObject(job, 1));
+                while(remaining()>0&&ActiveCount(job)!=0){peerFailure();Thread.Sleep(Math.Min(10,remaining()));}
+                result.ProcessTreeRetired=remaining()>0&&Volatile.Read(ref custody.CleanupExpired)==0&&ActiveCount(job)==0&&remaining()>0;
                 if (!result.ProcessTreeRetired) {result.ErrorMessage="Owned process job did not retire before the shared deadline";RecordFailure(result,"retirement_deadline",stage,new TimeoutException());}
                 stage="process_capture";
-                try { Task.WaitAll(new Task[] { outputTask, errorTask }, remaining()); } catch (AggregateException) { }
+                while((!outputTask.IsCompleted||!errorTask.IsCompleted)&&remaining()>0) {
+                    peerFailure();
+                    try{Task.WaitAll(new Task[]{outputTask,errorTask},Math.Min(10,remaining()));}catch(AggregateException){}
+                }
+                peerFailure();
                 if (outputTask.IsCompletedSuccessfully) result.Stdout=outputTask.Result;
                 if (errorTask.IsCompletedSuccessfully) result.Stderr=errorTask.Result;
                 if (Volatile.Read(ref budget.Exceeded) != 0) {
@@ -312,12 +647,12 @@ namespace GauntletLive {
                 if (created && !result.ProcessTreeRetired) {
                     try {
                         if (assigned) {
-                            Require(TerminateJobObject(job, 1));
-                            while (ActiveCount(job) != 0 && remaining() > 0) Thread.Sleep(Math.Min(10, remaining()));
-                            result.ProcessTreeRetired=ActiveCount(job) == 0;
+                            if(AdmitCleanup(result,custody,job))Require(TerminateJobObject(job, 1));
+                            while(remaining()>0&&ActiveCount(job)!=0){peerFailure();Thread.Sleep(Math.Min(10,remaining()));}
+                            result.ProcessTreeRetired=remaining()>0&&Volatile.Read(ref custody.CleanupExpired)==0&&ActiveCount(job)==0&&remaining()>0;
                         } else {
-                            Require(TerminateProcess(process.Process, 1));
-                            result.ProcessTreeRetired=WaitForSingleObject(process.Process, (uint)remaining()) == 0;
+                            if(AdmitCleanup(result,custody,process.Process))Require(TerminateProcess(process.Process, 1));
+                            result.ProcessTreeRetired=remaining()>0&&Volatile.Read(ref custody.CleanupExpired)==0&&WaitForSingleObject(process.Process,(uint)remaining())==0&&remaining()>0;
                         }
                     } catch (Exception cleanupError) { result.ProcessTreeRetired=false; RecordFailure(result,"native_cleanup","process_cleanup",cleanupError,true);result.ErrorMessage += "; retirement: " + cleanupError.Message; }
                 } else if (!created) { result.ProcessTreeRetired=true; }
@@ -327,7 +662,11 @@ namespace GauntletLive {
                 if(writeTask!=null) ioTasks.Add(writeTask);
                 if(outputTask!=null) ioTasks.Add(outputTask);
                 if(errorTask!=null) ioTasks.Add(errorTask);
-                try {if(ioTasks.Any(task=>!task.IsCompleted)) Task.WaitAll(ioTasks.ToArray(),remaining());}catch(AggregateException) { }
+                while(ioTasks.Any(task=>!task.IsCompleted)&&remaining()>0) {
+                    peerFailure();
+                    try{Task.WaitAll(ioTasks.ToArray(),Math.Min(10,remaining()));}catch(AggregateException){}
+                }
+                peerFailure();
                 if(ioTasks.Any(task=>!task.IsCompleted)) {
                     result.ProcessTreeRetired=false;result.ExitCode=-1;
                     result.ErrorMessage="Owned process IO did not retire before the shared deadline";
@@ -335,15 +674,51 @@ namespace GauntletLive {
                 }
                 if(outputTask!=null&&outputTask.IsCompletedSuccessfully) result.Stdout=outputTask.Result;
                 if(errorTask!=null&&errorTask.IsCompletedSuccessfully) result.Stderr=errorTask.Result;
-                Close(ref job); Close(ref process.Thread); Close(ref process.Process);
-                Close(ref stdinRead); Close(ref stdinWrite); Close(ref stdoutRead); Close(ref stdoutWrite); Close(ref stderrRead); Close(ref stderrWrite);
-                if (attributesReady) DeleteProcThreadAttributeList(attributes);
-                if (attributes != IntPtr.Zero) Marshal.FreeHGlobal(attributes);
-                if (handles != IntPtr.Zero) Marshal.FreeHGlobal(handles);
-                if (environment != IntPtr.Zero) Marshal.FreeHGlobal(environment);
-                if (inputStream != null) inputStream.Dispose();
-                if (outputStream != null) outputStream.Dispose();
-                if (errorStream != null) errorStream.Dispose();
+                bool ioRetired=ioTasks.All(task=>task.IsCompleted);
+                if(!ioRetired||remaining()==0) {
+                    // Deadline expiry transfers no custody and starts no further IO
+                    // disposal. These exact references stay in the bounded run owner.
+                    foreach(var resource in new object[]{inputStream,outputStream,errorStream,writeTask,outputTask,errorTask,inputBytes,input})if(resource!=null)custody.Unresolved.Add(resource);
+                    foreach(var handle in new IntPtr[]{job,process.Thread,process.Process,stdinRead,stdinWrite,stdoutRead,stdoutWrite,stderrRead,stderrWrite,attributes,handles,environment})if(handle!=IntPtr.Zero)custody.Unresolved.Add(handle);
+                    Interlocked.Exchange(ref custody.CleanupExpired,1);
+                    RecordFailure(result,"native_cleanup_deadline","process_cleanup",new TimeoutException(),true);
+                    result.ProcessTreeRetired=false;result.ExitCode=-1;result.ErrorMessage="Original native cleanup exceeded the shared deadline";
+                } else {
+                // One original cleanup task owns all independent resources. A late
+                // disposer cannot extend the caller's deadline or publish success.
+                custody.CleanupTask=Task.Run(()=>{
+                // Independent resources are each attempted even if another disposer fails.
+                DisposeOwned(result,custody,inputStream);DisposeOwned(result,custody,outputStream);DisposeOwned(result,custody,errorStream);
+                CloseOwned(result,custody,ref process.Thread);CloseOwned(result,custody,ref process.Process);
+                CloseOwned(result,custody,ref stdinRead);CloseOwned(result,custody,ref stdinWrite);
+                CloseOwned(result,custody,ref stdoutRead);CloseOwned(result,custody,ref stdoutWrite);
+                CloseOwned(result,custody,ref stderrRead);CloseOwned(result,custody,ref stderrWrite);
+                bool attributesDeleted=!attributesReady;
+                if(attributesReady&&AdmitCleanup(result,custody,attributes)){try{DeleteProcThreadAttributeList(attributes);attributesDeleted=true;}catch(Exception error){RecordFailure(result,"native_cleanup","attribute_cleanup",error,true);custody.Unresolved.Add(attributes);}}
+                if(attributesDeleted&&attributes!=IntPtr.Zero&&AdmitCleanup(result,custody,attributes)){try{Marshal.FreeHGlobal(attributes);}catch(Exception error){RecordFailure(result,"native_cleanup","memory_cleanup",error,true);custody.Unresolved.Add(attributes);}}
+                if(handles!=IntPtr.Zero&&AdmitCleanup(result,custody,handles)){try{Marshal.FreeHGlobal(handles);}catch(Exception error){RecordFailure(result,"native_cleanup","memory_cleanup",error,true);custody.Unresolved.Add(handles);}}
+                if(environment!=IntPtr.Zero&&AdmitCleanup(result,custody,environment)){try{Marshal.FreeHGlobal(environment);}catch(Exception error){RecordFailure(result,"native_cleanup","memory_cleanup",error,true);custody.Unresolved.Add(environment);}}
+                // Serialize close with the original overflow/cancellation callback so a
+                // late signal cannot target a recycled numeric handle.
+                lock(custody.JobSync){CloseOwned(result,custody,ref job);if(job==IntPtr.Zero){custody.JobClosed=true;custody.Job=IntPtr.Zero;}}
+                if(AdmitCleanup(result,custody,cancellationRegistration))cancellationRegistration.Dispose();
+                if(custody.TerminationError!=null)RecordFailure(result,"native_cleanup","job_termination",custody.TerminationError,true);
+                });
+                while(!custody.CleanupTask.IsCompleted&&remaining()>0) {
+                    peerFailure();try{custody.CleanupTask.Wait(Math.Min(10,remaining()));}catch(AggregateException){}
+                }
+                peerFailure();
+                if(!custody.CleanupTask.IsCompletedSuccessfully||remaining()==0) {
+                    Interlocked.Exchange(ref custody.CleanupExpired,1);
+                    result.ProcessTreeRetired=false;result.ExitCode=-1;result.ErrorMessage="Original native cleanup exceeded the shared deadline";
+                    RecordFailure(result,"native_cleanup_deadline","process_cleanup",custody.CleanupTask.Exception??(Exception)new TimeoutException(),true);
+                }
+                if(writeTask==null||writeTask.IsCompleted){inputBytes=null;input=null;budget.Release(inputCharge);}
+                if(custody.CleanupTask.IsCompleted&&custody.Unresolved.Count!=0){result.ProcessTreeRetired=false;result.ExitCode=-1;result.ErrorMessage="Original native resource custody remains unresolved";}
+                if(custody.CleanupTask.IsCompletedSuccessfully&&Volatile.Read(ref custody.CleanupExpired)==0&&custody.Unresolved.Count==0&&result.ProcessTreeRetired){RunCustody released;if(runs.TryRemove(result,out released))Interlocked.Decrement(ref activeRuns);}
+                }
+                peerFailure();
+                if(result.Failure!=null||result.CleanupFailures.Length!=0)result.ExitCode=-1;
             }
             return result;
         }
@@ -353,9 +728,22 @@ namespace GauntletLive {
     $sourceIdentity = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($source))).ToLowerInvariant()
     $loaded = 'GauntletLive.Native' -as [type]
     if ($loaded) {
-        $identityProperty = $loaded.GetProperty('SourceIdentity')
-        if ($identityProperty -and $identityProperty.GetValue($null) -ceq $sourceIdentity) { return }
-        throw 'Loaded live-gate native helper differs from current source; use a fresh PowerShell process'
+        $identityMatches=$false;$identityFailure=$null
+        try {
+            $flags=[Reflection.BindingFlags]::Public -bor [Reflection.BindingFlags]::Static
+            $identityProperty=$loaded.GetProperty('SourceIdentity',$flags)
+            if($null -ne $identityProperty -and $identityProperty.PropertyType -eq [string] -and $identityProperty.CanRead -and
+               $identityProperty.GetIndexParameters().Count -eq 0 -and $null -ne $identityProperty.GetGetMethod() -and $identityProperty.GetGetMethod().IsStatic){
+                $actualIdentity=$identityProperty.GetValue($null)
+                $identityMatches=$actualIdentity -is [string] -and
+                    [regex]::IsMatch($actualIdentity,'\A[0-9a-f]{64}\z',[Text.RegularExpressions.RegexOptions]::CultureInvariant) -and
+                    [string]::Equals($actualIdentity,$sourceIdentity,[StringComparison]::Ordinal)
+            }
+        } catch {$identityFailure=$_.Exception}
+        if($identityMatches){return}
+        $refusal=[InvalidOperationException]::new('Loaded live-gate native helper differs from current source; use a fresh PowerShell process',$identityFailure)
+        $refusal.Data['ReviewCode']='native_source_identity';$refusal.Data['ReviewStage']='native_initialization'
+        throw $refusal
     }
     Add-Type -TypeDefinition $source.Replace('__GAUNTLET_NATIVE_SOURCE_IDENTITY__', $sourceIdentity) -ErrorAction Stop
 }
@@ -408,12 +796,11 @@ function Invoke-ReviewProcessWorker {
     try{
         $context=Get-ReviewOwnedWorkContext
         if($null -eq $context -or $null -eq $context['OwnedWorkOwner']['Pipeline']){Throw-ReviewCodedFailure 'native_owner_missing' 'native_startup'}
-        $pipeline=$context['OwnedWorkOwner']['Pipeline'];$before=$pipeline.Streams.Error.Count
+        $pipeline=$context['OwnedWorkOwner']['Pipeline'];$guard=$context['OwnedWorkOwner']['StreamGuard'];$before=$guard.ErrorCount
         $State['Result']=Invoke-BoundedProcessCore @Arguments
     }finally{
-        if($null -ne $pipeline -and $pipeline.Streams.Error.Count -gt $before){
-            $cause=Get-ReviewSafeCause -Exception $pipeline.Streams.Error[$before].Exception
-            $State['NativeErrorStream']=New-ReviewReadOnlyRecord -Values @{Code='owned_error_stream';Stage='worker_invoke';Type=$cause.Type;HResult=$cause.HResult;NativeError=$cause.NativeError}
+        if($null -ne $pipeline -and $null -ne $guard -and $guard.ErrorCount -gt $before){
+            $State['NativeErrorStream']=$guard.FirstError
         }
         $State['Settled']=$true
         $State['CoreRetired']=$State['NativeNeverStarted'] -or ($null -ne $State['Result'] -and $State['Result'].ProcessTreeRetired -is [bool] -and $State['Result'].ProcessTreeRetired)
@@ -571,7 +958,8 @@ function Invoke-BoundedProcessCore {
         $proc = [System.Diagnostics.Process]::Start($psi)
     } catch {
         $cause=Get-ReviewSafeCause -Exception ($_.Exception.GetBaseException())
-        $r.Failure=New-ReviewReadOnlyRecord -Values @{Code='native_startup';Stage=$stage;Type=$cause.Type;HResult=$cause.HResult;NativeError=$cause.NativeError}
+        $admissionFault=New-ReviewTransportFault -Code 'native_startup' -Stage $stage -Exception $_.Exception
+        $r.Failure=New-ReviewReadOnlyRecord -Values @{Code=$admissionFault.Code;Stage=$admissionFault.Stage;Type=$cause.Type;HResult=$cause.HResult;NativeError=$cause.NativeError}
         $r.StartFailed = $true; $r.ErrorMessage = $_.Exception.Message; return $r
     }
     $boundedMilliseconds = if ($PSBoundParameters.ContainsKey('TimeoutMilliseconds')) { $TimeoutMilliseconds } else { $TimeoutSec * 1000 }
@@ -637,31 +1025,140 @@ function New-ReviewReadOnlyRecord {
 function Get-ReviewSafeCause {
     param([Exception]$Exception,[int]$Depth=0)
     if($null -eq $Exception){return $null}
-    $type=$Exception.GetType().FullName
-    if($type.Length -gt 256 -or $type -cnotmatch '^[A-Za-z0-9_.+`\[\], ]+$'){$type='System.Exception'}
-    $cause=@{Type=$type;HResult=[int]$Exception.HResult;JsonLine=$null;JsonByte=$null;SocketError=$null;HttpStatus=$null;NativeError=$null;Inner=$null;OmittedInnerCauses=0}
-    if($Exception -is [ComponentModel.Win32Exception]){$cause.NativeError=[int]$Exception.NativeErrorCode}
-    if($Exception -is [Net.Sockets.SocketException]){$cause.SocketError=[int]$Exception.SocketErrorCode}
-    if($Exception -is [Text.Json.JsonException]){$cause.JsonLine=$Exception.LineNumber;$cause.JsonByte=$Exception.BytePositionInLine}
-    if($Exception -is [Net.Http.HttpRequestException] -and $null -ne $Exception.StatusCode){$cause.HttpStatus=[int]$Exception.StatusCode}
-    if($null -ne $Exception.InnerException){
-        if($Depth -lt 2){$cause.Inner=Get-ReviewSafeCause -Exception $Exception.InnerException -Depth ($Depth+1)}else{$cause.OmittedInnerCauses=1}
+    # Bootstrap uses static CLR APIs only. Shared reflection metadata may have
+    # ETS members; only fresh private open-instance delegates invoke it below.
+    $bind={param([type]$DelegateType,[type]$Target,[string]$Name,[type[]]$Parameters=@()) [Delegate]::CreateDelegate($DelegateType,[Reflection.RuntimeReflectionExtensions]::GetRuntimeMethod($Target,$Name,$Parameters))}
+    $getType=& $bind ([Func[object,type]]) ([object]) 'GetType'
+    $getName=& $bind ([Func[type,string]]) ([type]) 'get_FullName'
+    $getLength=& $bind ([Func[string,int]]) ([string]) 'get_Length'
+    $getChars=& $bind ([Func[string,char[]]]) ([string]) 'ToCharArray'
+    $getHResult=& $bind ([Func[Exception,int]]) ([Exception]) 'get_HResult'
+    $getInner=& $bind ([Func[Exception,Exception]]) ([Exception]) 'get_InnerException'
+    $getNative=& $bind ([Func[ComponentModel.Win32Exception,int]]) ([ComponentModel.Win32Exception]) 'get_NativeErrorCode'
+    $getSocket=& $bind ([Func[Net.Sockets.SocketException,Net.Sockets.SocketError]]) ([Net.Sockets.SocketException]) 'get_SocketErrorCode'
+    $getJsonLine=& $bind ([Func[Text.Json.JsonException,Nullable[long]]]) ([Text.Json.JsonException]) 'get_LineNumber'
+    $getJsonByte=& $bind ([Func[Text.Json.JsonException,Nullable[long]]]) ([Text.Json.JsonException]) 'get_BytePositionInLine'
+    $getHttpStatus=& $bind ([Func[Net.Http.HttpRequestException,Nullable[Net.HttpStatusCode]]]) ([Net.Http.HttpRequestException]) 'get_StatusCode'
+    $rawType=$getName.Invoke($getType.Invoke($Exception));$type='System.Exception'
+    if($rawType -is [string] -and $getLength.Invoke($rawType) -le 256){
+        $type=[string]::new($getChars.Invoke($rawType))
+        if(-not [regex]::IsMatch($type,'\A[A-Za-z0-9_.+\x60\[\], ]+\z',[Text.RegularExpressions.RegexOptions]::CultureInvariant)){$type='System.Exception'}
     }
+    $cause=@{Type=$type;HResult=$getHResult.Invoke($Exception);JsonLine=$null;JsonByte=$null;SocketError=$null;HttpStatus=$null;NativeError=$null;Inner=$null;OmittedInnerCauses=0}
+    if($Exception -is [ComponentModel.Win32Exception]){$cause.NativeError=$getNative.Invoke($Exception)}
+    if($Exception -is [Net.Sockets.SocketException]){$cause.SocketError=[int]$getSocket.Invoke($Exception)}
+    if($Exception -is [Text.Json.JsonException]){$cause.JsonLine=$getJsonLine.Invoke($Exception);$cause.JsonByte=$getJsonByte.Invoke($Exception)}
+    if($Exception -is [Net.Http.HttpRequestException]){$status=$getHttpStatus.Invoke($Exception);if($null -ne $status){$cause.HttpStatus=[int]$status}}
+    $inner=$getInner.Invoke($Exception)
+    if($null -ne $inner){if($Depth -lt 2){$cause.Inner=Get-ReviewSafeCause -Exception $inner -Depth ($Depth+1)}else{$cause.OmittedInnerCauses=1}}
     New-ReviewReadOnlyRecord -Values $cause
 }
 
 function New-ReviewTransportFault {
-    param([string]$Code,[string]$Stage,[Exception]$Exception)
-    $typed=$Exception
+    # Untyped identifiers avoid coercion during parameter binding. Every access
+    # to boundary objects/metadata below uses a fresh private CLR delegate.
+    param($Code,$Stage,[Exception]$Exception)
+    $bind={param([type]$DelegateType,[type]$Target,[string]$Name,[type[]]$Parameters=@()) [Delegate]::CreateDelegate($DelegateType,[Reflection.RuntimeReflectionExtensions]::GetRuntimeMethod($Target,$Name,$Parameters))}
+    $getType=& $bind ([Func[object,type]]) ([object]) 'GetType'
+    $getName=& $bind ([Func[type,string]]) ([type]) 'get_FullName'
+    $getAssembly=& $bind ([Func[type,Reflection.Assembly]]) ([type]) 'get_Assembly'
+    $getField=& $bind ([Func[type,string,Reflection.BindingFlags,Reflection.FieldInfo]]) ([type]) 'GetField' ([type[]]@([string],[Reflection.BindingFlags]))
+    $getFieldType=& $bind ([Func[Reflection.FieldInfo,type]]) ([Reflection.FieldInfo]) 'get_FieldType'
+    $getFieldValue=& $bind ([Func[Reflection.FieldInfo,object,object]]) ([Reflection.FieldInfo]) 'GetValue' ([type[]]@([object]))
+    $getProperty=& $bind ([Func[type,string,Reflection.PropertyInfo]]) ([type]) 'GetProperty' ([type[]]@([string]))
+    $getPropertyMethod=& $bind ([Func[Reflection.PropertyInfo,Reflection.MethodInfo]]) ([Reflection.PropertyInfo]) 'get_GetMethod'
+    $getDeclaring=& $bind ([Func[Reflection.MemberInfo,type]]) ([Reflection.MemberInfo]) 'get_DeclaringType'
+    $getInner=& $bind ([Func[Exception,Exception]]) ([Exception]) 'get_InnerException'
+    $getData=& $bind ([Func[Exception,Collections.IDictionary]]) ([Exception]) 'get_Data'
+    $getCount=& $bind ([Func[Collections.ICollection,int]]) ([Collections.ICollection]) 'get_Count'
+    $getEnumerator=& $bind ([Func[Collections.IDictionary,Collections.IDictionaryEnumerator]]) ([Collections.IDictionary]) 'GetEnumerator'
+    $moveNext=& $bind ([Func[Collections.IEnumerator,bool]]) ([Collections.IEnumerator]) 'MoveNext'
+    $getKey=& $bind ([Func[Collections.IDictionaryEnumerator,object]]) ([Collections.IDictionaryEnumerator]) 'get_Key'
+    $getValue=& $bind ([Func[Collections.IDictionaryEnumerator,object]]) ([Collections.IDictionaryEnumerator]) 'get_Value'
+    $getLength=& $bind ([Func[string,int]]) ([string]) 'get_Length'
+    $getChars=& $bind ([Func[string,char[]]]) ([string]) 'ToCharArray'
+    $copyText={
+        param($Value,[int]$Maximum)
+        if($Value -isnot [string]){return $null}
+        $length=$getLength.Invoke($Value)
+        if($length -lt 1 -or $length -gt $Maximum){return $null}
+        return ,([string]::new($getChars.Invoke($Value)))
+    }
+    $identifier={param($Value) $text=& $copyText $Value 64;if($null -ne $text -and [regex]::IsMatch($text,'\A[a-z][a-z0-9_]{0,63}\z',[Text.RegularExpressions.RegexOptions]::CultureInvariant)){return $text};return $null}
+    $Code=& $identifier $Code;if($null -eq $Code){$Code='owned_failure'}
+    $Stage=& $identifier $Stage;if($null -eq $Stage){$Stage='unknown'}
+    $flags=[Reflection.BindingFlags]'NonPublic,Instance,DeclaredOnly'
+    $field={
+        param([object]$Value,[string]$Name,[type]$Expected)
+        if($null -eq $Value){throw [InvalidOperationException]::new('Missing structural fault field')}
+        $entry=$getField.Invoke($getType.Invoke($Value),('<'+$Name+'>k__BackingField'),$flags)
+        if($null -eq $entry -or -not [object]::ReferenceEquals($getFieldType.Invoke($entry),$Expected)){throw [InvalidOperationException]::new('Invalid structural fault field')}
+        return ,($getFieldValue.Invoke($entry,$Value))
+    }
+    $copyTransportCause={
+        param([object]$Value,[int]$Depth)
+        if($null -eq $Value){return $null}
+        $valueType=$getType.Invoke($Value)
+        if(-not [string]::Equals($getName.Invoke($valueType),'GauntletTransport.SanitizedCause',[StringComparison]::Ordinal)){throw [InvalidOperationException]::new('Invalid structural cause')}
+        $type=& $copyText (& $field $Value 'Type' ([string])) 256
+        if($null -eq $type -or -not [regex]::IsMatch($type,'\A[A-Za-z0-9_.+\x60\[\], ]+\z',[Text.RegularExpressions.RegexOptions]::CultureInvariant)){throw [InvalidOperationException]::new('Invalid structural cause type')}
+        $values=@{Type=$type;HResult=(& $field $Value 'HResult' ([int]));JsonLine=$null;JsonByte=$null;SocketError=$null;HttpStatus=$null;NativeError=$null;HeaderNameSha256=$null;Inner=$null;OmittedInnerCauses=0}
+        foreach($name in @('JsonLine','JsonByte')){$values[$name]=& $field $Value $name ([Nullable[long]])}
+        foreach($name in @('SocketError','HttpStatus','NativeError')){$values[$name]=& $field $Value $name ([Nullable[int]])}
+        $rawHash=& $field $Value 'HeaderNameSha256' ([string]);$hash=if($null -eq $rawHash){$null}else{& $copyText $rawHash 64}
+        if($null -ne $rawHash -and ($null -eq $hash -or -not [regex]::IsMatch($hash,'\A[0-9a-f]{64}\z',[Text.RegularExpressions.RegexOptions]::CultureInvariant))){throw [InvalidOperationException]::new('Invalid structural cause digest')}
+        $values.HeaderNameSha256=$hash
+        $omitted=& $field $Value 'OmittedInnerCauses' ([int]);if($omitted -lt 0){throw [InvalidOperationException]::new('Invalid structural cause count')};$values.OmittedInnerCauses=$omitted
+        $innerField=$getField.Invoke($valueType,'<Inner>k__BackingField',$flags)
+        if($null -eq $innerField -or -not [object]::ReferenceEquals($getFieldType.Invoke($innerField),$valueType)){throw [InvalidOperationException]::new('Invalid structural inner cause')}
+        $inner=$getFieldValue.Invoke($innerField,$Value)
+        if($null -ne $inner){if($Depth -lt 2){$values.Inner=& $copyTransportCause $inner ($Depth+1)}elseif($values.OmittedInnerCauses -lt [int]::MaxValue){$values.OmittedInnerCauses++}}
+        New-ReviewReadOnlyRecord -Values $values
+    }
+    $coreAssembly=$getAssembly.Invoke([Exception]);$typed=$Exception
     for($i=0;$i -lt 8 -and $null -ne $typed;$i++){
-        if($typed.GetType().FullName -ceq 'GauntletTransport.TransportException'){
-            return (New-ReviewReadOnlyRecord -Values @{Code=$typed.Code;Stage=$typed.Stage;Cause=$typed.Cause})
+        $runtimeType=$getType.Invoke($typed)
+        if([string]::Equals($getName.Invoke($runtimeType),'GauntletTransport.TransportException',[StringComparison]::Ordinal)){
+            try{
+                $transportCode=& $identifier (& $field $typed 'Code' ([string]));$transportStage=& $identifier (& $field $typed 'Stage' ([string]))
+                if($null -eq $transportCode -or $null -eq $transportStage){throw [InvalidOperationException]::new('Invalid structural fault identifier')}
+                $causeField=$getField.Invoke($runtimeType,'<Cause>k__BackingField',$flags)
+                if($null -eq $causeField -or -not [string]::Equals($getName.Invoke($getFieldType.Invoke($causeField)),'GauntletTransport.SanitizedCause',[StringComparison]::Ordinal)){throw [InvalidOperationException]::new('Invalid structural fault cause')}
+                $safeCause=& $copyTransportCause ($getFieldValue.Invoke($causeField,$typed)) 0
+                return (New-ReviewReadOnlyRecord -Values @{Code=$transportCode;Stage=$transportStage;Cause=$safeCause})
+            }catch{}
         }
-        if($typed.Data.Contains('ReviewCode')){$Code=[string]$typed.Data['ReviewCode'];if($typed.Data.Contains('ReviewStage')){$Stage=[string]$typed.Data['ReviewStage']};break}
-        $typed=$typed.InnerException
+        $assembly=$getAssembly.Invoke($runtimeType);$framework=$false
+        foreach($allowed in @([Exception],[Management.Automation.RuntimeException],[ComponentModel.Win32Exception],[Net.Sockets.SocketException],[Net.Http.HttpRequestException],[Text.Json.JsonException])){if([object]::ReferenceEquals($assembly,$getAssembly.Invoke($allowed))){$framework=$true;break}}
+        if($framework){
+            try{
+                $property=$getProperty.Invoke($runtimeType,'Data');$getter=if($null -ne $property){$getPropertyMethod.Invoke($property)}else{$null}
+                if($null -ne $getter -and [object]::ReferenceEquals($getDeclaring.Invoke($getter),[Exception])){
+                    $data=$getData.Invoke($typed);$dataType=if($null -ne $data){$getType.Invoke($data)}else{$null}
+                    if($null -ne $dataType -and [object]::ReferenceEquals($getAssembly.Invoke($dataType),$coreAssembly) -and [string]::Equals($getName.Invoke($dataType),'System.Collections.ListDictionaryInternal',[StringComparison]::Ordinal)){
+                        $count=$getCount.Invoke($data)
+                        if($count -le 8){
+                            $candidateCode=$null;$candidateStage=$null;$enumerator=$getEnumerator.Invoke($data)
+                            for($entryIndex=0;$entryIndex -lt $count;$entryIndex++){
+                                if(-not $moveNext.Invoke($enumerator)){throw [InvalidOperationException]::new('Changed diagnostic dictionary')}
+                                $key=$getKey.Invoke($enumerator)
+                                if($key -is [string]){
+                                    if([string]::Equals($key,'ReviewCode',[StringComparison]::Ordinal)){$candidateCode=$getValue.Invoke($enumerator)}
+                                    elseif([string]::Equals($key,'ReviewStage',[StringComparison]::Ordinal)){$candidateStage=$getValue.Invoke($enumerator)}
+                                }
+                            }
+                            $safeCode=& $identifier $candidateCode;$safeStage=& $identifier $candidateStage
+                            if($null -ne $safeCode){$Code=$safeCode;if($null -ne $safeStage){$Stage=$safeStage};break}
+                        }
+                    }
+                }
+            }catch{}
+        }
+        $typed=$getInner.Invoke($typed)
     }
     New-ReviewReadOnlyRecord -Values @{Code=$Code;Stage=$Stage;Cause=(Get-ReviewSafeCause -Exception $Exception)}
 }
+
 
 function Throw-ReviewTransportFault {
     param([string]$Code)
@@ -670,10 +1167,42 @@ function Throw-ReviewTransportFault {
     throw $fault
 }
 
+function Get-ReviewOwnedPipelineDisposalAction {
+    param($Owner,$Pipeline)
+    # Both independent caller-owned objects are disposed by one retained CLR
+    # task. No PowerShell scriptblock runs on its runspace-less task thread.
+    $ownerType=[Collections.Concurrent.ConcurrentDictionary[string,object]]
+    $setItem=$ownerType.GetProperty('Item').GetSetMethod()
+    $dispose=[IDisposable].GetMethod('Dispose')
+    $errorsType=[Collections.Generic.List[Exception]]
+    $thunk=[Reflection.Emit.DynamicMethod]::new('GauntletOwnedPipelineDisposal',[void],[type[]]@([object[]]),$true)
+    $il=$thunk.GetILGenerator();$op=[Reflection.Emit.OpCodes]
+    $errors=$il.DeclareLocal($errorsType);$exception=$il.DeclareLocal([Exception])
+    $il.Emit($op::Newobj,$errorsType.GetConstructor([type[]]@()));$il.Emit($op::Stloc,$errors)
+    function Read-DisposalPack([int]$Index){$il.Emit($op::Ldarg_0);$il.Emit($op::Ldc_I4,$Index);$il.Emit($op::Ldelem_Ref)}
+    function Write-DisposalFlag([string]$Name){Read-DisposalPack 2;$il.Emit($op::Castclass,$ownerType);$il.Emit($op::Ldstr,$Name);$il.Emit($op::Ldc_I4_1);$il.Emit($op::Box,[bool]);$il.Emit($op::Callvirt,$setItem)}
+    foreach($entry in @(@{Index=0;Fault='PipelineDisposalException';Flag='PipelineDisposed'},@{Index=1;Fault='OutputDisposalException';Flag='OutputDisposed'})){
+        $skip=$il.DefineLabel();Read-DisposalPack $entry.Index;$il.Emit($op::Brfalse,$skip)
+        $null=$il.BeginExceptionBlock()
+        Read-DisposalPack $entry.Index;$il.Emit($op::Castclass,[IDisposable]);$il.Emit($op::Callvirt,$dispose)
+        Write-DisposalFlag $entry.Flag
+        $il.BeginCatchBlock([Exception]);$il.Emit($op::Stloc,$exception)
+        Read-DisposalPack 2;$il.Emit($op::Castclass,$ownerType);$il.Emit($op::Ldstr,$entry.Fault);$il.Emit($op::Ldloc,$exception);$il.Emit($op::Callvirt,$setItem)
+        $il.Emit($op::Ldloc,$errors);$il.Emit($op::Ldloc,$exception);$il.Emit($op::Callvirt,$errorsType.GetMethod('Add'))
+        $il.EndExceptionBlock();$il.MarkLabel($skip)
+    }
+    $done=$il.DefineLabel();$il.Emit($op::Ldloc,$errors);$il.Emit($op::Callvirt,$errorsType.GetProperty('Count').GetGetMethod());$il.Emit($op::Brfalse,$done)
+    $il.Emit($op::Ldstr,'Independent owned pipeline resources failed disposal');$il.Emit($op::Ldloc,$errors)
+    $il.Emit($op::Newobj,[AggregateException].GetConstructor([type[]]@([string],[Collections.Generic.IEnumerable[Exception]])));$il.Emit($op::Throw)
+    $il.MarkLabel($done);$il.Emit($op::Ret)
+    $pack=[object[]]@($Pipeline,$Owner['Output'],$Owner)
+    return ,$thunk.CreateDelegate([Action],$pack)
+}
+
 function Start-ReviewPipelineDisposal {
     param($Owner,$Pipeline)
     $Owner['DisposalIntent']=$true
-    $dispose=[Delegate]::CreateDelegate([Action],$Pipeline,'Dispose')
+    $dispose=Get-ReviewOwnedPipelineDisposalAction -Owner $Owner -Pipeline $Pipeline
     $task=[Threading.Tasks.Task]::Run([Action]$dispose);$Owner['DisposeTask']=$task
     return ,$task
 }
@@ -704,6 +1233,10 @@ function Start-ReviewOwnedPipelineCreation {
     $getType=[object].GetMethod('GetType',[type[]]@())
     $getMethod=[type].GetMethod('GetMethod',[type[]]@([string],[type[]]))
     $clock=[Diagnostics.Stopwatch].GetMethod('GetTimestamp',[type[]]@())
+    $getExactMethod=[type].GetMethod('GetMethod',[type[]]@([string],[int],[type[]]))
+    $getProperty=[type].GetMethod('GetProperty',[type[]]@([string]))
+    $getValue=[Reflection.PropertyInfo].GetMethod('GetValue',[type[]]@([object]))
+    $initializer="param(`$owner)`n& {`n"+(Get-Command Initialize-ReviewOwnedStreams -CommandType Function).ScriptBlock.ToString()+"`n}`n`$owner['StreamType']=[GauntletOwnedWork.StreamGuard]"
     $thunk=[Reflection.Emit.DynamicMethod]::new('GauntletOwnedPipelineStartup',[object],[type[]]@([object[]]),$true)
     $il=$thunk.GetILGenerator();$op=[Reflection.Emit.OpCodes]
     $pipeline=$il.DeclareLocal([object]);$pipelineType=$il.DeclareLocal([type])
@@ -726,9 +1259,23 @@ function Start-ReviewOwnedPipelineCreation {
     # Publish the exact object before any configuration can block. The observer
     # cannot dispose it until this original creation task physically completes.
     Read-StartupPack 1;$il.Emit($op::Castclass,$ownerType);$il.Emit($op::Ldstr,'Pipeline');$il.Emit($op::Ldloc,$pipeline);$il.Emit($op::Callvirt,$setItem)
-    Set-StartupStage 'worker_configure';Test-StartupClock
+    Set-StartupStage 'worker_stream_init';Test-StartupClock
     $il.Emit($op::Ldloc,$pipeline);$il.Emit($op::Callvirt,$getType);$il.Emit($op::Stloc,$pipelineType)
     $il.Emit($op::Ldc_I4_1);$il.Emit($op::Newarr,[object]);$il.Emit($op::Stloc,$one)
+    # Only fixed initializer source executes before guards are attached. It
+    # compiles/validates the helper under this SAME original creation task.
+    $il.Emit($op::Ldloc,$one);$il.Emit($op::Ldc_I4_0);Read-StartupPack 7;$il.Emit($op::Stelem_Ref)
+    Invoke-StartupMethod 'AddScript' 5
+    $il.Emit($op::Ldloc,$one);$il.Emit($op::Ldc_I4_0);Read-StartupPack 1;$il.Emit($op::Stelem_Ref)
+    Invoke-StartupMethod 'AddArgument' 6
+    $il.Emit($op::Ldloc,$pipelineType);$il.Emit($op::Ldstr,'Invoke');$il.Emit($op::Ldc_I4_0);Read-StartupPack 8;$il.Emit($op::Castclass,[type[]]);$il.Emit($op::Callvirt,$getExactMethod)
+    $il.Emit($op::Ldloc,$pipeline);$il.Emit($op::Ldnull);$il.Emit($op::Callvirt,$invoke);$il.Emit($op::Pop)
+    Test-StartupClock
+    $il.Emit($op::Ldloc,$pipelineType);$il.Emit($op::Ldstr,'Commands');$il.Emit($op::Callvirt,$getProperty);$il.Emit($op::Ldloc,$pipeline);$il.Emit($op::Callvirt,$getValue)
+    $il.Emit($op::Castclass,[Management.Automation.PSCommand]);$il.Emit($op::Callvirt,[Management.Automation.PSCommand].GetMethod('Clear'))
+    $il.Emit($op::Ldloc,$pipelineType);$il.Emit($op::Ldstr,'Streams');$il.Emit($op::Callvirt,$getProperty);$il.Emit($op::Ldloc,$pipeline);$il.Emit($op::Callvirt,$getValue)
+    $il.Emit($op::Castclass,[Management.Automation.PSDataStreams]);$il.Emit($op::Callvirt,[Management.Automation.PSDataStreams].GetMethod('ClearStreams'))
+    Set-StartupStage 'worker_configure';Test-StartupClock
     $il.Emit($op::Ldloc,$one);$il.Emit($op::Ldc_I4_0);Read-StartupPack 2;$il.Emit($op::Stelem_Ref)
     Invoke-StartupMethod 'AddScript' 5
     Read-StartupPack 3;$il.Emit($op::Castclass,[object[]]);$il.Emit($op::Stloc,$arguments)
@@ -740,16 +1287,33 @@ function Start-ReviewOwnedPipelineCreation {
     $il.MarkLabel($test);$il.Emit($op::Ldloc,$index);$il.Emit($op::Ldloc,$arguments);$il.Emit($op::Ldlen);$il.Emit($op::Conv_I4);$il.Emit($op::Blt,$loop)
     Test-StartupClock;$il.Emit($op::Ldloc,$pipeline);$il.Emit($op::Ret)
     $il.MarkLabel($expired);$il.Emit($op::Ldstr,'Original worker startup deadline expired');$il.Emit($op::Newobj,[TimeoutException].GetConstructor([type[]]@([string])));$il.Emit($op::Throw)
-    $pack=[object[]]@($method,$Owner,$Bootstrap,[object[]]$ArgumentList,[long]$Owner['Deadline'],[type[]]@([string]),[type[]]@([object]))
+    $pack=[object[]]@($method,$Owner,$Bootstrap,[object[]]$ArgumentList,[long]$Owner['Deadline'],[type[]]@([string]),[type[]]@([object]),$initializer,[type[]]@())
     $create=$thunk.CreateDelegate([Func[object]],$pack)
     [Threading.Tasks.Task[object]]::Factory.StartNew([Func[object]]$create)
 }
 
 function Start-ReviewOwnedPipelineInvocation {
-    param($Pipeline)
-    $method=@($Pipeline.GetType().GetMethods()|Where-Object {$_.Name -ceq 'Invoke' -and -not $_.IsGenericMethod -and $_.GetParameters().Count -eq 0})[0]
-    $invoke=[Delegate]::CreateDelegate([Func[object]],$Pipeline,$method)
-    [Threading.Tasks.Task[object]]::Factory.StartNew([Func[object]]$invoke)
+    param($Pipeline,$Owner)
+    if($null -eq $Owner -or -not [object]::ReferenceEquals($Owner['Pipeline'],$Pipeline)){Throw-ReviewCodedFailure 'owned_owner_missing' 'worker_invoke'}
+    $output=[Management.Automation.PSDataCollection[Management.Automation.PSObject]]::new(1)
+    $Owner['Output']=$output
+    if((Get-ReviewRemainingMilliseconds $Owner['Deadline']) -le 0){Throw-ReviewCodedFailure 'owned_deadline' 'worker_stream_init'}
+    $verified=$Owner['StreamType']
+    if($verified -isnot [type] -or -not [object]::ReferenceEquals($verified,('GauntletOwnedWork.StreamGuard' -as [type]))){Throw-ReviewCodedFailure 'owned_stream_source_missing' 'worker_stream_init'}
+    $Owner['StreamGuard']=[GauntletOwnedWork.StreamGuard]::new($Pipeline,$output,$Owner)
+    $methods=@($Pipeline.GetType().GetMethods()|Where-Object {$_.Name -ceq 'Invoke' -and $_.IsGenericMethodDefinition -and $_.GetGenericArguments().Count -eq 2 -and $_.GetParameters().Count -eq 3 -and $_.GetParameters()[0].ParameterType.IsGenericType -and $_.GetParameters()[0].ParameterType.GetGenericTypeDefinition() -eq [Management.Automation.PSDataCollection`1]})
+    if($methods.Count -ne 1){Throw-ReviewCodedFailure 'owned_pipeline_shape' 'worker_invoke'}
+    $method=$methods[0].MakeGenericMethod([type[]]@([Management.Automation.PSObject],[Management.Automation.PSObject]))
+    $invoke=[Reflection.MethodBase].GetMethod('Invoke',[type[]]@([object],[object[]]))
+    $thunk=[Reflection.Emit.DynamicMethod]::new('GauntletOwnedBoundedInvoke',[object],[type[]]@([object[]]),$true)
+    $il=$thunk.GetILGenerator();$op=[Reflection.Emit.OpCodes]
+    $il.Emit($op::Ldarg_0);$il.Emit($op::Ldc_I4_0);$il.Emit($op::Ldelem_Ref);$il.Emit($op::Castclass,[Reflection.MethodBase])
+    $il.Emit($op::Ldarg_0);$il.Emit($op::Ldc_I4_1);$il.Emit($op::Ldelem_Ref)
+    $il.Emit($op::Ldarg_0);$il.Emit($op::Ldc_I4_2);$il.Emit($op::Ldelem_Ref);$il.Emit($op::Castclass,[object[]])
+    $il.Emit($op::Callvirt,$invoke);$il.Emit($op::Ret)
+    $pack=[object[]]@($method,$Pipeline,[object[]]@($null,$output,$null))
+    $action=$thunk.CreateDelegate([Func[object]],$pack)
+    [Threading.Tasks.Task[object]]::Factory.StartNew([Func[object]]$action)
 }
 
 function Get-ReviewOwnedWorkEntries {
@@ -780,7 +1344,7 @@ function Get-ReviewOwnedWorkFailures {
     # Source order expresses diagnostic precedence, not measured chronology.
     $state=$Owner['State'];$sources=[Collections.Generic.List[object]]::new()
     if($state.ContainsKey('Failure') -and $null -ne $state['Failure']){$sources.Add($state['Failure'])}
-    foreach($name in @('CreationFailure','InvocationFailure','ErrorStreamFailure','DisposalFailure','ObserverFailure','DeadlineFailure')){
+    foreach($name in @('StreamFailure','CreationFailure','InvocationFailure','ErrorStreamFailure','DisposalFailure','OutputDisposalFailure','StopFailure','ObserverFailure','DeadlineFailure')){
         $fault=$Owner[$name];if($null -ne $fault){$sources.Add($fault)}
     }
     $primary=if($sources.Count){$sources[0]}else{$null}
@@ -829,21 +1393,26 @@ function Complete-ReviewOwnedWork {
                 if($null -ne $invoked -and -not $invoked.IsCompletedSuccessfully){
                     if($null -eq $owner['InvocationFailure']){$null=$owner.TryAdd('InvocationFailure',(New-ReviewTransportFault -Code 'owned_invocation' -Stage 'worker_invoke' -Exception $invoked.Exception))}
                 }
-                if($null -ne $owner['Pipeline'] -and $owner['Pipeline'].Streams.Error.Count -gt 0){
-                    if($null -eq $owner['ErrorStreamFailure']){$null=$owner.TryAdd('ErrorStreamFailure',(New-ReviewTransportFault -Code 'owned_error_stream' -Stage 'worker_invoke' -Exception $owner['Pipeline'].Streams.Error[0].Exception))}
+                if($null -ne $owner['StreamGuard'] -and $null -ne $owner['StreamGuard'].FirstError){
+                    if($null -eq $owner['ErrorStreamFailure']){$null=$owner.TryAdd('ErrorStreamFailure',$owner['StreamGuard'].FirstError)}
                 }
                 if(-not $owner['Submitted'] -or -not $state.ContainsKey('ActionEntered')){$state['CoreRetired']=$true}
-                if($null -ne $owner['Pipeline'] -and $null -eq $dispose){
+                if($null -ne $owner['Pipeline'] -and $null -eq $dispose -and (-not $owner['StopRequested'] -or ($null -ne $owner['StopTask'] -and $owner['StopTask'].IsCompleted))){
                     $dispose=Start-ReviewPipelineDisposal -Owner $owner -Pipeline $owner['Pipeline']
                 }
             }
         }
         $workerDone=$null -ne $created -and $created.IsCompleted -and ($null -eq $invoked -or $invoked.IsCompleted)
-        $disposed=($null -eq $owner['Pipeline'] -and $workerDone) -or ($null -ne $dispose -and $dispose.IsCompletedSuccessfully)
+        $disposed=($null -eq $owner['Pipeline'] -and $workerDone) -or ($null -ne $dispose -and $dispose.IsCompletedSuccessfully -and ($null -eq $owner['Output'] -or ($owner['OutputDisposed'] -is [bool] -and $owner['OutputDisposed'])))
+        if($null -ne $owner['OutputDisposalException'] -and $null -eq $owner['OutputDisposalFailure']){$null=$owner.TryAdd('OutputDisposalFailure',(New-ReviewTransportFault -Code 'owned_output_disposal' -Stage 'worker_dispose' -Exception $owner['OutputDisposalException']))}
         if($null -ne $dispose -and $dispose.IsFaulted){
             if($null -eq $owner['DisposalFailure']){$null=$owner.TryAdd('DisposalFailure',(New-ReviewTransportFault -Code 'owned_disposal' -Stage 'worker_dispose' -Exception $dispose.Exception))}
         }
-        $retired=$workerDone -and $disposed -and $state['CoreRetired'] -is [bool] -and $state['CoreRetired']
+        $stop=$owner['StopTask'];$stopDone=-not $owner['StopRequested'] -or ($null -ne $stop -and $stop.IsCompletedSuccessfully)
+        if($null -ne $stop -and ($stop.IsFaulted -or $stop.IsCanceled)){
+            if($null -eq $owner['StopFailure']){$null=$owner.TryAdd('StopFailure',(New-ReviewTransportFault -Code 'owned_stop' -Stage 'worker_stop' -Exception $stop.Exception))}
+        }
+        $retired=$workerDone -and $disposed -and $stopDone -and $state['CoreRetired'] -is [bool] -and $state['CoreRetired']
         $faults=Get-ReviewOwnedWorkFailures -Owner $owner
         # Retained only for private diagnostics; public outcomes use this local
         # immutable projection, never the convenience fields as authority.
@@ -879,7 +1448,7 @@ function Invoke-ReviewOwnedWork {
         if($Kind -cnotmatch '^[a-z][a-z0-9_-]{0,47}$' -or $WorkerName -cnotmatch '^[A-Za-z][A-Za-z0-9-]{0,127}$' -or $Definitions.Count -gt 256 -or $SharedVariables.Count -gt 128){Throw-ReviewCodedFailure 'owned_argument_bound' 'entry'}
         $workerDefinitions=@{}
         foreach($name in $Definitions.Keys){$workerDefinitions[$name]=$Definitions[$name]}
-        foreach($name in @('New-ReviewReadOnlyRecord','Get-ReviewSafeCause','New-ReviewTransportFault','Throw-ReviewCodedFailure')){
+        foreach($name in @('New-ReviewReadOnlyRecord','Get-ReviewSafeCause','New-ReviewTransportFault','Throw-ReviewCodedFailure','Initialize-ReviewOwnedStreams')){
             if(-not $workerDefinitions.ContainsKey($name)){$workerDefinitions[$name]=(Get-Command $name -CommandType Function).ScriptBlock}
         }
         if((Get-ReviewRemainingMilliseconds $DeadlineTimestamp) -le 0){Throw-ReviewCodedFailure 'owned_deadline' 'entry'}
@@ -898,18 +1467,21 @@ foreach($name in $definitions.Keys){
 try {
     $script:ReviewOwnedWorkContext=$state
     if($state['Abandoned'] -or [Diagnostics.Stopwatch]::GetTimestamp() -ge [long]$state['Deadline']){Throw-ReviewCodedFailure 'owned_deadline' 'worker_entry'}
+    $owner=$state['OwnedWorkOwner']
+    if($null -eq $owner['StreamGuard']){Throw-ReviewCodedFailure 'owned_stream_missing' 'worker_stream_init'}
+    if($state['Abandoned'] -or [Diagnostics.Stopwatch]::GetTimestamp() -ge [long]$state['Deadline']){Throw-ReviewCodedFailure 'owned_deadline' 'worker_entry'}
     $state['ActionEntered']=$true
     & $workerName -State $state -Arguments $arguments
 }
 catch {
-    if(-not $state.ContainsKey('Failure') -or $null -eq $state['Failure']){$state['Failure']=New-ReviewTransportFault -Code 'owned_worker' -Stage $(if($state.ContainsKey('Stage')){$state['Stage']}else{'worker'}) -Exception $_.Exception}
+    if(($null -eq $state['OwnedWorkOwner']['StreamFailure']) -and (-not $state.ContainsKey('Failure') -or $null -eq $state['Failure'])){$state['Failure']=New-ReviewTransportFault -Code 'owned_worker' -Stage $(if($state.ContainsKey('Stage')){$state['Stage']}else{'worker'}) -Exception $_.Exception}
 }
 '@
         $owner['CreationTask']=Start-ReviewOwnedPipelineCreation -Owner $owner -Bootstrap $bootstrap -ArgumentList @($State,$workerDefinitions,$Arguments,$SharedVariables,$WorkerName)
         if(-not $owner['CreationTask'].Wait((Get-ReviewRemainingMilliseconds $DeadlineTimestamp))){Throw-ReviewCodedFailure 'owned_deadline' 'worker_create'}
         $pipeline=$owner['CreationTask'].Result;$owner['Pipeline']=$pipeline
         if((Get-ReviewRemainingMilliseconds $DeadlineTimestamp) -le 0){Throw-ReviewCodedFailure 'owned_deadline' 'worker_start'}
-        $owner['Submitted']=$true;$owner['InvokeTask']=Start-ReviewOwnedPipelineInvocation -Pipeline $pipeline
+        $owner['Submitted']=$true;$owner['InvokeTask']=Start-ReviewOwnedPipelineInvocation -Pipeline $pipeline -Owner $owner
         $owner['StartupPublishPending']=$true
         if(-not $owner['InvokeTask'].Wait((Get-ReviewRemainingMilliseconds $DeadlineTimestamp))){Throw-ReviewCodedFailure 'owned_deadline' 'worker'}
         $snapshot=Complete-ReviewOwnedWork -OwnerRegistry $OwnerRegistry -Token $token
