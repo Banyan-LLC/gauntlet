@@ -54,6 +54,12 @@ foreach($projectionCase in @('ordinary','foreign','transport','metadata')){
 $regressions+=@{Name='stream-admission';File='dormant-stream-admission.ps1';Arguments=@('-RepoRoot',$repo,'-Source',$source)}
 $regressions+=@{Name='completion-deadline';File='dormant-native-completion-deadline.ps1';Arguments=@('-RepoRoot',$repo,'-Source',$source)}
 $regressions+=@{Name='real-observer';File='dormant-native-real-observer.ps1';Arguments=@('-RepoRoot',$repo)}
+$regressions+=@{Name='type-bounds';File='dormant-native-type-bounds.ps1';Arguments=@('-RepoRoot',$repo)}
+$regressions+=@{Name='scratch-deadlines';File='dormant-scratch-deadlines.ps1';Arguments=@()}
+$regressions+=@{Name='scratch-admission';File='dormant-scratch-admission.ps1';Arguments=@()}
+$regressions+=@{Name='stream-native-cancel';File='dormant-stream-native-cancel.ps1';Arguments=@('-RepoRoot',$repo,'-Source',$source)}
+$regressions+=@{Name='facade-deadline';File='dormant-native-facade-deadline.ps1';Arguments=@('-RepoRoot',$repo,'-Source',$source)}
+$regressions+=@{Name='facade-inline-deadline';File='dormant-native-facade-inline-deadline.ps1';Arguments=@('-RepoRoot',$repo,'-Source',$source)}
 foreach($test in $regressions){
     $fixture=Join-Path $PSScriptRoot ('fixtures/'+$test.File)
     Assert-True ([IO.File]::Exists($fixture)) ($test.Name+' complete isolated regression fixture exists')

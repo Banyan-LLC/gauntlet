@@ -17,7 +17,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 namespace GauntletOwnedWork {
- public sealed class StreamGuard {
+ public sealed class StreamGuard : IDisposable {
   public static string SourceIdentity {get{return "__GAUNTLET_STREAM_SOURCE_IDENTITY__";}}
   public const long ChannelEmissionBytes=32768, AggregateEmissionBytes=65536;
   // Collector state is fixed: seven counters/delegates and winner-only safe
@@ -36,6 +36,92 @@ namespace GauntletOwnedWork {
   readonly long[] admitted=new long[7],counts=new long[7];
   long total;int stopped,errorClaim;
   readonly Func<AsyncCallback,object,Task> stop;
+  readonly CancellationTokenSource refusal=new CancellationTokenSource();
+  NativeCancellation activeCancellation;
+  public bool NativeCancellationsRetired {get{return Volatile.Read(ref activeCancellation)==null;}}
+  public NativeCancellation LinkNativeCancellation(CancellationToken caller,ConcurrentDictionary<string,object> nativeState){
+   if(nativeState==null)throw new ArgumentNullException(nameof(nativeState));
+   return new NativeCancellation(this,caller,refusal.Token,nativeState);
+  }
+  // One fixed link per original guard. Its exact callback entries remain owned
+  // after Unregister(false); disposal never waits on another callback thread.
+  public sealed class NativeCancellation:IDisposable {
+   readonly StreamGuard guard;readonly ConcurrentDictionary<string,object> nativeState;
+   readonly CancellationTokenSource signal=new CancellationTokenSource();
+   readonly Entry caller,refusal;
+   int initialized,requested,retiring,disposed;
+   Exception retirementError;
+   public CancellationToken Token {get{return signal.Token;}}
+   public bool IsDisposed {get{return Volatile.Read(ref disposed)!=0;}}
+   sealed class Entry {
+    readonly NativeCancellation link;readonly CancellationToken token;
+    CancellationTokenRegistration registration;
+    int attempted,registered,none,unregistered,finished;
+    public Entry(NativeCancellation owner,CancellationToken value){link=owner;token=value;}
+    public void Register(){
+     if(!token.CanBeCanceled){Volatile.Write(ref none,1);return;}
+     Volatile.Write(ref attempted,1);
+     registration=token.Register(state=>((Entry)state).Cancel(),this);
+     // A successfully returned default registration is explicit no-callback
+     // evidence, unlike an uninitialized struct after a failed Register.
+     if(registration.Equals(default(CancellationTokenRegistration)))Volatile.Write(ref none,1);
+     Volatile.Write(ref registered,1);
+    }
+    public void MarkUnattempted(){if(Volatile.Read(ref attempted)==0)Volatile.Write(ref none,1);}
+    public void Unregister(){
+     if(Volatile.Read(ref registered)!=0&&registration.Unregister())Volatile.Write(ref unregistered,1);
+    }
+    public bool Settled {get{return Volatile.Read(ref none)!=0||Volatile.Read(ref unregistered)!=0||Volatile.Read(ref finished)!=0;}}
+    void Cancel(){
+     try{if(Volatile.Read(ref link.requested)==0)link.signal.Cancel();}
+     finally{
+      // No signal/source access occurs after this completion publication.
+      Volatile.Write(ref finished,1);link.TryRetire();
+     }
+    }
+   }
+   internal NativeCancellation(StreamGuard original,CancellationToken callerToken,CancellationToken refusalToken,ConcurrentDictionary<string,object> state){
+    guard=original;nativeState=state;
+    caller=new Entry(this,callerToken);refusal=new Entry(this,refusalToken);
+    if(Interlocked.CompareExchange(ref guard.activeCancellation,this,null)!=null){
+     signal.Dispose();
+     var error=new InvalidOperationException("Prior original cancellation cohort is unresolved");
+     error.Data["ReviewCode"]="native_prior_owner";error.Data["ReviewStage"]="native_admission";throw error;
+    }
+    try{
+     // Publish inside CLR before a pending pipeline stop can discard the return.
+     nativeState["NativeFailureCancellation"]=this;nativeState["NativeFailureCancellationDisposed"]=false;
+     caller.Register();refusal.Register();
+    }catch{
+     // Only genuinely unattempted entries become terminal. A Register that
+     // throws without a receipt remains retained unless its callback finishes.
+     caller.MarkUnattempted();refusal.MarkUnattempted();
+     Volatile.Write(ref requested,1);throw;
+    }finally{
+     Volatile.Write(ref initialized,1);
+     if(Volatile.Read(ref requested)!=0)Dispose();
+    }
+   }
+   void Failed(Exception error){
+    Interlocked.CompareExchange(ref retirementError,error,null);
+    guard.owner.TryAdd("NativeCancellationFailure",Fault("owned_cancel_disposal","native_cancel_dispose",error));
+   }
+   public void Dispose(){
+    Volatile.Write(ref requested,1);
+    if(Volatile.Read(ref initialized)==0)return;
+    try{caller.Unregister();refusal.Unregister();TryRetire();}catch(Exception error){Failed(error);}
+   }
+   void TryRetire(){
+    if(Volatile.Read(ref initialized)==0||Volatile.Read(ref requested)==0||!caller.Settled||!refusal.Settled||Interlocked.CompareExchange(ref retiring,1,0)!=0)return;
+    try{
+     signal.Dispose();
+     nativeState["NativeFailureCancellationDisposed"]=true;
+     Volatile.Write(ref disposed,1);
+     Interlocked.CompareExchange(ref guard.activeCancellation,null,this);
+    }catch(Exception error){Failed(error);}
+   }
+  }
+  public void Dispose(){refusal.Dispose();}
   ReadOnlyDictionary<string,object> firstError,failure;
   public ReadOnlyDictionary<string,object> FirstError {get{return Volatile.Read(ref firstError);}}
   public ReadOnlyDictionary<string,object> Failure {get{return Volatile.Read(ref failure);}}
@@ -167,6 +253,8 @@ namespace GauntletOwnedWork {
    owner["StopRequested"]=true;owner["Abandoned"]=true;state["Abandoned"]=true;
    var value=Fault(code,"worker_stream",null);
    owner.TryAdd("StreamFailure",value);Volatile.Write(ref failure,value);
+   // Reach the same original native custody even while PowerShell is in CLR.
+   try{refusal.Cancel();}catch(Exception error){owner.TryAdd("StopFailure",Fault("owned_native_cancel","worker_stop",error));}
    try{owner["StopTask"]=stop(null,null);}
    catch(Exception error){owner.TryAdd("StopFailure",Fault("owned_stop","worker_stop",error));}
   }
@@ -507,11 +595,26 @@ namespace GauntletLive {
         public static RunResult Run(ProcessStartInfo start, string input, int seconds) {
             return RunMilliseconds(start, input, checked(seconds * 1000));
         }
+        public static RunResult RunOwnedMilliseconds(ProcessStartInfo start,string input,int milliseconds,CancellationToken failureCancellation,System.Collections.Concurrent.ConcurrentDictionary<string,object> originalState) {
+            if(originalState==null)throw new ArgumentNullException(nameof(originalState));
+            var result=RunMilliseconds(start,input,milliseconds,failureCancellation);
+            originalState["Result"]=result;
+            return result;
+        }
         public static RunResult RunMilliseconds(ProcessStartInfo start, string input, int milliseconds) {
             return RunMilliseconds(start,input,milliseconds,CancellationToken.None);
         }
         public static RunResult RunMilliseconds(ProcessStartInfo start,string input,int milliseconds,CancellationToken failureCancellation) {
             return RunUntil(start,input,checked(Stopwatch.GetTimestamp() + (long)milliseconds * Stopwatch.Frequency / 1000),failureCancellation);
+        }
+        // The exact original native receipt must cross the CLR boundary before
+        // a pending PowerShell stop can discard command output. This publishes
+        // no acceptance; all retirement and public projection remain original.
+        public static RunResult RunOwnedUntil(ProcessStartInfo start,string input,long deadlineTimestamp,CancellationToken failureCancellation,System.Collections.Concurrent.ConcurrentDictionary<string,object> originalState) {
+            if(originalState==null)throw new ArgumentNullException(nameof(originalState));
+            var result=RunUntil(start,input,deadlineTimestamp,failureCancellation);
+            originalState["Result"]=result;
+            return result;
         }
         public static RunResult RunUntil(ProcessStartInfo start, string input, long deadlineTimestamp) {
             return RunUntil(start,input,deadlineTimestamp,CancellationToken.None);
@@ -842,7 +945,9 @@ function Get-ReviewProcessRetirement {
     $worker=if($State['Inline']){$null}else{Get-ReviewOwnedWorkRetirement -State $State}
     $settled=$State['Settled'] -is [bool] -and $State['Settled']
     if(-not $State['Inline'] -and $worker.Retired -and -not $State.ContainsKey('ActionEntered')){$settled=$true}
-    $native=$settled -and ($State['NativeNeverStarted'] -or ($null -ne $State['Result'] -and $State['Result'].ProcessTreeRetired -is [bool] -and $State['Result'].ProcessTreeRetired))
+    $cancellation=$State['NativeFailureCancellation']
+    $cancellationRetired=$null -eq $cancellation -or ($cancellation.IsDisposed -is [bool] -and $cancellation.IsDisposed)
+    $native=$settled -and $cancellationRetired -and ($State['NativeNeverStarted'] -or ($null -ne $State['Result'] -and $State['Result'].ProcessTreeRetired -is [bool] -and $State['Result'].ProcessTreeRetired))
     $retired=$native -and ($State['Inline'] -or $worker.Retired)
     New-ReviewReadOnlyRecord -Values @{Retired=[bool]$retired}
 }
@@ -851,19 +956,32 @@ function Invoke-ReviewProcessWorker {
     param($State,$Arguments)
     $previous=$ExecutionContext.SessionState.PSVariable.Get('script:ReviewNativeProcessState')
     $script:ReviewNativeProcessState=$State
-    $pipeline=$null;$before=0
+    $pipeline=$null;$before=0;$cancellation=$null
     try{
         $context=Get-ReviewOwnedWorkContext
         if($null -eq $context -or $null -eq $context['OwnedWorkOwner']['Pipeline']){Throw-ReviewCodedFailure 'native_owner_missing' 'native_startup'}
         $pipeline=$context['OwnedWorkOwner']['Pipeline'];$guard=$context['OwnedWorkOwner']['StreamGuard'];$before=$guard.ErrorCount
-        $State['Result']=Invoke-BoundedProcessCore @Arguments
+        # Only this original invocation owns the link. Preserve the caller signal,
+        # the original stream refusal, and the original native absolute deadline.
+        $callerCancellation=if($Arguments.ContainsKey('FailureCancellationToken')){[Threading.CancellationToken]$Arguments['FailureCancellationToken']}else{[Threading.CancellationToken]::None}
+        $cancellation=$guard.LinkNativeCancellation($callerCancellation,$State)
+        $nativeArguments=@{};foreach($key in $Arguments.Keys){$nativeArguments[$key]=$Arguments[$key]}
+        $nativeArguments['FailureCancellationToken']=$cancellation.Token
+        $State['Result']=Invoke-BoundedProcessCore @nativeArguments
     }finally{
         if($null -ne $pipeline -and $null -ne $guard -and $guard.ErrorCount -gt $before){
             $State['NativeErrorStream']=$guard.FirstError
         }
         $State['Settled']=$true
-        $State['CoreRetired']=$State['NativeNeverStarted'] -or ($null -ne $State['Result'] -and $State['Result'].ProcessTreeRetired -is [bool] -and $State['Result'].ProcessTreeRetired)
-        $script:ReviewNativeProcessState=if($null -ne $previous){$previous.Value}else{$null}
+        try{
+            # The native run has already settled its exact registration in its
+            # own retained cleanup task. Keep this link until actual disposal.
+            # The helper publishes itself in CLR before registration, so even a
+            # stopped PowerShell RHS cannot lose the original partial link.
+            $cancellation=$State['NativeFailureCancellation']
+            if($null -ne $cancellation){$cancellation.Dispose()}
+            $State['CoreRetired']=$State['NativeNeverStarted'] -or ($null -ne $State['Result'] -and $State['Result'].ProcessTreeRetired -is [bool] -and $State['Result'].ProcessTreeRetired)
+        }finally{$script:ReviewNativeProcessState=if($null -ne $previous){$previous.Value}else{$null}}
     }
 }
 
@@ -966,6 +1084,42 @@ function Invoke-BoundedProcess {
         if(-not $slot.Retired){Throw-ReviewTransportFault 'filesystem_native_unretired'}
         Assert-ReviewFilesystemStep -Stage 'native_completion'
     }
+    # Aggregate projection and filesystem completion above belong to this same
+    # original deadline. Physical retirement never grants late acceptance.
+    if((Get-ReviewRemainingMilliseconds $deadline) -le 0){
+        $state['Abandoned']=$true;$state['TimedOut']=$true
+        $deadlineOwner=if($null -ne $context){$context['OwnedWorkOwner']}else{$originalOwner}
+        $deadlineOwnerState=if($null -ne $context){$context}else{$state}
+        $owningDeadlineFailure=$null
+        # An inline native call may have a shorter explicit budget than its
+        # enclosing worker. Latch that parent only when its own clock expired.
+        if($null -ne $deadlineOwner -and [object]::ReferenceEquals($deadlineOwner['State'],$deadlineOwnerState) -and
+           (Get-ReviewRemainingMilliseconds $deadlineOwner['Deadline']) -le 0){
+            $deadlineOwner['Abandoned']=$true;$deadlineOwner['TimedOut']=$true;$deadlineOwnerState['Abandoned']=$true
+            if($null -eq $deadlineOwner['DeadlineFailure']){$null=$deadlineOwner.TryAdd('DeadlineFailure',(New-ReviewTransportFault 'owned_deadline' 'owned_observer' $null))}
+            $owningDeadlineFailure=$deadlineOwner['DeadlineFailure']
+        }
+        if($null -eq $owningDeadlineFailure){$owningDeadlineFailure=New-ReviewTransportFault 'owned_deadline' 'native_completion' $null}
+        $null=$state.TryAdd('DeadlineFailure',$owningDeadlineFailure)
+        $owningDeadlineFailure=$state['DeadlineFailure']
+        if($null -eq $primary){$primary=$owningDeadlineFailure}
+        $selected=[Collections.Generic.List[object]]::new()
+        foreach($source in $faults){
+            if($null -eq $source -or [object]::ReferenceEquals($primary,$source) -or [object]::ReferenceEquals($owningDeadlineFailure,$source)){continue}
+            $duplicate=$false;foreach($prior in $selected){if([object]::ReferenceEquals($prior,$source)){$duplicate=$true;break}}
+            if(-not $duplicate -and $selected.Count -lt 2){$selected.Add($source)}
+        }
+        if(-not [object]::ReferenceEquals($primary,$owningDeadlineFailure)){
+            if($selected.Count -eq 2){$selected.RemoveAt(1)};$selected.Add($owningDeadlineFailure)
+        }
+        $failedValues=@{};foreach($key in $result.Keys){$failedValues[$key]=$result[$key]}
+        $failedValues['ExitCode']=-1;$failedValues['TimedOut']=$true
+        if($null -eq $failedValues['ErrorMessage']){$failedValues['ErrorMessage']='Owned native operation exceeded its original deadline'}
+        $failedValues['Failure']=& $flatten $primary
+        $failedValues['CleanupFailures']=[Array]::AsReadOnly([object[]]@(foreach($source in $selected){& $flatten $source}))
+        $result=New-ReviewReadOnlyRecord -Values $failedValues
+        if($null -ne $slot){$slot.Result=$result}
+    }
     return $result
 }
 
@@ -1007,8 +1161,12 @@ function Invoke-BoundedProcessCore {
             $stage='native_process_start'
             $nativeState=$ExecutionContext.SessionState.PSVariable.Get('script:ReviewNativeProcessState')
             if($null -ne $nativeState -and $null -ne $nativeState.Value){$nativeState.Value['NativeNeverStarted']=$false}
-            if ($PSBoundParameters.ContainsKey('DeadlineTimestamp')) { return [GauntletLive.Native]::RunUntil($psi,$StdinText,$DeadlineTimestamp,$FailureCancellationToken) }
+            if ($PSBoundParameters.ContainsKey('DeadlineTimestamp')) {
+                if($null -ne $nativeState -and $null -ne $nativeState.Value){return [GauntletLive.Native]::RunOwnedUntil($psi,$StdinText,$DeadlineTimestamp,$FailureCancellationToken,$nativeState.Value)}
+                return [GauntletLive.Native]::RunUntil($psi,$StdinText,$DeadlineTimestamp,$FailureCancellationToken)
+            }
             $boundedMilliseconds = if ($PSBoundParameters.ContainsKey('TimeoutMilliseconds')) { $TimeoutMilliseconds } else { $TimeoutSec * 1000 }
+            if($null -ne $nativeState -and $null -ne $nativeState.Value){return [GauntletLive.Native]::RunOwnedMilliseconds($psi,$StdinText,$boundedMilliseconds,$FailureCancellationToken,$nativeState.Value)}
             return [GauntletLive.Native]::RunMilliseconds($psi, $StdinText, $boundedMilliseconds,$FailureCancellationToken)
         }
         $nativeState=$ExecutionContext.SessionState.PSVariable.Get('script:ReviewNativeProcessState')
@@ -1087,10 +1245,29 @@ function Get-ReviewSafeCause {
     # Bootstrap uses static CLR APIs only. Shared reflection metadata may have
     # ETS members; only fresh private open-instance delegates invoke it below.
     $bind={param([type]$DelegateType,[type]$Target,[string]$Name,[type[]]$Parameters=@()) [Delegate]::CreateDelegate($DelegateType,[Reflection.RuntimeReflectionExtensions]::GetRuntimeMethod($Target,$Name,$Parameters))}
+    # Fixed object arrays also keep PowerShell method dispatch from formatting
+    # arbitrary runtime argument types before the private CLR delegate runs.
     $getType=& $bind ([Func[object,type]]) ([object]) 'GetType'
-    $getName=& $bind ([Func[type,string]]) ([type]) 'get_FullName'
+    $getName=& $bind ([Func[Reflection.MemberInfo,string]]) ([Reflection.MemberInfo]) 'get_Name'
+    $getNamespace=& $bind ([Func[type,string]]) ([type]) 'get_Namespace'
+    $getGeneric=& $bind ([Func[type,bool]]) ([type]) 'get_IsGenericType'
+    $getElement=& $bind ([Func[type,bool]]) ([type]) 'get_HasElementType'
+    $getNested=& $bind ([Func[type,bool]]) ([type]) 'get_IsNested'
     $getLength=& $bind ([Func[string,int]]) ([string]) 'get_Length'
     $getChars=& $bind ([Func[string,char[]]]) ([string]) 'ToCharArray'
+    # Never invoke FullName: generic/element/nested formatters can expand
+    # small metadata graphs. Only flat metadata components are read; validate
+    # their individual and combined bounds before allocating a public name.
+    $typeName={
+        param([type]$CandidateType)
+        if($getGeneric.Invoke($CandidateType) -or $getElement.Invoke($CandidateType) -or $getNested.Invoke($CandidateType)){return $null}
+        $leaf=$getName.Invoke($CandidateType);$space=$getNamespace.Invoke($CandidateType)
+        $leafLength=$getLength.Invoke($leaf);$spaceLength=if($null -eq $space){0}else{$getLength.Invoke($space)}
+        if($leafLength -lt 1 -or $leafLength -gt 256 -or $spaceLength -gt 255){return $null}
+        if($spaceLength -eq 0){return $leaf}
+        if($leafLength+$spaceLength+1 -gt 256){return $null}
+        [string]::Concat($space,'.',$leaf)
+    }
     $getHResult=& $bind ([Func[Exception,int]]) ([Exception]) 'get_HResult'
     $getInner=& $bind ([Func[Exception,Exception]]) ([Exception]) 'get_InnerException'
     $getNative=& $bind ([Func[ComponentModel.Win32Exception,int]]) ([ComponentModel.Win32Exception]) 'get_NativeErrorCode'
@@ -1098,17 +1275,17 @@ function Get-ReviewSafeCause {
     $getJsonLine=& $bind ([Func[Text.Json.JsonException,Nullable[long]]]) ([Text.Json.JsonException]) 'get_LineNumber'
     $getJsonByte=& $bind ([Func[Text.Json.JsonException,Nullable[long]]]) ([Text.Json.JsonException]) 'get_BytePositionInLine'
     $getHttpStatus=& $bind ([Func[Net.Http.HttpRequestException,Nullable[Net.HttpStatusCode]]]) ([Net.Http.HttpRequestException]) 'get_StatusCode'
-    $rawType=$getName.Invoke($getType.Invoke($Exception));$type='System.Exception'
+    $rawType=& $typeName ($getType.DynamicInvoke([object[]](,$Exception)));$type='System.Exception'
     if($rawType -is [string] -and $getLength.Invoke($rawType) -le 256){
         $type=[string]::new($getChars.Invoke($rawType))
         if(-not [regex]::IsMatch($type,'\A[A-Za-z0-9_.+\x60\[\], ]+\z',[Text.RegularExpressions.RegexOptions]::CultureInvariant)){$type='System.Exception'}
     }
-    $cause=@{Type=$type;HResult=$getHResult.Invoke($Exception);JsonLine=$null;JsonByte=$null;SocketError=$null;HttpStatus=$null;NativeError=$null;Inner=$null;OmittedInnerCauses=0}
-    if($Exception -is [ComponentModel.Win32Exception]){$cause.NativeError=$getNative.Invoke($Exception)}
-    if($Exception -is [Net.Sockets.SocketException]){$cause.SocketError=[int]$getSocket.Invoke($Exception)}
-    if($Exception -is [Text.Json.JsonException]){$cause.JsonLine=$getJsonLine.Invoke($Exception);$cause.JsonByte=$getJsonByte.Invoke($Exception)}
-    if($Exception -is [Net.Http.HttpRequestException]){$status=$getHttpStatus.Invoke($Exception);if($null -ne $status){$cause.HttpStatus=[int]$status}}
-    $inner=$getInner.Invoke($Exception)
+    $cause=@{Type=$type;HResult=$getHResult.DynamicInvoke([object[]](,$Exception));JsonLine=$null;JsonByte=$null;SocketError=$null;HttpStatus=$null;NativeError=$null;Inner=$null;OmittedInnerCauses=0}
+    if($Exception -is [ComponentModel.Win32Exception]){$cause.NativeError=$getNative.DynamicInvoke([object[]](,$Exception))}
+    if($Exception -is [Net.Sockets.SocketException]){$cause.SocketError=[int]$getSocket.DynamicInvoke([object[]](,$Exception))}
+    if($Exception -is [Text.Json.JsonException]){$cause.JsonLine=$getJsonLine.DynamicInvoke([object[]](,$Exception));$cause.JsonByte=$getJsonByte.DynamicInvoke([object[]](,$Exception))}
+    if($Exception -is [Net.Http.HttpRequestException]){$status=$getHttpStatus.DynamicInvoke([object[]](,$Exception));if($null -ne $status){$cause.HttpStatus=[int]$status}}
+    $inner=$getInner.DynamicInvoke([object[]](,$Exception))
     if($null -ne $inner){if($Depth -lt 2){$cause.Inner=Get-ReviewSafeCause -Exception $inner -Depth ($Depth+1)}else{$cause.OmittedInnerCauses=1}}
     New-ReviewReadOnlyRecord -Values $cause
 }
@@ -1118,8 +1295,14 @@ function New-ReviewTransportFault {
     # to boundary objects/metadata below uses a fresh private CLR delegate.
     param($Code,$Stage,[Exception]$Exception)
     $bind={param([type]$DelegateType,[type]$Target,[string]$Name,[type[]]$Parameters=@()) [Delegate]::CreateDelegate($DelegateType,[Reflection.RuntimeReflectionExtensions]::GetRuntimeMethod($Target,$Name,$Parameters))}
+    # Fixed object arrays also keep PowerShell method dispatch from formatting
+    # arbitrary runtime argument types before the private CLR delegate runs.
     $getType=& $bind ([Func[object,type]]) ([object]) 'GetType'
-    $getName=& $bind ([Func[type,string]]) ([type]) 'get_FullName'
+    $getName=& $bind ([Func[Reflection.MemberInfo,string]]) ([Reflection.MemberInfo]) 'get_Name'
+    $getNamespace=& $bind ([Func[type,string]]) ([type]) 'get_Namespace'
+    $getGeneric=& $bind ([Func[type,bool]]) ([type]) 'get_IsGenericType'
+    $getElement=& $bind ([Func[type,bool]]) ([type]) 'get_HasElementType'
+    $getNested=& $bind ([Func[type,bool]]) ([type]) 'get_IsNested'
     $getAssembly=& $bind ([Func[type,Reflection.Assembly]]) ([type]) 'get_Assembly'
     $getField=& $bind ([Func[type,string,Reflection.BindingFlags,Reflection.FieldInfo]]) ([type]) 'GetField' ([type[]]@([string],[Reflection.BindingFlags]))
     $getFieldType=& $bind ([Func[Reflection.FieldInfo,type]]) ([Reflection.FieldInfo]) 'get_FieldType'
@@ -1136,6 +1319,19 @@ function New-ReviewTransportFault {
     $getValue=& $bind ([Func[Collections.IDictionaryEnumerator,object]]) ([Collections.IDictionaryEnumerator]) 'get_Value'
     $getLength=& $bind ([Func[string,int]]) ([string]) 'get_Length'
     $getChars=& $bind ([Func[string,char[]]]) ([string]) 'ToCharArray'
+    # Never invoke FullName: generic/element/nested formatters can expand
+    # small metadata graphs. Only flat metadata components are read; validate
+    # their individual and combined bounds before allocating a public name.
+    $typeName={
+        param([type]$CandidateType)
+        if($getGeneric.Invoke($CandidateType) -or $getElement.Invoke($CandidateType) -or $getNested.Invoke($CandidateType)){return $null}
+        $leaf=$getName.Invoke($CandidateType);$space=$getNamespace.Invoke($CandidateType)
+        $leafLength=$getLength.Invoke($leaf);$spaceLength=if($null -eq $space){0}else{$getLength.Invoke($space)}
+        if($leafLength -lt 1 -or $leafLength -gt 256 -or $spaceLength -gt 255){return $null}
+        if($spaceLength -eq 0){return $leaf}
+        if($leafLength+$spaceLength+1 -gt 256){return $null}
+        [string]::Concat($space,'.',$leaf)
+    }
     $copyText={
         param($Value,[int]$Maximum)
         if($Value -isnot [string]){return $null}
@@ -1150,15 +1346,15 @@ function New-ReviewTransportFault {
     $field={
         param([object]$Value,[string]$Name,[type]$Expected)
         if($null -eq $Value){throw [InvalidOperationException]::new('Missing structural fault field')}
-        $entry=$getField.Invoke($getType.Invoke($Value),('<'+$Name+'>k__BackingField'),$flags)
+        $entry=$getField.Invoke($getType.DynamicInvoke([object[]](,$Value)),('<'+$Name+'>k__BackingField'),$flags)
         if($null -eq $entry -or -not [object]::ReferenceEquals($getFieldType.Invoke($entry),$Expected)){throw [InvalidOperationException]::new('Invalid structural fault field')}
-        return ,($getFieldValue.Invoke($entry,$Value))
+        return ,($getFieldValue.DynamicInvoke([object[]]($entry,$Value)))
     }
     $copyTransportCause={
         param([object]$Value,[int]$Depth)
         if($null -eq $Value){return $null}
-        $valueType=$getType.Invoke($Value)
-        if(-not [string]::Equals($getName.Invoke($valueType),'GauntletTransport.SanitizedCause',[StringComparison]::Ordinal)){throw [InvalidOperationException]::new('Invalid structural cause')}
+        $valueType=$getType.DynamicInvoke([object[]](,$Value))
+        if(-not [string]::Equals((& $typeName $valueType),'GauntletTransport.SanitizedCause',[StringComparison]::Ordinal)){throw [InvalidOperationException]::new('Invalid structural cause')}
         $type=& $copyText (& $field $Value 'Type' ([string])) 256
         if($null -eq $type -or -not [regex]::IsMatch($type,'\A[A-Za-z0-9_.+\x60\[\], ]+\z',[Text.RegularExpressions.RegexOptions]::CultureInvariant)){throw [InvalidOperationException]::new('Invalid structural cause type')}
         $values=@{Type=$type;HResult=(& $field $Value 'HResult' ([int]));JsonLine=$null;JsonByte=$null;SocketError=$null;HttpStatus=$null;NativeError=$null;HeaderNameSha256=$null;Inner=$null;OmittedInnerCauses=0}
@@ -1170,20 +1366,20 @@ function New-ReviewTransportFault {
         $omitted=& $field $Value 'OmittedInnerCauses' ([int]);if($omitted -lt 0){throw [InvalidOperationException]::new('Invalid structural cause count')};$values.OmittedInnerCauses=$omitted
         $innerField=$getField.Invoke($valueType,'<Inner>k__BackingField',$flags)
         if($null -eq $innerField -or -not [object]::ReferenceEquals($getFieldType.Invoke($innerField),$valueType)){throw [InvalidOperationException]::new('Invalid structural inner cause')}
-        $inner=$getFieldValue.Invoke($innerField,$Value)
+        $inner=$getFieldValue.DynamicInvoke([object[]]($innerField,$Value))
         if($null -ne $inner){if($Depth -lt 2){$values.Inner=& $copyTransportCause $inner ($Depth+1)}elseif($values.OmittedInnerCauses -lt [int]::MaxValue){$values.OmittedInnerCauses++}}
         New-ReviewReadOnlyRecord -Values $values
     }
     $coreAssembly=$getAssembly.Invoke([Exception]);$typed=$Exception
     for($i=0;$i -lt 8 -and $null -ne $typed;$i++){
-        $runtimeType=$getType.Invoke($typed)
-        if([string]::Equals($getName.Invoke($runtimeType),'GauntletTransport.TransportException',[StringComparison]::Ordinal)){
+        $runtimeType=$getType.DynamicInvoke([object[]](,$typed))
+        if([string]::Equals((& $typeName $runtimeType),'GauntletTransport.TransportException',[StringComparison]::Ordinal)){
             try{
                 $transportCode=& $identifier (& $field $typed 'Code' ([string]));$transportStage=& $identifier (& $field $typed 'Stage' ([string]))
                 if($null -eq $transportCode -or $null -eq $transportStage){throw [InvalidOperationException]::new('Invalid structural fault identifier')}
                 $causeField=$getField.Invoke($runtimeType,'<Cause>k__BackingField',$flags)
-                if($null -eq $causeField -or -not [string]::Equals($getName.Invoke($getFieldType.Invoke($causeField)),'GauntletTransport.SanitizedCause',[StringComparison]::Ordinal)){throw [InvalidOperationException]::new('Invalid structural fault cause')}
-                $safeCause=& $copyTransportCause ($getFieldValue.Invoke($causeField,$typed)) 0
+                if($null -eq $causeField -or -not [string]::Equals((& $typeName ($getFieldType.Invoke($causeField))),'GauntletTransport.SanitizedCause',[StringComparison]::Ordinal)){throw [InvalidOperationException]::new('Invalid structural fault cause')}
+                $safeCause=& $copyTransportCause ($getFieldValue.DynamicInvoke([object[]]($causeField,$typed))) 0
                 return (New-ReviewReadOnlyRecord -Values @{Code=$transportCode;Stage=$transportStage;Cause=$safeCause})
             }catch{}
         }
@@ -1193,8 +1389,8 @@ function New-ReviewTransportFault {
             try{
                 $property=$getProperty.Invoke($runtimeType,'Data');$getter=if($null -ne $property){$getPropertyMethod.Invoke($property)}else{$null}
                 if($null -ne $getter -and [object]::ReferenceEquals($getDeclaring.Invoke($getter),[Exception])){
-                    $data=$getData.Invoke($typed);$dataType=if($null -ne $data){$getType.Invoke($data)}else{$null}
-                    if($null -ne $dataType -and [object]::ReferenceEquals($getAssembly.Invoke($dataType),$coreAssembly) -and [string]::Equals($getName.Invoke($dataType),'System.Collections.ListDictionaryInternal',[StringComparison]::Ordinal)){
+                    $data=$getData.DynamicInvoke([object[]](,$typed));$dataType=if($null -ne $data){$getType.DynamicInvoke([object[]](,$data))}else{$null}
+                    if($null -ne $dataType -and [object]::ReferenceEquals($getAssembly.Invoke($dataType),$coreAssembly) -and [string]::Equals((& $typeName $dataType),'System.Collections.ListDictionaryInternal',[StringComparison]::Ordinal)){
                         $count=$getCount.Invoke($data)
                         if($count -le 8){
                             $candidateCode=$null;$candidateStage=$null;$enumerator=$getEnumerator.Invoke($data)
@@ -1213,7 +1409,7 @@ function New-ReviewTransportFault {
                 }
             }catch{}
         }
-        $typed=$getInner.Invoke($typed)
+        $typed=$getInner.DynamicInvoke([object[]](,$typed))
     }
     New-ReviewReadOnlyRecord -Values @{Code=$Code;Stage=$Stage;Cause=(Get-ReviewSafeCause -Exception $Exception)}
 }
@@ -1228,7 +1424,7 @@ function Throw-ReviewTransportFault {
 
 function Get-ReviewOwnedPipelineDisposalAction {
     param($Owner,$Pipeline)
-    # Both independent caller-owned objects are disposed by one retained CLR
+    # All independent caller-owned resources are disposed by one retained CLR
     # task. No PowerShell scriptblock runs on its runspace-less task thread.
     $ownerType=[Collections.Concurrent.ConcurrentDictionary[string,object]]
     $setItem=$ownerType.GetProperty('Item').GetSetMethod()
@@ -1240,7 +1436,7 @@ function Get-ReviewOwnedPipelineDisposalAction {
     $il.Emit($op::Newobj,$errorsType.GetConstructor([type[]]@()));$il.Emit($op::Stloc,$errors)
     function Read-DisposalPack([int]$Index){$il.Emit($op::Ldarg_0);$il.Emit($op::Ldc_I4,$Index);$il.Emit($op::Ldelem_Ref)}
     function Write-DisposalFlag([string]$Name){Read-DisposalPack 2;$il.Emit($op::Castclass,$ownerType);$il.Emit($op::Ldstr,$Name);$il.Emit($op::Ldc_I4_1);$il.Emit($op::Box,[bool]);$il.Emit($op::Callvirt,$setItem)}
-    foreach($entry in @(@{Index=0;Fault='PipelineDisposalException';Flag='PipelineDisposed'},@{Index=1;Fault='OutputDisposalException';Flag='OutputDisposed'})){
+    foreach($entry in @(@{Index=0;Fault='PipelineDisposalException';Flag='PipelineDisposed'},@{Index=1;Fault='OutputDisposalException';Flag='OutputDisposed'},@{Index=3;Fault='StreamGuardDisposalException';Flag='StreamGuardDisposed'})){
         $skip=$il.DefineLabel();Read-DisposalPack $entry.Index;$il.Emit($op::Brfalse,$skip)
         $null=$il.BeginExceptionBlock()
         Read-DisposalPack $entry.Index;$il.Emit($op::Castclass,[IDisposable]);$il.Emit($op::Callvirt,$dispose)
@@ -1254,7 +1450,7 @@ function Get-ReviewOwnedPipelineDisposalAction {
     $il.Emit($op::Ldstr,'Independent owned pipeline resources failed disposal');$il.Emit($op::Ldloc,$errors)
     $il.Emit($op::Newobj,[AggregateException].GetConstructor([type[]]@([string],[Collections.Generic.IEnumerable[Exception]])));$il.Emit($op::Throw)
     $il.MarkLabel($done);$il.Emit($op::Ret)
-    $pack=[object[]]@($Pipeline,$Owner['Output'],$Owner)
+    $pack=[object[]]@($Pipeline,$Owner['Output'],$Owner,($Owner['StreamGuard'] -as [IDisposable]))
     return ,$thunk.CreateDelegate([Action],$pack)
 }
 
@@ -1403,7 +1599,7 @@ function Get-ReviewOwnedWorkFailures {
     # Source order expresses diagnostic precedence, not measured chronology.
     $state=$Owner['State'];$sources=[Collections.Generic.List[object]]::new()
     if($state.ContainsKey('Failure') -and $null -ne $state['Failure']){$sources.Add($state['Failure'])}
-    foreach($name in @('StreamFailure','CreationFailure','InvocationFailure','ErrorStreamFailure','DisposalFailure','OutputDisposalFailure','StopFailure','ObserverFailure','DeadlineFailure')){
+    foreach($name in @('StreamFailure','NativeCancellationFailure','CreationFailure','InvocationFailure','ErrorStreamFailure','DisposalFailure','OutputDisposalFailure','StopFailure','ObserverFailure','DeadlineFailure')){
         $fault=$Owner[$name];if($null -ne $fault){$sources.Add($fault)}
     }
     $primary=if($sources.Count){$sources[0]}else{$null}
@@ -1481,7 +1677,9 @@ function Complete-ReviewOwnedWork {
         if($null -ne $stop -and ($stop.IsFaulted -or $stop.IsCanceled)){
             if($null -eq $owner['StopFailure']){$null=$owner.TryAdd('StopFailure',(New-ReviewTransportFault -Code 'owned_stop' -Stage 'worker_stop' -Exception $stop.Exception))}
         }
-        $retired=$workerDone -and $disposed -and $stopDone -and $state['CoreRetired'] -is [bool] -and $state['CoreRetired']
+        $guard=$owner['StreamGuard']
+        $cancellationRetired=$null -eq $guard -or ($guard.NativeCancellationsRetired -is [bool] -and $guard.NativeCancellationsRetired)
+        $retired=$workerDone -and $disposed -and $stopDone -and $cancellationRetired -and $state['CoreRetired'] -is [bool] -and $state['CoreRetired']
         $faults=Get-ReviewOwnedWorkFailures -Owner $owner
         # Retained only for private diagnostics; public outcomes use this local
         # immutable projection, never the convenience fields as authority.
