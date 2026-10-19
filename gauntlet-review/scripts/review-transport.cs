@@ -245,6 +245,7 @@ namespace GauntletTransport
         readonly List<object> unresolvedResources=new List<object>();
         bool networkCleanupFailed;
         bool retired, promptSeen, explicitClose, deadlineCancellation,finishing,terminalForwarded,terminalDeliveryPending;
+        bool catalogForwarded; // Current request only; body writes, EOF and validation have settled.
         bool pendingCatalogAuthChallenge,pendingResponseAuthChallenge;
         int catalogAuthChallenges,responseAuthChallenges;
         int responses, models, textBlocks, pieces, maxOriginal, maxPiece;
@@ -359,7 +360,7 @@ namespace GauntletTransport
             lock(sync) {
                 if(finishing) return;
                 Volatile.Write(ref finishing,true);
-                early=active!=null&&!terminalForwarded&&!terminalDeliveryPending;
+                early=active!=null&&!terminalForwarded&&!terminalDeliveryPending&&!catalogForwarded;
             }
             if(early) {Fail("client_finish_early","client_finish");Close();return;}
             gracefulFinish.TrySetResult(true);
@@ -433,7 +434,7 @@ namespace GauntletTransport
                     stage="accept";
                     TcpClient client = await listener.AcceptTcpClientAsync(cancel.Token).ConfigureAwait(false);
                     activeTransaction=true;
-                    lock(sync) {active=client;terminalForwarded=false;terminalDeliveryPending=false;}
+                    lock(sync) {active=client;terminalForwarded=false;terminalDeliveryPending=false;catalogForwarded=false;}
                     // One overflow sentinel accepts no HTTP bytes. Exactly eight completed
                     // exchanges may still finish normally; an actual ninth connection must
                     // latch the shared native-job failure before parsing or upstream work.
@@ -794,7 +795,7 @@ namespace GauntletTransport
                     cancel.Token.ThrowIfCancellationRequested();
                     lock(sync) {
                         if(post) {responses++;pendingCatalogAuthChallenge=false;pendingResponseAuthChallenge=false;}
-                        else {models++;pendingCatalogAuthChallenge=false;}
+                        else {models++;pendingCatalogAuthChallenge=false;catalogForwarded=true;}
                     }
                 }
             } catch(TransportException e) {Fail(e);throw;}

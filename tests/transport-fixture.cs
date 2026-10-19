@@ -251,6 +251,36 @@ namespace GauntletTransportTests
         protected override void Dispose(bool disposing) {if(disposing) {cancellation.Dispose();Disposed=true;}base.Dispose(disposing);}
     }
 
+    // The real owner closes the socket and publishes peer EOF, then remains
+    // inside its original per-request disposal until this fixture releases it.
+    internal sealed class CatalogClosureStream : NetworkStream
+    {
+        readonly long deadline;readonly bool fail;
+        readonly ManualResetEventSlim release=new ManualResetEventSlim(false);
+        int entered;
+        internal long ClosedAt;
+        internal bool DeadlineCrossed;
+        internal readonly TaskCompletionSource<bool> Closed=new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource<bool> Settled=new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal CatalogClosureStream(Socket socket,long deadline,bool fail) : base(socket,true) {this.deadline=deadline;this.fail=fail;}
+        internal void ReleaseClosure() {release.Set();}
+        internal void DisposeGate() {release.Dispose();}
+        protected override void Dispose(bool disposing) {
+            if(!disposing||Interlocked.CompareExchange(ref entered,1,0)!=0) {base.Dispose(disposing);return;}
+            try {
+                base.Dispose(true);
+                ClosedAt=System.Diagnostics.Stopwatch.GetTimestamp();Closed.TrySetResult(true);
+                while(!release.IsSet) {
+                    decimal ticks=(decimal)deadline-System.Diagnostics.Stopwatch.GetTimestamp();
+                    if(ticks<=0) {DeadlineCrossed=true;break;}
+                    // This gate consumes only the original monotonic deadline.
+                    release.Wait((int)Math.Ceiling(ticks*1000m/System.Diagnostics.Stopwatch.Frequency));
+                }
+                if(fail) throw new IOException("synthetic-catalog-closure");
+            } finally {Settled.TrySetResult(true);}
+        }
+    }
+
     public static class Suite
     {
         static readonly List<Check> Checks = new List<Check>();
@@ -550,6 +580,91 @@ namespace GauntletTransportTests
             } finally {await Retire(limited);}
         }
 
+        static async Task CatalogRetirement(string mode)
+        {
+            long deadline=System.Diagnostics.Stopwatch.GetTimestamp()+System.Diagnostics.Stopwatch.Frequency*5;
+            Func<int> originalClockBudget=()=> (int)Math.Max(0m,Math.Ceiling(((decimal)deadline-System.Diagnostics.Stopwatch.GetTimestamp())*1000m/System.Diagnostics.Stopwatch.Frequency));
+            var handler=new Upstream();int admitted=0;
+            CatalogClosureStream controlled=null;
+            var selected=new TaskCompletionSource<CatalogClosureStream>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var bridge=new GauntletTransport.Bridge("prompt",deadline,handler,client=>{
+                if(++admitted!=2) return client.GetStream();
+                controlled=new CatalogClosureStream(client.Client,deadline,mode=="dispose-failure");selected.TrySetResult(controlled);return controlled;
+            });
+            Task<byte[]> pending=null;
+            try {
+                await Exchange(bridge,Request(bridge,Payload("prompt")));
+                var prior=bridge.GetProof();
+                Check(prior.Responses==1&&prior.Models==0&&prior.ErrorCode=="","catalog retirement "+mode+" starts from one actual successful inference");
+                if(mode=="malformed") handler.CatalogReply=Encoding.UTF8.GetBytes("{\"models\":[");
+                if(mode=="bad-length") handler.DeclaredLength=handler.CatalogReply.Length+1;
+                pending=Exchange(bridge,Request(bridge,"","GET","/backend-api/codex/models"));
+                await Task.WhenAny(selected.Task,bridge.Completion,Task.Delay(originalClockBudget()));
+                Check(selected.Task.IsCompleted,"catalog retirement "+mode+" selects only the second current-request stream");
+                if(!selected.Task.IsCompleted) return;
+                await Task.WhenAny(controlled.Closed.Task,bridge.Completion,Task.Delay(originalClockBudget()));
+                Check(controlled.Closed.Task.IsCompleted&&controlled.ClosedAt<deadline,"catalog retirement "+mode+" closes the original catalog socket before its disposal return and original deadline");
+                if(!controlled.Closed.Task.IsCompleted) return;
+                await Task.WhenAny(pending,bridge.Completion,Task.Delay(originalClockBudget()));
+                Check(pending.IsCompleted&&Encoding.ASCII.GetString(pending.Result).StartsWith("HTTP/1.1 200 OK\r\n",StringComparison.Ordinal)&&BodyBytes(pending.Result).SequenceEqual(handler.CatalogReply),"catalog retirement "+mode+" peer receives exact catalog bytes and actual EOF before FinishClient");
+                if(!pending.IsCompleted) return;
+                var before=bridge.GetProof();
+                Check(!controlled.Settled.Task.IsCompleted&&!bridge.Completion.IsCompleted&&!before.Retired&&!before.Completed&&!before.Success,"catalog retirement "+mode+" keeps original closure and proof provisional after peer EOF");
+                bool valid=mode!="malformed"&&mode!="bad-length";
+                string originalCode=mode=="malformed" ? "catalog_json" : mode=="bad-length" ? "response_length" : "";
+                Check(before.Responses==1&&before.Models==(valid ? 1 : 0)&&before.ErrorCode==originalCode&&(mode!="malformed"||before.ErrorStage=="catalog_validate"&&before.ErrorCause!=null),"catalog retirement "+mode+" distinguishes complete catalog validation from delivered invalid or incomplete JSON");
+                bridge.FinishClient();var first=bridge.GetProof();
+                Check(first.ErrorCode==before.ErrorCode&&first.ErrorStage==before.ErrorStage&&JsonSerializer.Serialize(first.ErrorCause)==JsonSerializer.Serialize(before.ErrorCause)&&!first.Success&&!first.Retired&&!bridge.Completion.IsCompleted,"catalog retirement "+mode+" preserves the current request cause while original closure is still pending");
+                bridge.FinishClient();var repeated=bridge.GetProof();
+                Check(JsonSerializer.Serialize(repeated)==JsonSerializer.Serialize(first),"catalog retirement "+mode+" makes repeated FinishClient idempotent before closure settlement");
+                if(mode!="late") controlled.ReleaseClosure();
+                await bridge.Completion;
+                var proof=bridge.GetProof();
+                Check(controlled.Settled.Task.IsCompleted&&bridge.Completion.IsCompleted,"catalog retirement "+mode+" joins the original disposal and RunAsync owner");
+                Check(proof.Responses==1&&proof.Models==(valid ? 1 : 0)&&handler.Requests.Count==2&&bridge.DeadlineTimestamp==deadline,"catalog retirement "+mode+" preserves actual request accounting and the immutable original deadline");
+                bool accepted=mode=="valid";
+                string finalCode=mode=="late" ? "deadline" : mode=="dispose-failure" ? "cleanup" : originalCode;
+                Check(proof.Success==accepted&&proof.ErrorCode==finalCode&&(mode!="late"||controlled.DeadlineCrossed&&bridge.RemainingMilliseconds==0),"catalog retirement "+mode+" accepts only successful timely original closure");
+                if(mode=="dispose-failure")
+                    Check(!proof.Retired&&!proof.Completed&&proof.ErrorStage=="cleanup_client_stream"&&proof.ErrorCause!=null&&proof.ErrorCause.Type=="System.IO.IOException"&&proof.CleanupFailures.Length==1&&proof.CleanupFailures[0].Stage=="cleanup_client_stream"&&proof.CleanupFailures[0].Cause.Type=="System.IO.IOException","catalog retirement dispose-failure retains original cleanup IOException and unresolved custody");
+                else
+                    Check(proof.Retired&&proof.Completed&&proof.CleanupFailures.Length==0&&(valid||proof.ErrorStage==before.ErrorStage&&JsonSerializer.Serialize(proof.ErrorCause)==JsonSerializer.Serialize(before.ErrorCause)),"catalog retirement "+mode+" separates physical retirement from unchanged typed validation failure");
+            } finally {
+                if(controlled!=null) controlled.ReleaseClosure();
+                bridge.Close();await bridge.Completion;
+                if(pending!=null) await pending;
+                if(controlled!=null) {controlled.Dispose();controlled.DisposeGate();}
+            }
+        }
+
+        static async Task IncompleteCatalogRetirement()
+        {
+            long deadline=System.Diagnostics.Stopwatch.GetTimestamp()+System.Diagnostics.Stopwatch.Frequency*5;
+            Func<int> originalClockBudget=()=> (int)Math.Max(0m,Math.Ceiling(((decimal)deadline-System.Diagnostics.Stopwatch.GetTimestamp())*1000m/System.Diagnostics.Stopwatch.Frequency));
+            var handler=new Upstream();var bridge=new GauntletTransport.Bridge("prompt",deadline,handler);
+            var partial=new ControlledTailStream(Encoding.UTF8.GetBytes("{\"models\":["),Array.Empty<byte>());
+            Task<byte[]> pending=null;
+            try {
+                await Exchange(bridge,Request(bridge,Payload("prompt")));
+                await Exchange(bridge,Request(bridge,"","GET","/backend-api/codex/models"));
+                var prior=bridge.GetProof();
+                Check(prior.Responses==1&&prior.Models==1&&prior.ErrorCode=="","incomplete catalog control completes a real prior inference and prior catalog");
+                handler.ResponseOverride=new StreamContent(partial);
+                pending=Exchange(bridge,Request(bridge,"","GET","/backend-api/codex/models"));
+                await Task.WhenAny(partial.AtEof.Task,bridge.Completion,Task.Delay(originalClockBudget()));
+                Check(partial.AtEof.Task.IsCompleted&&!bridge.Completion.IsCompleted,"incomplete catalog control reaches the later current read without upstream EOF");
+                if(!partial.AtEof.Task.IsCompleted) return;
+                var before=bridge.GetProof();
+                Check(before.Responses==1&&before.Models==1&&before.ErrorCode==""&&!before.Success&&!before.Retired&&!pending.IsCompleted,"incomplete catalog control cannot borrow earlier catalog validation or response completion");
+                bridge.FinishClient();var first=bridge.GetProof();
+                Check(first.ErrorCode=="client_finish_early"&&first.ErrorStage=="client_finish"&&!first.Success,"incomplete catalog control rejects finish before current validation and delivery complete");
+                bridge.FinishClient();
+                Check(bridge.GetProof().ErrorCode==first.ErrorCode&&bridge.GetProof().ErrorStage==first.ErrorStage,"incomplete catalog control preserves the first cause on repeated FinishClient");
+                await bridge.Completion;await pending;var proof=bridge.GetProof();
+                Check(proof.Retired&&proof.Completed&&!proof.Success&&proof.ErrorCode=="client_finish_early"&&proof.Responses==1&&proof.Models==1&&handler.Requests.Count==3&&bridge.DeadlineTimestamp==deadline&&bridge.RemainingMilliseconds>0,"incomplete catalog control resets request-local catalog state and retires within the original deadline");
+            } finally {partial.Release.TrySetResult(true);bridge.Close();await bridge.Completion;if(pending!=null) await pending;partial.Dispose();}
+        }
+
         static async Task CancellationCallbackOrder(string mode)
         {
             long deadline=System.Diagnostics.Stopwatch.GetTimestamp()+System.Diagnostics.Stopwatch.Frequency*5;
@@ -691,6 +806,8 @@ namespace GauntletTransportTests
             NativeLeaseReplacementSafety();
             foreach(string mode in new [] {"timely","late","prior-upstream","cleanup-primary"}) await FinalCleanupDeadline(mode);
             foreach(string mode in new [] {"owned-deadline","explicit-close","unrelated-oce"}) await CancellationCallbackOrder(mode);
+            foreach(string mode in new [] {"valid","malformed","bad-length","late","dispose-failure"}) await CatalogRetirement(mode);
+            await IncompleteCatalogRetirement();
             await ProbeNativeNoDrain();
             await RequestCountBoundary();
             await AuthSequence("catalog fallback to inference",new [] {"G401","P200"},true,1,0,false,false,"");

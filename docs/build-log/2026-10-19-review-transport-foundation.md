@@ -16,4 +16,6 @@ Final transport cleanup now rechecks the original monotonic deadline before disp
 
 Cancellation classification also reads the original cancellation owner before its notification callback can run. Controlled inline read continuations distinguish that deadline signal from explicit Close and an unrelated cancellation exception, while preserving the original clock and typed cause. Existing stream-timeout assertions retain their budgets and now include failure-only state diagnostics.
 
+Catalog completion is tracked per request after its original body writes, EOF and validation settle. Graceful finish can therefore observe catalog EOF while the original connection cleanup is still returning, without replacing that cleanup or accepting incomplete work. Deterministic controls cover prior inference, a later incomplete catalog, repeated finish, validation failures, late cleanup and the original disposal exception.
+
 Production integration, source-bound calibration and live-stack certification belong to later dependency-safe changes. No global installation, runtime setup or fresh active-stack certification is claimed here.
