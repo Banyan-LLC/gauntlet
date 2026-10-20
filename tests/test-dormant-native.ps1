@@ -39,6 +39,7 @@ foreach($mode in @('boolean','missing','instance','unicode','writeonly','throwin
 # Complete native lifecycle regression inventory; each entry is a fresh child.
 $regressions+=@{Name='native-1';File='dormant-native-runtime-regressions.ps1';Arguments=@('-Source',$source)}
 $regressions+=@{Name='native-2';File='dormant-native-fragmentation-regression.ps1';Arguments=@('-Source',$source)}
+$regressions+=@{Name='utf8-boundaries';File='dormant-native-utf8-boundaries.ps1';Arguments=@('-Source',$source)}
 $regressions+=@{Name='native-3';File='dormant-native-lifecycle-regressions.ps1';Arguments=@('-Source',$source,'-Mode','late_cancel')}
 $regressions+=@{Name='native-4';File='dormant-native-lifecycle-regressions.ps1';Arguments=@('-Source',$source,'-Mode','cleanup_faults')}
 $regressions+=@{Name='native-5';File='dormant-native-lifecycle-regressions.ps1';Arguments=@('-Source',$source,'-Mode','blocking_cleanup')}

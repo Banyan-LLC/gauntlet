@@ -33,7 +33,7 @@ try{
  $allocated=$native.GetField('FixtureChunkAllocations').GetValue($null)
  $peak=$budgetType.GetField('PeakRetained').GetValue($budget)
  $retained=$budgetType.GetField('retained',[Reflection.BindingFlags]'NonPublic,Instance').GetValue($budget)
- $ok=$result.Length -eq 4194304 -and $stream.Reads -eq 4194305 -and $allocated -eq 1025 -and $peak -eq 12714000 -and $retained -eq 8519680
+ $ok=$result.Length -eq 4194304 -and $stream.Reads -eq 4194305 -and $allocated -eq 1025 -and $peak -eq 12722194 -and $retained -eq 8519680
  @{passed=[bool]$ok;runtime=$PSVersionTable.PSVersion.ToString();dotnet=[Environment]::Version.ToString();source_sha256=$hash.ToLowerInvariant();read_completions=$stream.Reads;allocated_chunks=$allocated;peak_charged_storage_bytes=$peak;final_charged_storage_bytes=$retained;decoded_characters=$result.Length}|ConvertTo-Json
  if(-not $ok){exit 1}
 }finally{$stream.Dispose()}

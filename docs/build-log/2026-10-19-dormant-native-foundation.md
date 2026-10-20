@@ -22,6 +22,8 @@ The first stream refusal requests one stop on the original pipeline and signals 
 
 Native capture retains at most 4 MiB combined raw output. A separate 16 MiB storage budget covers stdin encoding, fixed capture chunks and overlapping decoded output. Stdin UTF-8 input is limited to 1 MiB before encoding. Filled chunks avoid fragmentation-dependent allocation and full-buffer copies. Overflow and cancellation signal the original job immediately; callbacks never wait for a cleanup-held job lock.
 
+UTF-8 counting and writing both consume decoder state across chunk boundaries, including final replacement of incomplete sequences. A fixed, charged character scratch buffer bounds counting storage; final publication requires the written character count to match exactly. Isolated regressions compare ordinal text and UTF-8 bytes for every multibyte split, malformed input, final flush, empty output and embedded NULs through direct capture and both actual process pipes.
+
 Native execution reserves one quarter of its initial remaining time, capped at five seconds, for retirement within the same absolute deadline. Every independent cleanup or termination operation requires admission before expiry. An admitted Windows call may finish later; that cannot authorize another operation or late acceptance. Original tasks, streams, handles and dependent attribute-list allocations remain in bounded unresolved custody until physical retirement is confirmed. Checked closure preserves failed original handles, and cleanup errors cannot overwrite earlier causes.
 
 ## Fault projection and isolated controls

@@ -578,10 +578,21 @@ namespace GauntletLive {
                 }
                 var decoder=Encoding.UTF8.GetDecoder();
                 // Decoder state retains no data beyond at most three pending UTF8 bytes.
-                budget.Reserve(16);
+                // Counting must consume input too: GetCharCount does not carry
+                // pending bytes between chunks. One fixed scratch buffer admits
+                // the maximum UTF16 output including the decoder's pending state.
+                int countCapacity=Encoding.UTF8.GetMaxCharCount(chunkSize);
+                long decodingBytes=checked(16L+(long)countCapacity*2);
+                budget.Reserve(decodingBytes);
                 int chars=0;
                 try {
-                    for(int i=0;i<chunks.Count;i++)chars=checked(chars+decoder.GetCharCount(chunks[i].Key,0,chunks[i].Value,i==chunks.Count-1));
+                    var countBuffer=new char[countCapacity];
+                    for(int i=0;i<chunks.Count;i++){
+                        decoder.Convert(chunks[i].Key.AsSpan(0,chunks[i].Value),countBuffer.AsSpan(),i==chunks.Count-1,
+                            out int consumed,out int written,out bool completed);
+                        if(consumed!=chunks[i].Value||!completed)throw new InvalidOperationException("UTF8 capture counting did not complete");
+                        chars=checked(chars+written);
+                    }
                     long stringBytes=checked((long)chars*2);
                     budget.Reserve(stringBytes);
                     bool made=false;
@@ -594,10 +605,11 @@ namespace GauntletLive {
                                 if(consumed!=items[i].Value||!completed)throw new InvalidOperationException("UTF8 capture decoding did not complete");
                                 offset+=written;
                             }
+                            if(offset!=destination.Length)throw new InvalidOperationException("UTF8 capture character count did not match");
                         });
                         made=true;return text;
                     }finally{if(!made)budget.Release(stringBytes);}
-                }finally{budget.Release(16);}
+                }finally{budget.Release(decodingBytes);}
             } finally {
                 buffer=null;chunks.Clear();budget.Release(retainedChunks);
             }
