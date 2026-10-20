@@ -22,7 +22,7 @@ foreach($name in @('generic','startup','saturation','real','identity','errors','
 
 # Each regression receives a fresh original process and the complete assembled source.
 $regressions=@(
-    @{Name='scratch';File='dormant-native-scratch.ps1';Arguments=@('-RepoRoot',$repo)},
+    @{Name='scratch';File='dormant-scratch-isolated.ps1';Arguments=@('-Case','scratch','-RepoRoot',$repo,'-ExpectedExecutable',[Environment]::ProcessPath,'-ExpectedVersion',$PSVersionTable.PSVersion.ToString(),'-ExpectedDotnetMajor',[string][Environment]::Version.Major)},
     @{Name='guards';File='dormant-native-guards.ps1';Arguments=@('-RepoRoot',$repo)}
 )
 foreach($entry in @(
@@ -60,6 +60,19 @@ $regressions+=@{Name='scratch-admission';File='dormant-scratch-admission.ps1';Ar
 $regressions+=@{Name='stream-native-cancel';File='dormant-stream-native-cancel.ps1';Arguments=@('-RepoRoot',$repo,'-Source',$source)}
 $regressions+=@{Name='facade-deadline';File='dormant-native-facade-deadline.ps1';Arguments=@('-RepoRoot',$repo,'-Source',$source)}
 $regressions+=@{Name='facade-inline-deadline';File='dormant-native-facade-inline-deadline.ps1';Arguments=@('-RepoRoot',$repo,'-Source',$source)}
+$regressions+=@{Name='disposal-projection';File='dormant-native-disposal-projection.ps1';Arguments=@('-RepoRoot',$repo,'-Source',$source)}
+$sourceHash=(Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
+foreach($mode in @('both','retirement_then_capture','mixed_limit','stdin_after_limit')){
+    foreach($boundary in @('direct','facade')){
+        $regressions+=@{Name=('io-faults-'+$mode+'-'+$boundary);File='dormant-native-io-faults-case.ps1';Arguments=@('-Source',$source,'-ExpectedSourceSha256',$sourceHash,'-Mode',$mode,'-Boundary',$boundary)}
+    }
+}
+foreach($mode in @('both','retirement_then_capture')){
+    $regressions+=@{Name=('io-faults-'+$mode+'-deadline');File='dormant-native-io-faults-case.ps1';Arguments=@('-Source',$source,'-ExpectedSourceSha256',$sourceHash,'-Mode',$mode,'-Boundary','facade','-DeadlineControl')}
+}
+foreach($boundary in @('direct','facade')){
+    $regressions+=@{Name=('io-faults-early-'+$boundary);File='dormant-native-io-faults-case.ps1';Arguments=@('-Source',$source,'-ExpectedSourceSha256',$sourceHash,'-Mode','both','-Boundary',$boundary,'-EarlyCapture')}
+}
 foreach($test in $regressions){
     $fixture=Join-Path $PSScriptRoot ('fixtures/'+$test.File)
     Assert-True ([IO.File]::Exists($fixture)) ($test.Name+' complete isolated regression fixture exists')

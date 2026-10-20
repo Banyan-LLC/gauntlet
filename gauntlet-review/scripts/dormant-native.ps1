@@ -363,6 +363,11 @@ namespace GauntletLive {
             public int HResult {get;internal set;}
             public int? NativeError {get;internal set;}
         }
+        // Internal control flow after a cause has already been recorded. This
+        // wrapper is never independent failure evidence or a public fault type.
+        sealed class RecordedFailureAbort : Exception {
+            public RecordedFailureAbort(string message):base(message){}
+        }
         static NativeFailure SafeFailure(string code,string stage,Exception exception) {
             exception=exception.GetBaseException();var type=exception.GetType().FullName;
             return new NativeFailure {Code=code,Stage=stage,Type=type.Length<=256?type:"System.Exception",HResult=exception.HResult,
@@ -373,7 +378,9 @@ namespace GauntletLive {
             var type=exception.GetType().FullName;
             var fault=new NativeFailure {Code=code,Stage=stage,Type=type.Length<=256?type:"System.Exception",HResult=exception.HResult,
                 NativeError=exception is Win32Exception native?(int?)native.NativeErrorCode:null};
-            if(Interlocked.CompareExchange(ref result.Failure,fault,null)!=null&&cleanup) {
+            // A later transport failure is independent evidence just as a later
+            // cleanup failure is. Preserve either within the existing bound.
+            if(Interlocked.CompareExchange(ref result.Failure,fault,null)!=null) {
                 while(true) {
                     var previous=result.CleanupFailures;if(previous.Length>=2)break;
                     var next=new NativeFailure[previous.Length+1];Array.Copy(previous,next,previous.Length);next[previous.Length]=fault;
@@ -515,6 +522,7 @@ namespace GauntletLive {
         }
         sealed class CaptureBudget {
             public int Used, Exceeded;
+            public Exception LimitFailure;
             long retained;
             public long PeakRetained;
             public const int MaximumBytes=4*1024*1024;
@@ -530,10 +538,12 @@ namespace GauntletLive {
             public readonly RunCustody Custody;
             public CaptureBudget(RunCustody custody){Custody=custody;Reserve(CaptureMetadataReserve);}
             public void Limit() {
+                Exception failure=new InvalidOperationException("Process IO exceeded its retention budget");
+                failure=Interlocked.CompareExchange(ref LimitFailure,failure,null)??failure;
                 Interlocked.Exchange(ref Exceeded,1);
                 // The cap-crossing reader terminates this original job immediately.
                 Custody.Terminate();
-                throw new InvalidOperationException("Process IO exceeded its retention budget");
+                throw failure;
             }
             public void Reserve(long bytes) {
                 long next=Interlocked.Add(ref retained,bytes);
@@ -595,6 +605,17 @@ namespace GauntletLive {
         public static RunResult Run(ProcessStartInfo start, string input, int seconds) {
             return RunMilliseconds(start, input, checked(seconds * 1000));
         }
+        static void ObserveIoFailure(RunResult result,Task task,CaptureBudget budget,string code,string stage,ref bool observed) {
+            if(task==null||!task.IsCompleted||observed)return;
+            observed=true;
+            Exception error=task.IsFaulted?task.Exception.GetBaseException():task.IsCanceled?new TaskCanceledException(task):null;
+            // Both cap-crossing readers share one original budget refusal. It is
+            // recorded separately, without hiding an independent channel error.
+            if(error==null||ReferenceEquals(error,Volatile.Read(ref budget.LimitFailure)))return;
+            RecordFailure(result,code,stage,error);
+            result.ErrorMessage=result.ErrorMessage??"Owned process IO transport failed: "+error.Message;
+            result.ExitCode=-1;
+        }
         public static RunResult RunOwnedMilliseconds(ProcessStartInfo start,string input,int milliseconds,CancellationToken failureCancellation,System.Collections.Concurrent.ConcurrentDictionary<string,object> originalState) {
             if(originalState==null)throw new ArgumentNullException(nameof(originalState));
             var result=RunMilliseconds(start,input,milliseconds,failureCancellation);
@@ -653,18 +674,30 @@ namespace GauntletLive {
                 result.ErrorMessage="Paired review transport failed";result.ExitCode=-1;
                 custody.Terminate();return true;
             };
+            bool limitObserved=false,writeObserved=false,outputObserved=false,errorObserved=false;
+            Action observeIo = () => {
+                if(!limitObserved&&Volatile.Read(ref budget.Exceeded)!=0) {
+                    limitObserved=true;
+                    RecordFailure(result,"capture_limit","process_capture",Volatile.Read(ref budget.LimitFailure));
+                    result.ErrorMessage=result.ErrorMessage??"Aggregate process output exceeded its retention budget";
+                    result.ExitCode=-1;
+                }
+                ObserveIoFailure(result,writeTask,budget,"stdin_failure","stdin",ref writeObserved);
+                ObserveIoFailure(result,outputTask,budget,"capture_failure","process_capture",ref outputObserved);
+                ObserveIoFailure(result,errorTask,budget,"capture_failure","process_capture",ref errorObserved);
+            };
             try {
-                if(peerFailure()) throw new OperationCanceledException("Paired review transport failed before launch");
+                if(peerFailure()) throw new RecordedFailureAbort("Paired review transport failed before launch");
                 stage="stdin_admission";
                 input=input??"";
                 if(input.Length>CaptureBudget.MaximumInputBytes) {
                     RecordFailure(result,"stdin_limit",stage,new InvalidOperationException());
-                    throw new InvalidOperationException("Process stdin exceeded its UTF8 budget");
+                    throw new RecordedFailureAbort("Process stdin exceeded its UTF8 budget");
                 }
                 int inputByteCount=Encoding.UTF8.GetByteCount(input);
                 if(inputByteCount>CaptureBudget.MaximumInputBytes) {
                     RecordFailure(result,"stdin_limit",stage,new InvalidOperationException());
-                    throw new InvalidOperationException("Process stdin exceeded its UTF8 budget");
+                    throw new RecordedFailureAbort("Process stdin exceeded its UTF8 budget");
                 }
                 inputCharge=checked((long)input.Length*2+inputByteCount);
                 budget.Reserve(inputCharge);
@@ -714,47 +747,40 @@ namespace GauntletLive {
                 foreach (var argument in start.ArgumentList) command.Append(' ').Append(Quote(argument));
                 // No executable instruction runs until assignment to the non-breakaway job.
                 stage="process_creation";
-                if(peerFailure()) throw new OperationCanceledException("Paired review transport failed before creation");
+                if(peerFailure()) throw new RecordedFailureAbort("Paired review transport failed before creation");
                 if (remaining() == 0) { result.TimedOut=true; throw new TimeoutException("Original process deadline expired before creation"); }
                 Require(CreateProcessW(start.FileName, command, IntPtr.Zero, IntPtr.Zero, true,
                     0x08080404, environment, start.WorkingDirectory, ref startup, out process));
                 created = true;
-                if(peerFailure())throw new OperationCanceledException("Paired review transport failed after creation");
+                if(peerFailure())throw new RecordedFailureAbort("Paired review transport failed after creation");
                 if(remaining()==0){result.TimedOut=true;throw new TimeoutException("Original deadline expired before job assignment");}
                 Require(AssignProcessToJobObject(job, process.Process));
                 assigned = true;
                 CloseOwned(result,custody,ref stdinRead);CloseOwned(result,custody,ref stdoutWrite);CloseOwned(result,custody,ref stderrWrite);
-                if(result.Failure!=null||Volatile.Read(ref custody.CleanupExpired)!=0)throw new InvalidOperationException("Original process setup closure failed");
-                if(peerFailure())throw new OperationCanceledException("Paired review transport failed before stream setup");
+                if(stdinRead!=IntPtr.Zero||stdoutWrite!=IntPtr.Zero||stderrWrite!=IntPtr.Zero||Volatile.Read(ref custody.CleanupExpired)!=0)throw new RecordedFailureAbort("Original process setup closure failed");
+                if(peerFailure())throw new RecordedFailureAbort("Paired review transport failed before stream setup");
                 inputStream = new FileStream(new SafeFileHandle(stdinWrite, false), FileAccess.Write, 4096, false);
                 outputStream = new FileStream(new SafeFileHandle(stdoutRead, false), FileAccess.Read, 4096, false);
                 errorStream = new FileStream(new SafeFileHandle(stderrRead, false), FileAccess.Read, 4096, false);
                 outputTask=Capture(outputStream, budget); errorTask=Capture(errorStream, budget);
-                if(peerFailure()) throw new OperationCanceledException("Paired review transport failed before resume");
+                if(peerFailure()) throw new RecordedFailureAbort("Paired review transport failed before resume");
                 if (executionRemaining() == 0) { result.TimedOut=true; throw new TimeoutException("Original process deadline expired before resume"); }
                 if (ResumeThread(process.Thread) == uint.MaxValue) throw new Win32Exception(Marshal.GetLastWin32Error());
                 CloseOwned(result,custody,ref process.Thread);
-                if(result.Failure!=null||Volatile.Read(ref custody.CleanupExpired)!=0)throw new InvalidOperationException("Original process thread closure failed");
+                if(process.Thread!=IntPtr.Zero||Volatile.Read(ref custody.CleanupExpired)!=0)throw new RecordedFailureAbort("Original process thread closure failed");
                 stage="stdin";
                 writeTask = inputStream.WriteAsync(inputBytes, 0, inputBytes.Length);
                 while (!writeTask.IsCompleted && executionRemaining() > 0 && Volatile.Read(ref budget.Exceeded) == 0 && !failureCancellation.IsCancellationRequested)
                     Thread.Sleep(Math.Min(10, executionRemaining()));
-                if(Volatile.Read(ref budget.Exceeded)!=0) {
-                    RecordFailure(result,"capture_limit","process_capture",new InvalidOperationException());
-                    result.ErrorMessage="Aggregate process output exceeded its retention budget";
-                }
+                observeIo();
                 peerFailure();
                 bool stdinDone = writeTask.IsCompletedSuccessfully;
-                if (result.ErrorMessage==null && (writeTask.IsFaulted || writeTask.IsCanceled)) {
-                    result.ErrorMessage="stdin transport failed before the complete prompt was delivered: " + writeTask.Exception?.GetBaseException().Message;
-                    RecordFailure(result,"stdin_failure",stage,(Exception)writeTask.Exception??new OperationCanceledException());
-                }
                 if(stdinDone) {
                     // EOF is the checked close of the original raw pipe, after its
                     // write is terminal. The non-owning managed wrapper is disposed
                     // only by the existing bounded original cleanup task.
                     CloseOwned(result,custody,ref stdinWrite);
-                    if(result.Failure!=null||Volatile.Read(ref custody.CleanupExpired)!=0)throw new InvalidOperationException("Original stdin EOF closure failed");
+                    if(stdinWrite!=IntPtr.Zero||Volatile.Read(ref custody.CleanupExpired)!=0)throw new RecordedFailureAbort("Original stdin EOF closure failed");
                 }
                 bool exited = false;
                 stage="process_exit";
@@ -784,19 +810,14 @@ namespace GauntletLive {
                 peerFailure();
                 if (outputTask.IsCompletedSuccessfully) result.Stdout=outputTask.Result;
                 if (errorTask.IsCompletedSuccessfully) result.Stderr=errorTask.Result;
-                if (Volatile.Read(ref budget.Exceeded) != 0) {
-                    result.ErrorMessage="Aggregate process output exceeded its retention budget";
-                    RecordFailure(result,"capture_limit",stage,new InvalidOperationException());
-                } else if (outputTask.IsFaulted || errorTask.IsFaulted) {
-                    result.ErrorMessage="Owned process output transport failed: " + (outputTask.Exception ?? errorTask.Exception)?.GetBaseException().Message;
-                    RecordFailure(result,"capture_failure",stage,outputTask.Exception??errorTask.Exception);
-                } else if (!outputTask.IsCompletedSuccessfully || !errorTask.IsCompletedSuccessfully) {
+                observeIo();
+                if (!outputTask.IsCompleted || !errorTask.IsCompleted) {
                     result.TimedOut=true; result.ErrorMessage="Owned process pipes did not complete before the shared deadline";
                     RecordFailure(result,"capture_deadline",stage,new TimeoutException());
                 }
                 if (result.ErrorMessage != null) result.ExitCode=-1;
             } catch (Exception error) {
-                RecordFailure(result,"native_failure",stage,error);
+                if(!(error is RecordedFailureAbort))RecordFailure(result,"native_failure",stage,error);
                 result.StartFailed = !assigned;
                 result.ErrorMessage=error.Message;
                 result.ExitCode=-1;
@@ -824,6 +845,10 @@ namespace GauntletLive {
                     peerFailure();
                     try{Task.WaitAll(ioTasks.ToArray(),Math.Min(10,remaining()));}catch(AggregateException){}
                 }
+                // A task may fault only after job retirement, or after another
+                // stage throws. Observe each original terminal channel once on
+                // this exit path as well, even if ErrorMessage is already set.
+                observeIo();
                 peerFailure();
                 if(ioTasks.Any(task=>!task.IsCompleted)) {
                     result.ProcessTreeRetired=false;result.ExitCode=-1;
@@ -1599,7 +1624,7 @@ function Get-ReviewOwnedWorkFailures {
     # Source order expresses diagnostic precedence, not measured chronology.
     $state=$Owner['State'];$sources=[Collections.Generic.List[object]]::new()
     if($state.ContainsKey('Failure') -and $null -ne $state['Failure']){$sources.Add($state['Failure'])}
-    foreach($name in @('StreamFailure','NativeCancellationFailure','CreationFailure','InvocationFailure','ErrorStreamFailure','DisposalFailure','OutputDisposalFailure','StopFailure','ObserverFailure','DeadlineFailure')){
+    foreach($name in @('StreamFailure','NativeCancellationFailure','CreationFailure','InvocationFailure','ErrorStreamFailure','DisposalFailure','OutputDisposalFailure','StreamGuardDisposalFailure','StopFailure','ObserverFailure','DeadlineFailure')){
         $fault=$Owner[$name];if($null -ne $fault){$sources.Add($fault)}
     }
     $primary=if($sources.Count){$sources[0]}else{$null}
@@ -1669,8 +1694,21 @@ function Complete-ReviewOwnedWork {
         }
         $workerDone=$null -ne $created -and $created.IsCompleted -and ($null -eq $invoked -or $invoked.IsCompleted)
         $disposed=($null -eq $owner['Pipeline'] -and $workerDone) -or ($null -ne $dispose -and $dispose.IsCompletedSuccessfully -and ($null -eq $owner['Output'] -or ($owner['OutputDisposed'] -is [bool] -and $owner['OutputDisposed'])))
-        if($null -ne $owner['OutputDisposalException'] -and $null -eq $owner['OutputDisposalFailure']){$null=$owner.TryAdd('OutputDisposalFailure',(New-ReviewTransportFault -Code 'owned_output_disposal' -Stage 'worker_dispose' -Exception $owner['OutputDisposalException']))}
-        if($null -ne $dispose -and $dispose.IsFaulted){
+        # The retained disposer attempts every resource and stores each original
+        # exception. Project those causes independently; its aggregate would
+        # duplicate the first resource and hide subsequent failures.
+        $resourceFailure=$false
+        foreach($resource in @(
+            @{Exception='PipelineDisposalException';Failure='DisposalFailure';Code='owned_disposal'},
+            @{Exception='OutputDisposalException';Failure='OutputDisposalFailure';Code='owned_output_disposal'},
+            @{Exception='StreamGuardDisposalException';Failure='StreamGuardDisposalFailure';Code='owned_stream_guard_disposal'}
+        )){
+            if($null -ne $owner[$resource.Exception]){
+                $resourceFailure=$true
+                if($null -eq $owner[$resource.Failure]){$null=$owner.TryAdd($resource.Failure,(New-ReviewTransportFault -Code $resource.Code -Stage 'worker_dispose' -Exception $owner[$resource.Exception]))}
+            }
+        }
+        if(-not $resourceFailure -and $null -ne $dispose -and $dispose.IsFaulted){
             if($null -eq $owner['DisposalFailure']){$null=$owner.TryAdd('DisposalFailure',(New-ReviewTransportFault -Code 'owned_disposal' -Stage 'worker_dispose' -Exception $dispose.Exception))}
         }
         $stop=$owner['StopTask'];$stopDone=-not $owner['StopRequested'] -or ($null -ne $stop -and $stop.IsCompletedSuccessfully)

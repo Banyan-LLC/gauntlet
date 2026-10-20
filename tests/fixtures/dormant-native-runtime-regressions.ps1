@@ -19,8 +19,10 @@ function Run([string]$Command,[string]$InputText='',[Threading.CancellationToken
  [GauntletLive.Native]::RunMilliseconds($start,$InputText,$Milliseconds,$Token)
 }
 $tooMuch=Run '[Console]::In.ReadToEnd()|Out-Null;exit 0' ('x'*1048577)
+Check (@($tooMuch.CleanupFailures|Where-Object Code -ceq 'native_failure').Count -eq 0) 'oversized stdin refusal does not duplicate its propagation signal as an independent native failure'
 Check ($tooMuch.ExitCode -eq -1 -and $tooMuch.StartFailed -and $tooMuch.ProcessTreeRetired -and $tooMuch.Failure.Code -eq 'stdin_limit') 'stdin over one MiB fails before process creation'
 $utf8=Run '[Console]::In.ReadToEnd()|Out-Null;exit 0' ([string][char]0x00e9*524289)
+Check (@($utf8.CleanupFailures|Where-Object Code -ceq 'native_failure').Count -eq 0) 'UTF8 stdin refusal does not duplicate its propagation signal as an independent native failure'
 Check ($utf8.ExitCode -eq -1 -and $utf8.StartFailed -and $utf8.ProcessTreeRetired -and $utf8.Failure.Code -eq 'stdin_limit') 'stdin admission bounds UTF8 bytes rather than UTF16 character count'
 $atLimit=Run '[Console]::Out.Write([Console]::In.ReadToEnd().Length);exit 0' ('x'*1048576)
 Check ($atLimit.ExitCode -eq 0 -and $atLimit.Stdout -ceq '1048576' -and $atLimit.ProcessTreeRetired -and $null -eq $atLimit.Failure) 'one MiB stdin is completely delivered and retired'
@@ -36,6 +38,13 @@ $watch.Stop()
 Write-Output ('overflow elapsed='+$watch.ElapsedMilliseconds+' result='+($overflow|ConvertTo-Json -Depth 5 -Compress))
 Check ($overflow.ExitCode -eq -1 -and $overflow.Failure.Code -eq 'capture_limit' -and $overflow.ProcessTreeRetired -and $watch.ElapsedMilliseconds -lt 6000) 'overflow terminates original job while stdin pending and other stream active'
 $cancel=[Threading.CancellationTokenSource]::new()
+$preCancelled=[Threading.CancellationTokenSource]::new()
+try{
+ $preCancelled.Cancel()
+ $beforeLaunch=Run 'exit 0' '' $preCancelled.Token
+ Check ($beforeLaunch.ExitCode -eq -1 -and $beforeLaunch.StartFailed -and $beforeLaunch.ProcessTreeRetired -and $beforeLaunch.Failure.Code -ceq 'transport_abort') 'actual already-cancelled original native call refuses before process creation and retires absence truthfully'
+ Check (@($beforeLaunch.CleanupFailures|Where-Object Code -ceq 'native_failure').Count -eq 0) 'already-recorded cancellation does not duplicate its propagation signal as an independent native failure'
+}finally{$preCancelled.Dispose()}
 try{
  $cancel.CancelAfter(1000);$watch.Restart()
  $aborted=Run 'Start-Sleep -Seconds 120' '' $cancel.Token
