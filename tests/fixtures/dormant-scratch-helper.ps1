@@ -57,13 +57,31 @@ namespace GauntletFixtureScratch {
   readonly List<IntPtr> probes=new List<IntPtr>();
   readonly List<ExternalControl> externalControls=new List<ExternalControl>();
   IntPtr root;string rootIdentity,rootLeaf;bool rootDisposed,failed;
+  internal sealed class Operation {
+   public Task Task;public bool Observed;
+   readonly object failureGate=new object();
+   readonly List<Exception> failures=new List<Exception>();
+   Exception overflow;
+   // The finite owner topology is smaller than this bound. Never replace the
+   // first cause or call user-controlled equality/formatting while recording.
+   public void RecordFailure(Exception error){
+    if(error==null)return;
+    lock(failureGate){
+     foreach(var known in failures)if(Object.ReferenceEquals(known,error))return;
+     if(failures.Count<255)failures.Add(error);
+     else if(overflow==null){overflow=new InvalidOperationException("Scratch observed-failure custody bound exceeded; additional causes unresolved");failures.Add(overflow);}
+    }
+   }
+   public Exception[] SnapshotFailures(){lock(failureGate){return failures.ToArray();}}
+  }
   Task pending;
+  Operation pendingOperation,writeOperation,cleanupOperation;
   readonly object gate=new object();
   public string Token{get;}=Guid.NewGuid().ToString("n");
   public string Path{get;}
   public long Deadline{get;}
   public bool Retired{get;private set;}
-  public Task OriginalTask{get{return pending;}}
+  public Task OriginalTask{get{lock(gate){return pending;}}}
   // Deterministic adversarial control, in this test utility only. The native
   // cleanup worker retains all original objects while the fixture substitutes.
   public ManualResetEventSlim BeforeDeleteEntered,ContinueDelete;
@@ -92,6 +110,13 @@ namespace GauntletFixtureScratch {
    if(release==null)throw new InvalidOperationException("Scratch acceptance control missing");
    release.Wait();
   }
+  // Public observers cannot remain on a fixture gate beyond the original clock.
+  // Worker-owned adversarial gates deliberately retain the original task instead.
+  void ObserverAcceptanceControl(ManualResetEventSlim entered,ManualResetEventSlim release){
+   if(entered==null)return;entered.Set();
+   if(release==null)throw new InvalidOperationException("Scratch observer acceptance control missing");
+   if(!release.Wait(Left()))throw new TimeoutException("Original scratch observer acceptance control expired");
+  }
   int deleteGateUsed;
   public Owner(string path,long deadline){
    Path=System.IO.Path.GetFullPath(path);Deadline=deadline;
@@ -103,7 +128,7 @@ namespace GauntletFixtureScratch {
   static void Require(bool success){if(!success)throw new Win32Exception(Marshal.GetLastWin32Error());}
   static bool Invalid(IntPtr value){return value==IntPtr.Zero||value==new IntPtr(-1);}
   void Close(ref IntPtr handle){if(Invalid(handle)){handle=IntPtr.Zero;return;}Require(CloseHandle(handle));handle=IntPtr.Zero;}
-  void CloseBoth(ref IntPtr first,ref IntPtr second){var failures=new List<Exception>();try{Close(ref first);}catch(Exception error){failures.Add(error);}try{Close(ref second);}catch(Exception error){failures.Add(error);}if(failures.Count!=0)throw new AggregateException("Independent scratch closure failed",failures);}
+  void CloseBoth(Operation operation,ref IntPtr first,ref IntPtr second){var failures=new List<Exception>();try{Close(ref first);}catch(Exception error){operation.RecordFailure(error);failures.Add(error);}try{Close(ref second);}catch(Exception error){operation.RecordFailure(error);failures.Add(error);}if(failures.Count!=0)throw new AggregateException("Independent scratch closure failed",failures);}
   static void Name(string name){if(String.IsNullOrEmpty(name)||name.Length>128||name=="."||name==".."||name.EndsWith(".")||name.EndsWith(" ")||name.IndexOfAny(new[]{'\\','/',':','\0','*','?','"','<','>','|'})>=0)throw new ArgumentException("Invalid scratch leaf");}
   FileInfo RawInfo(IntPtr handle,Owner observingOwner=null){FileInfo info;Require(GetFileInformationByHandle(handle,out info,observingOwner));return info;}
   FileInfo Info(IntPtr handle,Owner observingOwner=null){var info=RawInfo(handle,observingOwner);if((info.Attributes&0x400)!=0)throw new IOException("Scratch reparse point refused");return info;}
@@ -122,29 +147,36 @@ namespace GauntletFixtureScratch {
     return handle;
    }finally{if(unicode!=IntPtr.Zero)Marshal.FreeHGlobal(unicode);Marshal.FreeHGlobal(chars);}
   }
-  void Start(Action action,bool cleanup){
+  Operation Start(Action<Operation> action,bool cleanup){
    lock(gate){
     if(Retired)throw new InvalidOperationException("Scratch already retired");
-    if(pending!=null&&!pending.IsCompleted)throw new InvalidOperationException("Original scratch worker unresolved");
+    if(pendingOperation!=null&&(!pendingOperation.Task.IsCompleted||!pendingOperation.Observed))throw new InvalidOperationException("Original scratch operation pending or unobserved");
     if(failed&&!cleanup)throw new InvalidOperationException("Failed scratch producer fenced");
-    Check();pending=Task.Run(()=>{try{Check();action();Check();}catch{failed=true;throw;}});
+    Check();var operation=new Operation();
+    operation.Task=new Task(()=>{try{Check();action(operation);Check();}catch(Exception error){operation.RecordFailure(error);failed=true;throw;}},CancellationToken.None,TaskCreationOptions.DenyChildAttach);
+    pendingOperation=operation;pending=operation.Task;
+    try{operation.Task.Start(TaskScheduler.Default);}catch(Exception error){operation.RecordFailure(error);failed=true;throw;}return operation;
    }
   }
-  void Wait(){
-   var task=pending;Exception primary=null;
+  void Wait(Operation operation){
+   var task=operation.Task;Exception primary=null,acceptance=null;bool incomplete=false;
    try{
-    if(!task.Wait(Left())){failed=true;throw new TimeoutException("Original scratch worker unresolved at deadline");}
-    task.GetAwaiter().GetResult();
-   }catch(Exception error){primary=error;}
-   try{AcceptanceControl(BeforeWaitAcceptanceEntered,ContinueWaitAcceptance);Check();}
-   catch(Exception acceptance){
-    failed=true;
-    if(primary!=null)throw new AggregateException("Original scratch failure and independent completion refusal",primary,acceptance);
-    throw;
-   }
-   if(primary!=null)System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(primary).Throw();
+    try{
+     if(!task.Wait(Left())){incomplete=true;failed=true;throw new TimeoutException("Original scratch worker unresolved at deadline");}
+     task.GetAwaiter().GetResult();
+    }catch(Exception error){primary=error;}
+    try{ObserverAcceptanceControl(BeforeWaitAcceptanceEntered,ContinueWaitAcceptance);Check();}
+    catch(Exception error){failed=true;acceptance=error;}
+    if(incomplete){
+     var observed=operation.SnapshotFailures();
+     if(observed.Length!=0){var partial=new List<Exception>(observed);if(primary!=null)partial.Add(primary);primary=new AggregateException("Observed original scratch failures and independent incomplete worker",partial);}
+    }
+    if(acceptance!=null){if(primary!=null)throw new AggregateException("Original scratch failure and independent completion refusal",primary,acceptance);System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(acceptance).Throw();}
+    if(primary!=null)System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(primary).Throw();
+   }finally{lock(gate){operation.Observed=true;}}
   }
-  void Run(Action action,bool cleanup=false){Start(action,cleanup);Wait();}
+  void Run(Action<Operation> action,bool cleanup=false){var operation=Start(action,cleanup);Wait(operation);}
+  void Run(Action action,bool cleanup=false){Run(operation=>action(),cleanup);}
   public void Initialize(){Run(()=>{
    BeforeOperation("DriveType");if(new DriveInfo(System.IO.Path.GetPathRoot(Path)).DriveType!=DriveType.Fixed)throw new ArgumentException("Bounded local fixed scratch drive required");
    if(root!=IntPtr.Zero||parents.Count!=0)throw new InvalidOperationException("Scratch initialization is single use");
@@ -183,23 +215,23 @@ namespace GauntletFixtureScratch {
    leaf.BindingHandle=Relative(root,name,false,false,Read,7,out missing);if(missing||Identity(leaf.BindingHandle)!=leaf.Identity)throw new IOException("Scratch original name binding changed before sealing");Close(ref leaf.BindingHandle);Check();
   }
   public void WriteText(string name,string text){Run(()=>WriteCore(name,text));}
-  public void BeginWriteText(string name,string text){Start(()=>WriteCore(name,text),false);}
-  public void WaitWriteText(){Wait();}
+  public void BeginWriteText(string name,string text){lock(gate){writeOperation=Start(operation=>WriteCore(name,text),false);}}
+  public void WaitWriteText(){Operation operation;lock(gate){operation=writeOperation;}if(operation==null)throw new InvalidOperationException("Original BeginWriteText operation unavailable");Wait(operation);}
   public string ReadText(string name){string text=null;Run(()=>{
    AssertRoot();var leaf=leaves.Find(value=>value.Name==name);if(leaf==null||leaf.Disposed||leaf.Seal==IntPtr.Zero)throw new InvalidOperationException("Scratch read requires original sealed leaf");
    // This path is used only while original root/ancestor and no-delete-sharing
    // leaf seals are retained. Its content cannot be replaced or rewritten.
    BeforeOperation("ReadAllText");text=File.ReadAllText(FilePath(name));Check();
   });return text;}
-  public bool VerifyAbsent(string name){bool absent=false;Run(()=>{AssertRoot();absent=Absent(root,name);},true);return absent;}
+  public bool VerifyAbsent(string name){bool absent=false;Run(operation=>{AssertRoot();absent=Absent(operation,root,name);},true);return absent;}
   int ReserveProbe(){int slot=probes.FindIndex(handle=>handle==IntPtr.Zero);if(slot>=0)return slot;if(probes.Count>=32)throw new InvalidOperationException("Unresolved scratch observation bound exceeded");probes.Add(IntPtr.Zero);return probes.Count-1;}
   void CloseProbe(int slot){var handle=probes[slot];try{Close(ref handle);}finally{probes[slot]=handle;}}
-  bool Absent(IntPtr parent,string name,bool directory=false){
+  bool Absent(Operation operation,IntPtr parent,string name,bool directory=false){
    bool missing;Check();int slot=ReserveProbe();var handle=Relative(parent,name,false,directory,Read,7,out missing);if(missing)return true;probes[slot]=handle;Exception primary=null;
-   try{Info(handle);return false;}catch(Exception error){primary=error;throw;}finally{try{CloseProbe(slot);}catch(Exception cleanup){if(primary!=null)primary.Data["ScratchProbeCleanupFailure"]=cleanup;else throw;}}
+   try{Info(handle);return false;}catch(Exception error){operation.RecordFailure(error);primary=error;throw;}finally{try{CloseProbe(slot);}catch(Exception cleanup){operation.RecordFailure(cleanup);if(primary!=null)primary.Data["ScratchProbeCleanupFailure"]=cleanup;else throw;}}
   }
   void DispositionOriginal(IntPtr handle){var disposition=new Disposition{DeleteFile=true};Require(SetFileInformationByHandle(handle,4,ref disposition,(uint)Marshal.SizeOf<Disposition>()));}
-  void RemoveLeaf(Leaf leaf){
+  void RemoveLeaf(Operation operation,Leaf leaf){
    Close(ref leaf.BindingHandle);
    if(leaf.Identity==null){if(leaf.Handle!=IntPtr.Zero)throw new IOException("Original scratch identity unresolved");return;}
    if(!leaf.Disposed){
@@ -207,40 +239,40 @@ namespace GauntletFixtureScratch {
     if(BeforeDeleteEntered!=null&&Interlocked.Exchange(ref deleteGateUsed,1)==0){BeforeDeleteEntered.Set();if(ContinueDelete==null||!ContinueDelete.Wait(Left()))throw new TimeoutException("Original scratch deletion control expired");}
     if(leaf.DeleteHandle==IntPtr.Zero){leaf.DeleteHandle=ReOpenFile(leaf.Handle,Delete,7,0);if(Invalid(leaf.DeleteHandle)){leaf.DeleteHandle=IntPtr.Zero;throw new Win32Exception(Marshal.GetLastWin32Error());}}
     if(Identity(leaf.DeleteHandle)!=leaf.Identity)throw new IOException("Original scratch deletion identity differs");
-    Check();DispositionOriginal(leaf.DeleteHandle);CloseBoth(ref leaf.Handle,ref leaf.DeleteHandle);leaf.Disposed=true;
+    Check();DispositionOriginal(leaf.DeleteHandle);CloseBoth(operation,ref leaf.Handle,ref leaf.DeleteHandle);leaf.Disposed=true;
    }
-   leaf.Absent=Absent(root,leaf.Name);if(!leaf.Absent)throw new IOException("Scratch replacement remains; cleanup refused");
+   leaf.Absent=Absent(operation,root,leaf.Name);if(!leaf.Absent)throw new IOException("Scratch replacement remains; cleanup refused");
   }
-  public void RemoveFile(string name){Run(()=>{AssertRoot();var leaf=leaves.Find(value=>value.Name==name);if(leaf==null)throw new InvalidOperationException("Scratch file was not created by this owner");RemoveLeaf(leaf);},true);}
+  public void RemoveFile(string name){Run(operation=>{AssertRoot();var leaf=leaves.Find(value=>value.Name==name);if(leaf==null)throw new InvalidOperationException("Scratch file was not created by this owner");RemoveLeaf(operation,leaf);},true);}
   SafeFileHandle CaptureControlHandle(FileStream stream){BeforeOperation("StreamSafeFileHandle");return stream.SafeFileHandle;}
   public bool ControlDeletePending(FileStream stream){bool deleted=false;Run(()=>{Check();StandardInfo info;Require(GetFileInformationByHandleEx(CaptureControlHandle(stream).DangerousGetHandle(),1,out info,(uint)Marshal.SizeOf<StandardInfo>()));deleted=info.DeletePending;},true);return deleted;}
   public void RemoveControlFile(string name,FileStream stream){
    Name(name);ExternalControl control;
    lock(gate){control=externalControls.Find(value=>Object.ReferenceEquals(value.Stream,stream));if(control==null){if(externalControls.Count>=8)throw new InvalidOperationException("External control bound exceeded");control=new ExternalControl{Name=name,Stream=stream};externalControls.Add(control);}else if(control.Name!=name)throw new InvalidOperationException("External control name changed");}
-   Run(()=>{
+   Run(operation=>{
     if(control.Original==null)control.Original=CaptureControlHandle(control.Stream);
     AssertRoot();if(!control.Closed){
      if(control.Identity==null)control.Identity=Identity(control.Original.DangerousGetHandle());
      if(control.DeleteHandle==IntPtr.Zero){control.DeleteHandle=ReOpenFile(control.Original.DangerousGetHandle(),Delete,7,0);if(Invalid(control.DeleteHandle)){control.DeleteHandle=IntPtr.Zero;throw new Win32Exception(Marshal.GetLastWin32Error());}}
      if(Identity(control.DeleteHandle)!=control.Identity)throw new IOException("External original control identity differs");Check();DispositionOriginal(control.DeleteHandle);
-     var errors=new List<Exception>();try{BeforeOperation("StreamDispose");control.Stream.Dispose();if(!control.Original.IsClosed)throw new IOException("External original stream closure unresolved");}catch(Exception error){errors.Add(error);}try{Close(ref control.DeleteHandle);}catch(Exception error){errors.Add(error);}
+     var errors=new List<Exception>();try{BeforeOperation("StreamDispose");control.Stream.Dispose();if(!control.Original.IsClosed)throw new IOException("External original stream closure unresolved");}catch(Exception error){operation.RecordFailure(error);errors.Add(error);}try{Close(ref control.DeleteHandle);}catch(Exception error){operation.RecordFailure(error);errors.Add(error);}
      if(errors.Count!=0)throw new AggregateException("Independent original control closure failed",errors);control.Closed=true;
     }
-    if(!Absent(root,control.Name))throw new IOException("External original control removal unverified");
+    if(!Absent(operation,root,control.Name))throw new IOException("External original control removal unverified");
    },true);
   }
   public sealed class JunctionControl {
    internal Owner Parent;internal string Name,Identity;internal IntPtr ParentHandle,Handle,Writer,DeleteHandle;internal bool Deleted;
-   internal void Remove(){
+   internal void Remove(Operation operation){
     if(Deleted)return;Parent.Check();
-    if(Writer!=IntPtr.Zero){if(Parent.RawIdentity(Writer)!=Identity)throw new IOException("Original junction identity differs");Parent.DispositionOriginal(Writer);Parent.CloseBoth(ref Handle,ref Writer);}
+    if(Writer!=IntPtr.Zero){if(Parent.RawIdentity(Writer)!=Identity)throw new IOException("Original junction identity differs");Parent.DispositionOriginal(Writer);Parent.CloseBoth(operation,ref Handle,ref Writer);}
     else{
      if(DeleteHandle==IntPtr.Zero){if(Handle==IntPtr.Zero)throw new IOException("Original junction custody missing");bool missing;DeleteHandle=Parent.Relative(ParentHandle,Name,false,true,Delete|1,7,out missing);if(missing)throw new IOException("Original junction entry missing");}
      if(Parent.RawIdentity(DeleteHandle)!=Identity){
-      var primary=new IOException("Junction replacement refused");
-      try{Parent.Close(ref DeleteHandle);}catch(Exception cleanup){primary.Data["ScratchJunctionCleanupFailure"]=cleanup;}
+      var primary=new IOException("Junction replacement refused");operation.RecordFailure(primary);
+      try{Parent.Close(ref DeleteHandle);}catch(Exception cleanup){operation.RecordFailure(cleanup);primary.Data["ScratchJunctionCleanupFailure"]=cleanup;}
       throw primary;
-     }Parent.DispositionOriginal(DeleteHandle);Parent.CloseBoth(ref Handle,ref DeleteHandle);
+     }Parent.DispositionOriginal(DeleteHandle);Parent.CloseBoth(operation,ref Handle,ref DeleteHandle);
     }
     Deleted=true;
    }
@@ -255,22 +287,22 @@ namespace GauntletFixtureScratch {
    int returned;Check();Require(DeviceIoControl(control.Writer,0x900a4,data,data.Length,IntPtr.Zero,0,out returned,IntPtr.Zero));Check();
    control.Handle=Relative(parent,name,false,true,Read,7,out missing);if(missing||RawIdentity(control.Handle)!=RawIdentity(control.Writer))throw new IOException("Junction creation identity differs");Close(ref control.Writer);Check();
   });}
-  void CleanupCore(){
+  void CleanupCore(Operation operation){
    var failures=new List<Exception>();
-   for(int index=0;index<probes.Count;index++){try{Check();CloseProbe(index);}catch(Exception error){failures.Add(error);}}
-   foreach(var leaf in leaves){try{Check();RemoveLeaf(leaf);}catch(Exception error){failures.Add(error);}}
-   foreach(var control in controls){try{Check();control.Remove();if(!Absent(control.ParentHandle,control.Name))throw new IOException("Junction control removal unverified");}catch(Exception error){failures.Add(error);}}
-   if(externalControls.Exists(control=>!control.Closed))failures.Add(new IOException("External original control custody unresolved"));
-   if(failures.Count==0&&root!=IntPtr.Zero&&!rootDisposed){try{Check();if(Identity(root)!=rootIdentity)throw new IOException("Original scratch root identity differs");DispositionOriginal(root);Close(ref root);rootDisposed=true;}catch(Exception error){failures.Add(error);}}
-   if(rootDisposed){try{Check();if(!Absent(parents[parents.Count-1],rootLeaf,true))throw new IOException("Original scratch root removal unverified");}catch(Exception error){failures.Add(error);}}
+   for(int index=0;index<probes.Count;index++){try{Check();CloseProbe(index);}catch(Exception error){operation.RecordFailure(error);failures.Add(error);}}
+   foreach(var leaf in leaves){try{Check();RemoveLeaf(operation,leaf);}catch(Exception error){operation.RecordFailure(error);failures.Add(error);}}
+   foreach(var control in controls){try{Check();control.Remove(operation);if(!Absent(operation,control.ParentHandle,control.Name))throw new IOException("Junction control removal unverified");}catch(Exception error){operation.RecordFailure(error);failures.Add(error);}}
+   if(externalControls.Exists(control=>!control.Closed)){var error=new IOException("External original control custody unresolved");operation.RecordFailure(error);failures.Add(error);}
+   if(failures.Count==0&&root!=IntPtr.Zero&&!rootDisposed){try{Check();if(Identity(root)!=rootIdentity)throw new IOException("Original scratch root identity differs");DispositionOriginal(root);Close(ref root);rootDisposed=true;}catch(Exception error){operation.RecordFailure(error);failures.Add(error);}}
+   if(rootDisposed){try{Check();if(!Absent(operation,parents[parents.Count-1],rootLeaf,true))throw new IOException("Original scratch root removal unverified");}catch(Exception error){operation.RecordFailure(error);failures.Add(error);}}
    if(failures.Count==0&&(rootDisposed||root==IntPtr.Zero)){
-    for(int index=parents.Count-1;index>=0;index--){var handle=parents[index];try{Check();Close(ref handle);parents[index]=handle;}catch(Exception error){failures.Add(error);}}
+    for(int index=parents.Count-1;index>=0;index--){var handle=parents[index];try{Check();Close(ref handle);parents[index]=handle;}catch(Exception error){operation.RecordFailure(error);failures.Add(error);}}
     if(failures.Count==0){AcceptanceControl(BeforeRetirementEntered,ContinueRetirement);Check();Retired=true;Owner retained;if(owners.TryGetValue(Token,out retained)&&Object.ReferenceEquals(this,retained))owners.TryRemove(Token,out retained);}
    }
    if(failures.Count!=0)throw new AggregateException("Original scratch cleanup refused",failures);
   }
-  public void BeginCleanup(){Start(CleanupCore,true);}
-  public void WaitCleanup(){Wait();}
+  public void BeginCleanup(){lock(gate){cleanupOperation=Start(CleanupCore,true);}}
+  public void WaitCleanup(){Operation operation;lock(gate){operation=cleanupOperation;}if(operation==null)throw new InvalidOperationException("Original BeginCleanup operation unavailable");Wait(operation);}
   public void Cleanup(){Run(CleanupCore,true);}
  }
 }
