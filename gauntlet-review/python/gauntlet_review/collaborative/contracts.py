@@ -5,12 +5,13 @@ import base64
 import binascii
 from dataclasses import dataclass
 import hashlib
+import json
 import os
 from pathlib import Path, PureWindowsPath
 import re
 from typing import Annotated, Any, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import AfterValidator, BeforeValidator, BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from gauntlet_review.jcs import canonical_bytes
 
@@ -433,3 +434,236 @@ class Status:
     counts: dict
     snapshot_digest: str | None
     freshness: dict
+
+
+# Persisted records have their own strict schemas. They are not client requests,
+# and decoded SQLite JSON is never trusted just because its digest matches.
+Oid = Annotated[str, Field(min_length=40,max_length=40,pattern=r"^[a-f0-9]{40}$"),
+                AfterValidator(_pattern(r"[a-f0-9]{40}"))]
+
+
+def _strict_flag(value):
+    if type(value) is not bool:
+        raise ValueError("boolean flag required")
+    return value
+
+
+TrueFlag = Annotated[Literal[True],BeforeValidator(_strict_flag)]
+FalseFlag = Annotated[Literal[False],BeforeValidator(_strict_flag)]
+
+
+class ObservationRecord(StrictModel):
+    source_oid: Oid
+    target_oid: Oid
+    checked_at: Annotated[str,Field(max_length=64),AfterValidator(_text(64,nonempty=True))]
+
+
+class HeaderRecord(StrictModel):
+    repository_id: Key
+    source_ref_b64: Annotated[str,Field(max_length=1368)]
+    target_ref_b64: Annotated[str,Field(max_length=1368)]
+    source_oid: Oid
+    target_oid: Oid
+    policy_digest: Digest
+    object_format: Literal["sha1"]
+
+
+class ChangeRecord(StrictModel):
+    change_id: Id
+    old_path_b64: Annotated[str,Field(max_length=5464)] | None
+    new_path_b64: Annotated[str,Field(max_length=5464)] | None
+    old_mode: Literal[0o100644,0o100755,0o120000,0o160000] | None
+    new_mode: Literal[0o100644,0o100755,0o120000,0o160000] | None
+    old_oid: Oid | None
+    new_oid: Oid | None
+    old_length: Annotated[int,Field(ge=0,le=4*1024*1024)] | None
+    new_length: Annotated[int,Field(ge=0,le=4*1024*1024)] | None
+    old_digest: Digest | None
+    new_digest: Digest | None
+
+    @model_validator(mode="after")
+    def sides(self):
+        if self.old_mode is None and self.new_mode is None:
+            raise ValueError("change has no side")
+        for side in ("old","new"):
+            mode=getattr(self,side+"_mode")
+            path=getattr(self,side+"_path_b64")
+            oid=getattr(self,side+"_oid")
+            length=getattr(self,side+"_length")
+            digest=getattr(self,side+"_digest")
+            if mode is None:
+                if any(value is not None for value in (path,oid,length,digest)):
+                    raise ValueError("absent side has metadata")
+                continue
+            if path is None or oid is None:
+                raise ValueError("present side is incomplete")
+            raw=base64.b64decode(path,validate=True)
+            if (not raw or len(raw)>4096 or base64.b64encode(raw).decode("ascii")!=path or b"\0" in raw
+                    or any(part in (b"",b".",b"..") for part in raw.split(b"/"))):
+                raise ValueError("invalid raw Git path")
+            if mode == 0o160000:
+                if length is not None or digest is not None:
+                    raise ValueError("gitlink cannot claim blob bytes")
+            elif length is None or digest is None:
+                raise ValueError("blob has no length/digest")
+        return self
+
+
+class SnapshotRecord(StrictModel):
+    header: HeaderRecord
+    changes: Annotated[list[ChangeRecord],Field(max_length=1000)]
+    digest: Digest
+
+
+class OpenData(StrictModel):
+    snapshot: SnapshotRecord
+    observation: ObservationRecord
+
+
+class InlineDescriptor(StrictModel):
+    kind: Literal["inline"]
+    length: Annotated[int,Field(ge=0,le=256*1024)]
+    sha256: Digest
+    bytes_verified: TrueFlag
+    claims_verified: FalseFlag
+
+
+class ExternalDescriptor(StrictModel):
+    kind: Literal["external"]
+    uri: Uri
+    length: Version
+    sha256: Digest
+    verified: FalseFlag
+    claims_verified: FalseFlag
+
+
+Descriptor = Annotated[InlineDescriptor|ExternalDescriptor,Field(discriminator="kind")]
+
+
+class EvidenceData(StrictModel):
+    evidence_id: Id
+    producer: Key
+    origin: Literal["agent_report","ci_receipt","legacy_certificate"]
+    command: Command
+    runtime: Runtime
+    exit_status: Annotated[int,Field(ge=-(2**31),le=2**31-1)] | None
+    observation: ObservationRecord
+    content: Descriptor
+
+
+class CommonRecord(StrictModel):
+    review_id: Id
+    revision_id: Id
+    snapshot_digest: Digest
+    series_scope: Digest
+    request_digest: Digest
+    data: dict
+
+
+class OpenResult(StrictModel):
+    accepted: TrueFlag
+    change_count: Annotated[int,Field(ge=0,le=1000)]
+    manifest_digest: Digest
+
+
+class EvidenceResult(StrictModel):
+    accepted: TrueFlag
+    evidence_id: Id
+    producer: Key
+    origin: Literal["agent_report","ci_receipt","legacy_certificate"]
+    content: Descriptor
+
+
+class VerdictResult(StrictModel):
+    accepted: TrueFlag
+    normalized_verdict: Literal["approve","request_changes"]
+    accepted_round: Annotated[int,Field(ge=1,le=10)]
+    new_finding_ids: Annotated[list[FindingId],Field(max_length=20)]
+
+
+class ReceiptRecord(StrictModel):
+    event_id: Id
+    operation: Literal["open_review","record_evidence","submit_review"]
+    review_id: Id
+    revision_id: Id
+    snapshot_digest: Digest
+    series_scope: Digest
+    request_digest: Digest
+    store_version: Annotated[int,Field(ge=1,le=MAX_EXACT)]
+    observation: ObservationRecord
+    result: dict
+
+    @model_validator(mode="after")
+    def result_shape(self):
+        model={"open_review":OpenResult,"record_evidence":EvidenceResult,"submit_review":VerdictResult}[self.operation]
+        model.model_validate(self.result,strict=True)
+        return self
+
+
+class RetryMetadata(StrictModel):
+    series_scope: Digest
+    participant: Key
+    operation: Literal["open_review","record_evidence","submit_review"]
+    key: Key
+    request_sha256: Digest
+    event_id: Id
+    result_store_version: Annotated[int,Field(ge=1,le=MAX_EXACT)]
+    result_sha256: Digest
+
+
+class EventMetadata(StrictModel):
+    id: Id
+    seq: Annotated[int,Field(ge=1,le=MAX_EXACT)]
+    revision_id: Id
+    kind: Literal["open_review","record_evidence","submit_review"]
+    body_digest: Digest
+    store_version: Annotated[int,Field(ge=1,le=MAX_EXACT)]
+
+
+def decode_canonical(raw: bytes):
+    try:
+        if type(raw) is not bytes:
+            raise ValueError("canonical body must be bytes")
+        def invalid(_):
+            raise ValueError("invalid JSON number")
+        value=json.loads(raw,parse_constant=invalid)
+        if encode(value)!=raw:
+            raise ValueError("noncanonical stored JSON")
+        return value
+    except (ValueError,TypeError,UnicodeError,CoreError,RecursionError) as error:
+        raise CoreError("CORRUPT_STATE",detail={"reason":"invalid_canonical_record"}) from error
+
+
+def snapshot_from_record(value: dict) -> Snapshot:
+    try:
+        model=SnapshotRecord.model_validate(value,strict=True)
+        header=model.header.model_dump(mode="json")
+        changes=tuple(Change(**change.model_dump(mode="json")) for change in model.changes)
+        material={"header":header,"changes":[change.model_dump(mode="json") for change in model.changes]}
+        if hashlib.sha256(encode(material)).hexdigest()!=model.digest:
+            raise CoreError("DIGEST_MISMATCH",detail={"reason":"stored_snapshot"})
+        seen=set()
+        for change in material["changes"]:
+            record=dict(change)
+            identifier=record.pop("change_id")
+            if identifier in seen or hashlib.sha256(encode({"header":header,"change":record})).hexdigest()[:32]!=identifier:
+                raise CoreError("CORRUPT_STATE",detail={"reason":"stored_change_identity"})
+            seen.add(identifier)
+        return Snapshot(header,changes,model.digest)
+    except (ValueError,TypeError,UnicodeError,ValidationError) as error:
+        raise CoreError("CORRUPT_STATE",detail={"reason":"stored_snapshot_shape"}) from error
+
+
+def decode_event(event: Event) -> CommonRecord:
+    try:
+        if not isinstance(event,Event) or type(event.body) is not bytes:
+            raise ValueError("invalid event storage type")
+        EventMetadata.model_validate({key:getattr(event,key) for key in EventMetadata.model_fields},strict=True)
+    except (ValidationError,ValueError,TypeError) as error:
+        raise CoreError("CORRUPT_STATE",detail={"reason":"event_metadata"}) from error
+    if hashlib.sha256(event.body).hexdigest()!=event.body_digest:
+        raise CoreError("DIGEST_MISMATCH",detail={"reason":"event_body"})
+    try:
+        return CommonRecord.model_validate(decode_canonical(event.body),strict=True)
+    except (ValidationError,ValueError,TypeError) as error:
+        raise CoreError("CORRUPT_STATE",detail={"reason":"event_shape"}) from error

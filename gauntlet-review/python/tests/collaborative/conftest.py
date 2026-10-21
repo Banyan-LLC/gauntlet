@@ -94,3 +94,66 @@ def git_fixture(cfg):
         yield fixture
     finally:
         fixture.repo.close()
+
+
+@pytest.fixture
+def store(cfg,git_fixture):
+    from gauntlet_review.collaborative.source import GitSource
+    from gauntlet_review.collaborative.store import Store
+    git_fixture.pair({}, {b"file":(0o100644,b"one")})
+    with GitSource(cfg) as source:
+        with Store.open(cfg,source.repo_binding) as value:
+            yield value
+
+
+@pytest.fixture
+def append_event(cfg):
+    """Real admission builder; never updates state or counters outside Store."""
+    from dataclasses import asdict
+    import hashlib
+    import uuid
+    from gauntlet_review.collaborative.contracts import Event,Mutation,encode
+    from gauntlet_review.collaborative.source import GitSource,snapshot_payload
+
+    async def append(store,*,key="once",expected_version=0,operation="open_review",body=None,
+                     checkpoint=None,build_hook=None):
+        config=store.config
+        request={"key":key,"expected_version":expected_version,"operation":operation,
+                 "body_sha256":None if body is None else hashlib.sha256(body).hexdigest()}
+        request_digest=hashlib.sha256(encode({"scope":config.series_scope,"role":config.role,
+            "policy_digest":store.policy.digest,"request":request})).hexdigest()
+        async def build(view):
+            if build_hook:
+                build_hook(view)
+            with GitSource(config) as source:
+                snap=source.capture(store.policy)
+                observation=asdict(source.observe())
+            review_id=view.series.id if view.series else uuid.uuid4().hex
+            revision_id=(view.series.current_revision if operation != "open_review" and view.series
+                         else uuid.uuid4().hex)
+            event_id=uuid.uuid4().hex
+            data={"snapshot":{**snapshot_payload(snap),"digest":snap.digest},"observation":observation}
+            if operation == "record_evidence":
+                data={"evidence_id":uuid.uuid4().hex,"producer":config.participant,"origin":"agent_report",
+                      "command":"fixture","runtime":"Python","exit_status":0,"observation":observation,
+                      "content":{"kind":"inline","length":len(body),"sha256":hashlib.sha256(body).hexdigest(),
+                                 "bytes_verified":True,"claims_verified":False}}
+            content={"review_id":review_id,"revision_id":revision_id,"snapshot_digest":snap.digest,
+                     "series_scope":config.series_scope,"request_digest":request_digest,"data":data}
+            event_bytes=encode(content)
+            event=Event(event_id,len(view.series.events)+1 if view.series else 1,revision_id,operation,
+                        event_bytes,hashlib.sha256(event_bytes).hexdigest(),view.store_version+1)
+            operation_result={"accepted":True,"change_count":len(snap.changes),"manifest_digest":snap.digest}
+            if operation == "record_evidence":
+                operation_result={"accepted":True,"evidence_id":data["evidence_id"],"producer":data["producer"],
+                                  "origin":data["origin"],"content":data["content"]}
+            receipt=encode({"event_id":event_id,"operation":operation,"review_id":review_id,
+                "revision_id":revision_id,"snapshot_digest":snap.digest,"series_scope":config.series_scope,
+                "request_digest":request_digest,"store_version":view.store_version+1,
+                "observation":observation,"result":operation_result})
+            return Mutation(event,body,receipt)
+        async def noop():
+            pass
+        return await store.mutate(config.series_scope,config.participant,operation,key,request_digest,
+                                  expected_version,build,checkpoint or noop)
+    return append
