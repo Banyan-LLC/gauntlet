@@ -22,8 +22,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pip install -e './gauntlet-review/python[mcp,dev]'
-      - name: Native custody probes, collaborative and legacy suites
+      - run: python -m pip install -e './gauntlet-review/python[codex,dev]'
+      - name: Native custody probes, collaborative, SDK and legacy suites
         shell: bash
         run: python tests/run-collaborative-matrix.py --receipts "$RUNNER_TEMP/collaborative-evidence" --source-revision '${{ github.sha }}'
       - uses: actions/upload-artifact@v4

@@ -95,6 +95,18 @@ def main():
                               "subprocess.Popen([sys.executable,'-c','import time; time.sleep(120)']); "
                               "os.write(1,b'host-ready\\n'); time.sleep(120)"])
         time.sleep(120)
+    elif scenario=="sdk-real-expiry":
+        import asyncio
+        import tempfile
+        from dulwich.repo import Repo
+        from gauntlet_review.collaborative.contracts import OperatorConfig
+        from collaborative_sdk_smoke import probe
+        root=Path(tempfile.mkdtemp(prefix="sdk-expiry-",dir=owner_context()["receipts"]))
+        repo,state=root/"repo",root/"state"
+        repo.mkdir(); state.mkdir(mode=0o700)
+        Repo.init(str(repo)).close()
+        config=OperatorConfig(repo,state,"fixture",b"refs/heads/topic",b"refs/heads/main","peer","reviewer")
+        asyncio.run(probe(config,"expiry"))
     elif scenario.startswith("mcp-"):
         import anyio
         from mcp import Client

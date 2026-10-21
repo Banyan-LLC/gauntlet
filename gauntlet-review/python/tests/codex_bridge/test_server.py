@@ -2,6 +2,7 @@ import json
 from dataclasses import replace
 
 import pytest
+pytest.importorskip("openai_codex")
 from mcp import Client
 from mcp.shared.exceptions import MCPError
 

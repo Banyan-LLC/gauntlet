@@ -123,6 +123,7 @@ async def test_only_matching_successful_terminal_and_complete_final_message_can_
     assert not result["ok"] and result["error"]["code"]==code
     assert result["error"]["uncertain"] and not result["error"]["partial_usable"]
     assert bridge.status()["state"]=="poisoned" and native.closed
+    assert bridge.status()["thread_id"]=="thread-1"
     assert native.handles[0].closed
 
 

@@ -256,6 +256,13 @@ class ProcessContract(unittest.TestCase):
         self.assertTrue(result.root_reaped and result.tree_retired)
         self.assertEqual(result.stdout.prefix.count(b"host-ready"), 2)
 
+    @unittest.skipUnless(importlib.util.find_spec("openai_codex"),"optional Codex SDK not installed")
+    def test_outer_expiry_retires_real_sdk_and_reviewer_mcp(self):
+        result=self.case("sdk-real-expiry",seconds=30)
+        self.assert_failure(result)
+        self.assertTrue(result.timed_out and result.root_reaped and result.tree_retired,result)
+        self.assertIn(b"sdk-ready",result.stdout.prefix)
+
     @unittest.skipUnless(os.name=="posix","legacy separate-session custody is POSIX; Windows uses the enclosing job")
     def test_outer_expiry_retires_legacy_sut_separate_session_and_descendant(self):
         result=self.case("legacy-session-expiry",seconds=4)

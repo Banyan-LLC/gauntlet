@@ -27,8 +27,9 @@ def write_once(path,value):
 
 def run_suites(receipts,*,base_only):
     package=ROOT/"gauntlet-review/python"
-    suites=[("base",["tests","--ignore=tests/collaborative"])] if base_only else [
-        ("collaborative",["tests/collaborative"]),("legacy",["tests","--ignore=tests/collaborative"])]
+    suites=[("base",["tests","--ignore=tests/collaborative","--ignore=tests/codex_bridge"])] if base_only else [
+        ("collaborative",["tests/collaborative"]),("codex_bridge",["tests/codex_bridge"]),
+        ("legacy",["tests","--ignore=tests/collaborative","--ignore=tests/codex_bridge"])]
     results=[]
     status=0
     for name,paths in suites:

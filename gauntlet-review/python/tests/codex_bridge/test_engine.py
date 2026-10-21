@@ -114,6 +114,25 @@ async def test_concurrent_calls_refuse_busy_without_poisoning(config):
     assert peer.calls==1
 
 
+async def test_busy_status_and_refusals_include_already_owned_native_thread(config):
+    class Started(Conversation):
+        async def run(self,prompt):
+            self.thread_id="fixture-thread"
+            self.turn_id="turn-1"
+            return await super().run(prompt)
+    peer=Started(); peer.release=asyncio.Event(); bridge=Bridge(config,peer)
+    running=asyncio.create_task(bridge.call(request(bridge)))
+    await peer.entered.wait()
+    try:
+        assert bridge.status()["thread_id"]=="fixture-thread"
+        result=await bridge.call(request(bridge,"other"))
+        assert result["error"]["thread_id"]=="fixture-thread"
+        assert result["error"]["turn_id"]=="turn-1"
+    finally:
+        peer.release.set()
+        await running
+
+
 async def test_twenty_keys_and_exact_retry_survive_limit(config):
     peer=Conversation(); bridge=Bridge(config,peer); initial=request(bridge)
     first=await bridge.call(initial)

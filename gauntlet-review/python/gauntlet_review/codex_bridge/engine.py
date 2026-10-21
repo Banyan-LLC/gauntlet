@@ -142,14 +142,17 @@ class Bridge:
         self._cache={}
 
     def status(self):
-        return {"ok":True,"instance_id":self.instance_id,"thread_id":self.thread_id,
+        return {"ok":True,"instance_id":self.instance_id,"thread_id":self._owned_thread(),
             "state":"poisoned" if self._poisoned else "busy" if self._busy else "ready"}
+
+    def _owned_thread(self):
+        return self.thread_id or _safe_id(getattr(self.conversation,"thread_id",None))
 
     def error_response(self,error,*,uncertain=False,cleanup=None):
         payload={"ok":False,"error":{"code":error.code,"cause":error.cause,
             "correlation_id":uuid.uuid4().hex,"uncertain":uncertain,"partial_usable":False,
-            "thread_id":_safe_id(error.thread_id) or self.thread_id,
-            "turn_id":_safe_id(error.turn_id),
+            "thread_id":_safe_id(error.thread_id) or self._owned_thread(),
+            "turn_id":_safe_id(error.turn_id) or _safe_id(getattr(self.conversation,"turn_id",None)),
             "cleanup":cleanup or {"status":"not_attempted","cause":None}}}
         mcp_result(payload)
         return payload
