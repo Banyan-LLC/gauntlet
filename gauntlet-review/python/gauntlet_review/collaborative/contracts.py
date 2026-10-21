@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import binascii
 from dataclasses import dataclass
+from functools import lru_cache
 import hashlib
 import json
 import os
@@ -282,6 +283,7 @@ def validate_request(operation: str, payload: dict | BaseModel) -> BaseModel:
         raise CoreError("INVALID_ARGUMENT", detail={"reason": "invalid_request"}) from error
 
 
+@lru_cache(maxsize=201,typed=True)
 def verdict_capacity(prior_count: int) -> int:
     if type(prior_count) is not int or not 0 <= prior_count <= 200:
         raise CoreError("LIMIT_EXCEEDED", detail={"limit": "findings"})
@@ -549,6 +551,32 @@ class EvidenceData(StrictModel):
     exit_status: Annotated[int,Field(ge=-(2**31),le=2**31-1)] | None
     observation: ObservationRecord
     content: Descriptor
+
+
+class FindingRecord(Recommendation):
+    id: FindingId
+    review_id: Id
+    revision_id: Id
+    round: Annotated[int,Field(ge=1,le=10)]
+    index: Annotated[int,Field(ge=0,le=19)]
+
+
+class FindingEnvelope(StrictModel):
+    record: FindingRecord
+    digest: Digest
+
+
+class VerdictData(StrictModel):
+    accepted_round: Annotated[int,Field(ge=1,le=10)]
+    reviewer: Key
+    requested_verdict: Literal["approve","request_changes"]
+    normalized_verdict: Literal["approve","request_changes"]
+    summary: Summary
+    recommendations: Annotated[list[FindingEnvelope],Field(max_length=20)]
+    carryover: Annotated[list[Carryover],Field(max_length=200)]
+    coverage_digest: Digest
+    coverage: Annotated[list[Id],Field(max_length=1000)]
+    observation: ObservationRecord
 
 
 class CommonRecord(StrictModel):

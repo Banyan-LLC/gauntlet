@@ -14,7 +14,7 @@ import stat
 from pydantic import ValidationError
 
 from .contracts import (BytePage,CoreError,EvidenceData,Event,OpenData,Page,Policy,
-                        ReceiptRecord,RetryMetadata,StoredResult,StoreView,decode_canonical,
+                        ReceiptRecord,RetryMetadata,StoredResult,StoreView,VerdictData,decode_canonical,
                         decode_event,encode,validate_operator_config)
 from .policy import reduce_series
 
@@ -355,6 +355,14 @@ class Store:
                       "origin":data.origin,"content":data.content.model_dump(mode="json")}
             if receipt.result!=expected:
                 _corrupt("evidence_receipt_result")
+            if data.producer!=row["participant"]:
+                _corrupt("evidence_producer_binding")
+        elif event.kind=="submit_review":
+            data=VerdictData.model_validate(body.data,strict=True)
+            expected={"accepted":True,"normalized_verdict":data.normalized_verdict,
+                      "accepted_round":data.accepted_round,"new_finding_ids":[entry.record.id for entry in data.recommendations]}
+            if receipt.result!=expected or data.reviewer!=row["participant"]:
+                _corrupt("verdict_receipt_result")
         return receipt
 
     def _lookup(self,connection,view,scope,participant,operation,key,request_digest):
@@ -408,6 +416,8 @@ class Store:
                         or body.series_scope!=series_scope or body.request_digest!=request_digest
                         or body.revision_id!=event.revision_id or (view.series and body.review_id!=view.series.id)):
                     _corrupt("mutation_event_binding")
+                if event.kind=="open_review" and view.series and view.series.revision_count>=self.policy.revisions:
+                    raise CoreError("LIMIT_EXCEEDED",detail={"limit":"revisions"})
                 # Validate candidate projection before any insertion.
                 reduce_series((() if view.series is None else view.series.events)+(event,))
                 if view.series is None:

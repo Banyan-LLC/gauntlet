@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-10-21T13:01:12.3023398Z",
+  "archive_root": "C:/Users/geoff/Documents/Projects/Banyan/gauntlet/.git/info/reduced-mcp-core/20261021-execution",
+  "prior_manifests": [
+    "execution-evidence-task0.json",
+    "execution-evidence-task1.json",
+    "execution-evidence-task2.json",
+    "execution-evidence-task3.json"
+  ],
+  "files": [
+    {
+      "path": "task3-task-done-v1.log",
+      "bytes": 291,
+      "sha256": "fc019b4c0cfedfa33213d6909dc467a101a4fc0152378b97401fe84d6709ccec"
+    },
+    {
+      "path": "task3-task-done-v1/ccf64f8c12d343c9af283d31cb681b2a-budget.bin",
+      "bytes": 49,
+      "sha256": "99a98fafbfbf5e16e47ec1bfc687d538cfad6f20a3862ec0f8959c1b86336284"
+    },
+    {
+      "path": "task3-task-done-v1/ccf64f8c12d343c9af283d31cb681b2a-receipt.json",
+      "bytes": 1574,
+      "sha256": "570a4d6396349cbabf50fcf9c3ae75fc6f913c50d03868452250116e17b4b682"
+    },
+    {
+      "path": "task4-full-suite-v1/d503eeba8c3e452bb961f424c1f13cbf-budget.bin",
+      "bytes": 49,
+      "sha256": "93a539c113716e8f46381b29b8aca25583e089e9288a64f6420be59ef257ee94"
+    },
+    {
+      "path": "task4-full-suite-v1/d503eeba8c3e452bb961f424c1f13cbf-receipt.json",
+      "bytes": 2848,
+      "sha256": "2ab00ef4b78ce89bd37fcad90a6695c11c0b5ec3ed25070d7f4ecf1e21cd1e59"
+    },
+    {
+      "path": "task4-green-v1/6bc9dc85097449868faa69112dfc1365-budget.bin",
+      "bytes": 49,
+      "sha256": "2cb27b4b8f33c448b923d364e6f739633a88238a67f2470f887823a14a66fd59"
+    },
+    {
+      "path": "task4-green-v1/6bc9dc85097449868faa69112dfc1365-receipt.json",
+      "bytes": 1546,
+      "sha256": "8a219ce5abaae88c007a210e63ea6c5e94e28f6835bfbf83f19cffce53da4dd1"
+    },
+    {
+      "path": "task4-green-v2/c1bf5c30512d47569e8d397d0c1db712-budget.bin",
+      "bytes": 49,
+      "sha256": "836057d658178a5b331822acb9dcb0241fdb3544f69850066f34b727221be7aa"
+    },
+    {
+      "path": "task4-green-v2/c1bf5c30512d47569e8d397d0c1db712-receipt.json",
+      "bytes": 2124,
+      "sha256": "ae7cd5c3aa30a004b0743f566f5ae7410f0427753d3d361962c8a74bde66e793"
+    },
+    {
+      "path": "task4-red-v1/6ff5b2fc936e4f7cad39ab13e25609ce-budget.bin",
+      "bytes": 49,
+      "sha256": "caf71258ca82cdd8392f84d6f15f05ddcbfd145d6648718d2cc6d83d3e62918a"
+    },
+    {
+      "path": "task4-red-v1/6ff5b2fc936e4f7cad39ab13e25609ce-receipt.json",
+      "bytes": 2815,
+      "sha256": "d714ecef440d6b358eb73ade6eeada807c7e66ea6b5a42ce835f1de2ef476132"
+    }
+  ]
+}

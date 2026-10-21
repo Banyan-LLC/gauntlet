@@ -157,3 +157,67 @@ def append_event(cfg):
         return await store.mutate(config.series_scope,config.participant,operation,key,request_digest,
                                   expected_version,build,checkpoint or noop)
     return append
+
+
+@pytest.fixture
+def verdict_factory():
+    from gauntlet_review.collaborative.contracts import validate_request
+    def make(history,*,disposition="addressed",reason="verified against pinned source",**overrides):
+        value={"key":f"round_{history.verdict_count+1}","expected_version":history.store_version,
+               "review_id":history.id,"revision_id":history.current_revision,
+               "snapshot_digest":history.snapshot.digest,"verdict":"approve","summary":"reviewed",
+               "recommendations":[],"coverage_digest":history.snapshot.digest,
+               "coverage":[change.change_id for change in history.snapshot.changes],
+               "carryover":[{"id":finding["record"]["id"],"digest":finding["digest"],
+                             "status":disposition,"reason":reason} for finding in history.findings]}
+        value.update(overrides)
+        return validate_request("submit_review",value)
+    return make
+
+
+@pytest.fixture
+def append_verdict(verdict_factory):
+    from dataclasses import asdict,replace
+    import hashlib
+    import uuid
+    from gauntlet_review.collaborative.contracts import Event,Mutation,encode
+    from gauntlet_review.collaborative.source import GitSource
+    def imports():
+        from gauntlet_review.collaborative.policy import prepare_verdict
+        from gauntlet_review.collaborative.store import Store
+        return prepare_verdict,Store
+    async def append(store,**options):
+        prepare_verdict,Store=imports()
+        config=replace(store.config,participant="peer",role="reviewer")
+        request=verdict_factory(store.read_series(),**options)
+        digest=hashlib.sha256(encode({"scope":config.series_scope,"role":config.role,
+            "policy_digest":store.policy.digest,"request":request.model_dump(mode="json")})).hexdigest()
+        async def build(view):
+            history=view.series
+            accepted=prepare_verdict(history,request,history.snapshot)
+            with GitSource(config) as source:
+                observation=asdict(source.check_snapshot(history.snapshot))
+            event_id=uuid.uuid4().hex
+            data={"accepted_round":history.verdict_count+1,"reviewer":config.participant,
+                  "requested_verdict":request.verdict,"normalized_verdict":accepted.normalized_verdict,
+                  "summary":request.summary,"recommendations":list(accepted.recommendations),
+                  "carryover":list(accepted.carryover),"coverage_digest":accepted.coverage_digest,
+                  "coverage":request.coverage,"observation":observation}
+            body=encode({"review_id":history.id,"revision_id":history.current_revision,
+                "snapshot_digest":history.snapshot.digest,"series_scope":config.series_scope,
+                "request_digest":digest,"data":data})
+            event=Event(event_id,len(history.events)+1,history.current_revision,"submit_review",body,
+                        hashlib.sha256(body).hexdigest(),view.store_version+1)
+            receipt=encode({"event_id":event_id,"operation":"submit_review","review_id":history.id,
+                "revision_id":history.current_revision,"snapshot_digest":history.snapshot.digest,
+                "series_scope":config.series_scope,"request_digest":digest,"store_version":view.store_version+1,
+                "observation":observation,"result":{"accepted":True,"normalized_verdict":accepted.normalized_verdict,
+                    "accepted_round":history.verdict_count+1,
+                    "new_finding_ids":[finding["record"]["id"] for finding in accepted.recommendations]}})
+            return Mutation(event,None,receipt)
+        async def checkpoint():
+            pass
+        with Store.open(config,store.repo_binding,policy=store.policy) as reviewer:
+            return await reviewer.mutate(config.series_scope,config.participant,"submit_review",request.key,digest,
+                                         request.expected_version,build,checkpoint)
+    return append
