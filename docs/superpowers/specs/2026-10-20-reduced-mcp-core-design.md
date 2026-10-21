@@ -2,6 +2,13 @@
 
 Status: proposed design; implementation requires written-spec and plan approval.
 
+**2026-10-21 amendment:** The Human Overlord directed migration to the Codex
+app server through the Python SDK and requires a real Claude↔Codex workflow
+before PR publication. The host-integration amendment below supersedes the
+removed `codex`/`codex-reply` conversation endpoint references. The original
+approved blob `b3326f11143be16b0f7a4a674f0c2492a6bd26d1`, its reviews and execution
+evidence remain preserved in Git and the evidence archive.
+
 ## Purpose and approved direction
 
 Retain Gauntlet's useful deterministic review records while moving agent conversations,
@@ -275,7 +282,102 @@ Roll out this first slice alongside legacy mode. Any later remote transport, ext
 identity, trusted CI verification, automated publication, document workflow or legacy
 retirement requires its own explicit design and review.
 
-## Primary interface references
+## Host-integration amendment: Python SDK and app server
+
+The review core and its five tools remain model-neutral and subprocess-free.
+A separate, optional local stdio MCP **host adapter** provides the conversation
+connection: Claude Code → adapter → official Python Codex SDK → local Codex
+app server. This expressly permits the SDK's native runtime lifecycle in that
+adapter, not in the review core. The adapter adds no scheduler, automatic review
+loop, agent registry, raw JSON-RPC implementation, GitHub writer or legacy-mode
+activation. Direct app-server JSON-RPC would require maintaining more protocol
+code; restoring a removed MCP server or downgrading the CLI is rejected.
+
+Pin `openai-codex==0.163.0`, whose published dependency pins
+`openai-codex-cli-bin==0.163.0`, alongside the existing exact MCP/Pydantic/Git
+pins in a separate `codex` extra. The verified SDK wheel SHA-256 is
+`d151e3ff8188bc2c07a962855d598b93bf87a49ec3440810e45a5f2e1167d99e`.
+Use the packaged runtime by default. No executable override is exposed to MCP
+clients. Missing/wrong optional pins refuse startup without importing or
+affecting the legacy package/core. Python 3.11+ and the existing three-platform
+matrix remain required; unavailable native runtime wheels are a qualification
+failure, not an inferred pass. The SDK is stable; the underlying app-server
+command remains experimental. Record both versions in live evidence.
+
+Operator-only CLI configuration fixes absolute repo/private-state paths, repo
+ID, source/target refs and reviewer participant, using the same validation as the
+core. The SDK config registers a required reviewer-role `gauntlet-reviewer`
+MCP process using that interpreter and tuple. The model uses the native host's
+configured default unless the operator explicitly supplies one. Reviewer turns
+use read-only sandbox and deny escalation; this does not prohibit the separate
+MCP core from recording reviewer verdicts in its configured private state.
+Native user authentication/configuration remains user-owned; do not copy
+credentials, rewrite global host configuration or open a network listener.
+This is collaborative native-host access, not hermetic isolation from the
+native host's existing configuration or proof of model independence.
+
+One adapter process owns one SDK conversation. A single `codex_review` tool
+accepts only a bounded key, prompt and nullable expected thread ID. First use
+creates the thread; later new turns require its exact returned ID. Clients
+cannot select models, permissions, refs, paths, executables or arbitrary saved
+threads. Exact-key replay returns the original response without a second turn;
+different content conflicts. Admit at most 20 keys, 64 KiB UTF-8 prompt, 128 KiB
+returned text and 4 MiB cached responses per process. Consume SDK notifications
+incrementally with an 8 MiB decoded-event total per turn; never silently truncate.
+Only a matching successful terminal turn notification permits success. Return
+thread/turn IDs and the model's complete final message, not a claim of review
+completion. There is no `peer_complete` field in this adapter's results.
+
+There is one active call per adapter. Concurrent calls refuse with `BUSY`.
+The operator sets a per-call application deadline (default 600 seconds, range
+10–1800), reserving five seconds within it for interruption/SDK close. Timeout,
+cancellation, stream loss, invalid terminal state, overflow or SDK failure
+poisons the conversation: attempt native interruption/close within the remaining
+budget, preserve a safe uncertain/error response and refuse further new turns.
+Never automatically retry a model call. Cancellation propagates after cleanup.
+Diagnostic codes/correlation IDs exclude prompts, responses, exception strings
+and credentials. SDK buffers, threads, OS blocking and process-tree retirement
+are native-host responsibilities, not newly certified physical resource bounds.
+Deterministic/live verification uses the existing external native test owner to
+prove actual process closure; SDK close alone is not a closure receipt.
+
+Retry cache/ownership is process-local. Restart does not implicitly resume an
+arbitrary native thread or recreate a lost turn. A caller carrying the previous
+thread ID receives a mismatch before any new model work. An explicit fresh
+conversation must re-read the existing Gauntlet review and every prior finding;
+it does not reset core history/counters. Native SDK conversation history stays
+in the native host's user-owned storage. No adapter operation deletes it.
+
+Acceptance paragraph 6 now requires a real, separately labelled integration run
+on a disposable local Git repository. A real Claude Code author calls the core,
+then the adapter; the real Codex peer reads complete pinned source/history and
+submits a non-nit finding through its reviewer-role MCP tools. Claude makes a
+committed fix, opens the next revision and invokes the same Codex thread. Codex
+must submit a later verdict with the original finding ID/digest addressed.
+Independently inspect the persisted core records: distinct revision OIDs,
+evidence bytes/digests, complete carry-over, and fresh `peer_complete`. Verify
+both conversation turns share a thread ID and have distinct terminal turn IDs.
+Preserve native host versions, full bounded transcripts, canonical core records,
+source OIDs, evidence and actual process-closure receipts. A prose success,
+transport handshake, fake peer or deterministic SDK stub cannot pass this gate.
+Keep every failed attempt. Missing auth/capability leaves publication held.
+
+Model-free tests must cover schemas/import isolation, configuration/role locks,
+same-thread continuation, exact/conflicting retries, concurrency, all logical
+caps, cancelled/failed/missing terminal turns, SDK close failures, poisoned-state
+refusal and safe diagnostics. An installed-SDK/no-model smoke test verifies the
+pinned runtime handshake and configured reviewer MCP discovery. Existing core,
+legacy and native ownership tests remain required. Local branch review precedes
+one authoritative PR review; no PR is published before the live gate passes,
+and this chat neither approves nor merges it.
+
+Amendment interface references:
+[Python SDK](https://learn.chatgpt.com/docs/codex-sdk),
+[app-server protocol](https://learn.chatgpt.com/docs/app-server),
+[removed conversation MCP endpoint](https://learn.chatgpt.com/docs/mcp-server),
+[Claude Code programmatic CLI](https://code.claude.com/docs/en/headless).
+
+## Original interface references (historical)
 
 - [Official Python MCP SDK](https://py.sdk.modelcontextprotocol.io/)
 - [Codex MCP tools and native agent-host example](https://developers.openai.com/cookbook/examples/codex/codex_mcp_agents_sdk/building_consistent_workflows_codex_cli_agents_sdk)

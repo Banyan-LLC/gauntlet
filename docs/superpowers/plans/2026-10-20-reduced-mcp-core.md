@@ -4,6 +4,12 @@
 
 **Goal:** Ship an opt-in local collaborative review service that preserves pinned source, findings and evidence while native hosts own agent conversations.
 
+**2026-10-21 migration amendment:** The Human directed app-server migration through
+the Python SDK and requires the complete live workflow before publication. Keep
+Tasks 0–7 and their evidence intact. The obsolete conversation endpoint in Task 8
+is superseded by Tasks 9–12 below. Execution remains native; review remains local
+first, then one authoritative PR round. No earlier review exception is inherited.
+
 **Architecture:** A Python stdio MCP adapter calls a transport-independent review core backed by SQLite and a read-only Git-object adapter. Review history and policy are separate from host/model lifecycle; the existing hermetic route remains available with its original assurance boundary.
 
 **Tech Stack:** Python 3.11+, SQLite from the standard library, MCP SDK 2.3.0, Dulwich 1.2.17, Pydantic 2.14.1, existing JSON canonicalization and finding-ID functions, pytest.
@@ -20,7 +26,7 @@
 - Git paths preserve raw bytes through base64; sort by unsigned bytes. Never materialize tree paths as OS paths.
 - One persisted series per repository ID/source ref/target ref. Policy changes, restarts and limit refusals never reset its history.
 - Only the current revision accepts new evidence/verdicts. A new revision requires a new verdict and preserves all findings.
-- No shell, Git/model subprocess, hooks, filters, network listener, scheduler, CI executor, publication, approval or merge in production code.
+- No shell, Git/model subprocess, hooks, filters, network listener, scheduler, CI executor, publication, approval or merge in the five-tool production core. The separate optional host adapter delegates native runtime lifecycle only to the official Python Codex SDK, as directed in the 2026-10-21 amendment; it adds no custom subprocess runner or raw JSON-RPC transport.
 - Preserve existing entry points, defaults, certificates and history. Do not activate dormant native/generic helpers or waive the deferred PowerShell 7.2 defects.
 - Fixed limits: 1,000 changed paths; 4 MiB/source blob; 64 MiB total changed old/new bytes; 64 KiB artifact pages; 256 KiB stored evidence/call; 16 MiB stored evidence/review; 256 KiB verdict payload; 200 findings/review; 20 new findings/verdict; 10 accepted verdicts; 20 revisions/review; 256 UTF-8 bytes/carry-over reason; 64 MiB event/evidence payload/review; 1 GiB/store.
 - Quotas are logical payload bounds, not physical SDK/parser, Git decompression, SQLite-file or OS-I/O certification. No silent truncation, pruning or limit escalation.
@@ -808,6 +814,10 @@ async def scenario_two_stdio_hosts_share_history(cfg, server_args, owned_transpo
 
 ## Task 8: Host walkthrough, configuration and final verification
 
+**Migration supersession:** Tasks 9–12 replace the removed conversation endpoint
+and its lifecycle prohibition only for the separate SDK host adapter. All core,
+evidence, native ownership, compatibility and publication constraints still apply.
+
 **Files:** create `docs/collaborative-mcp.md` and build log, add opt-in README link.
 
 - [ ] Document exact installation commands and a user-owned absolute Python path;
@@ -857,6 +867,166 @@ async def scenario_two_stdio_hosts_share_history(cfg, server_args, owned_transpo
   Do not approve or merge from this chat.
 
 ## Planning verification and execution handoff
+
+## Task 9: SDK conversation adapter and locked configuration
+
+**Files:** create `gauntlet-review/python/gauntlet_review/codex_bridge/{__init__,engine,sdk,server,__main__}.py`;
+modify `gauntlet-review/python/pyproject.toml`; create
+`gauntlet-review/python/tests/codex_bridge/{conftest,test_engine,test_server,test_sdk}.py`.
+
+**Interfaces:** `BridgeConfig(operator: OperatorConfig, model: str|None=None,
+timeout_seconds: int=600)`; `PeerReply(thread_id: str, turn_id: str, text: str)`;
+`Conversation.run(prompt: str) -> PeerReply`, `Conversation.close() -> None`
+(async methods); `Bridge.call(request: dict) -> dict` (async),
+`create_server(config) -> mcp.server.lowlevel.Server`.
+`SdkConversation` implements Conversation using public Python SDK APIs. Only
+the separate adapter imports the SDK. The core's five operations remain intact.
+
+- [ ] Write model-free engine regressions with a fake Conversation. Pin exact
+  retry/continuation behavior and watch failure before implementation:
+
+  ```python
+  first=await bridge.call({"key":"first","prompt":"Review pinned source","expected_thread_id":None})
+  assert first["ok"] and first["thread_id"]=="fixture-thread"
+  assert await bridge.call({"key":"first","prompt":"Review pinned source","expected_thread_id":None})=={**first,"replayed":True}
+  second=await bridge.call({"key":"fix","prompt":"Review committed fix","expected_thread_id":"fixture-thread"})
+  assert second["ok"] and second["turn_id"]!=first["turn_id"]
+  assert backend.calls==2
+  ```
+
+- [ ] Add invalid/extra/coerced keys and fields, surrogate/64-KiB UTF-8 prompt,
+  changed-key conflict, missing/wrong continuation ID, BUSY, 20-key/4-MiB cache,
+  128-KiB full reply, backend exception, timeout/cancellation, failed cleanup and
+  poisoned-state cases. Assert no unexpected extra native turn or leaked body.
+  Run selected tests with `python -m pytest tests/codex_bridge -q -o addopts=`
+  under `tests/support/collaborative_command.py`; expected RED for absent modules.
+  Explicitly create a fresh Bridge with no owned thread and supply a prior process's
+  thread ID: it must refuse before invoking its backend. Separately end/lose the
+  SDK notification stream before a matching successful terminal event: response
+  must fail, poison the conversation and never report success.
+- [ ] Implement strict request/config validation, one active operation, per-process
+  exact replay, fixed logical bounds and safe typed errors. A five-second cleanup
+  reserve stays within the original application deadline. Error/uncertain paths
+  poison the conversation; exact failed replay is safe, new turns refuse. No
+  automatic retry, filesystem cleanup or model/config selection by clients.
+- [ ] Add `codex` extra with the existing three exact optional pins plus
+  `openai-codex==0.163.0`, and `gauntlet-codex` console entry point. Verify wheel
+  hash and runtime dependency against the preserved PyPI/source metadata before
+  installing in the isolated selected environment. Keep base-only import guards.
+- [ ] Implement `SdkConversation`: lazy `AsyncCodex(CodexConfig(...))`, fixed
+  reviewer MCP configuration, explicit `ApprovalMode.deny_all` and read-only
+  sandbox, one `thread_start`, subsequent `thread.turn` on that object. Consume
+  notifications incrementally; count decoded bytes, retain only bounded final
+  message and matching terminal status. Fail on partial/failed/interrupted turn.
+  Interruption/close use the SDK; no custom subprocess/JSON-RPC implementation.
+- [ ] Test real SDK-shaped notifications and intercepted public SDK calls; assert
+  configured tuple/role/permissions cannot be overridden, two turns share one
+  thread, unrelated terminal events cannot pass, and decoded-event overflow
+  interrupts. Verify complete MCP text/structured result serialization stays
+  bounded and stdout contains only protocol. Run all new tests to GREEN.
+- [ ] Commit `feat: connect MCP conversations through the Python Codex SDK`.
+
+## Task 10: Native SDK and adapter qualification
+
+**Files:** extend `tests/run-collaborative-matrix.py`,
+`.github/workflows/collaborative-python.yml`,
+`gauntlet-review/python/tests/test_optional_install.py`; create
+`tests/support/collaborative_sdk_smoke.py` and real adapter stdio tests.
+
+**Interfaces:** installed `.[codex,dev]`; native smoke returns SDK/runtime
+version and required reviewer MCP tool names without making a model request;
+all spawned verification remains inside the existing external native owner.
+
+- [ ] Write RED cases for missing/wrong SDK/runtime pins and base-only startup;
+  SDK absence cannot break existing `.[mcp]` imports or startup. Matrix optional
+  jobs install `.[codex,dev]`, execute new model-free adapter tests and native
+  no-model handshake/discovery. Base-only job continues to install only `.[dev]`.
+- [ ] Exercise the installed SDK's packaged native runtime under the owner,
+  using disposable repo/private state; preserve versions, complete stdout/stderr,
+  actual exit and tree retirement. No auth copying, model request or global
+  configuration rewrite. Use official SDK typed requests for any discovery;
+  never implement a parallel JSON-RPC transport.
+- [ ] Test adapter startup/shutdown and malformed requests with real MCP clients.
+  Add externally owned cancellation/expiry cases for SDK app-server descendants.
+  These certify the test run's closure, not universal SDK physical resource bounds.
+- [ ] Run the complete collaborative/adapter and legacy suites on local selected
+  Python environments, plus separate base-only guards. Existing PowerShell source
+  is unchanged: preserve the clean b8bd4d8 whole-suite 40-file/7,281-assertion result;
+  repeat it only if migration touches its exercised source. Native CI qualification
+  remains required before final handoff; no Windows result implies POSIX success.
+- [ ] Commit `test: qualify the SDK bridge without model credentials`.
+
+## Task 11: Full live Claude↔Codex acceptance
+
+**Files:** create `tests/live/collaborative-workflow.py`; update
+`docs/collaborative-mcp.md`, `docs/build-log/2026-10-20-reduced-mcp-core.md`.
+
+**Interfaces:** explicit opt-in live command, absolute create-only archive,
+user-owned Claude/native Codex authentication, disposable Git repo/private state,
+fixed core/bridge host configs. Native execution evidence remains separate from
+Gauntlet hermetic review evidence and CI.
+
+- [ ] Write deterministic assertions/fixtures for the acceptance verifier first:
+  two accepted revisions with different committed OIDs; first non-nit finding;
+  second verdict references its exact ID/digest and addresses it; evidence bytes
+  match hashes; fresh status is `peer_complete`; two successful Codex turns have
+  one thread ID and distinct turn IDs. Missing event/receipt/closure must fail.
+  Inspect actual Claude tool receipts and typed SDK conversation history for the
+  peer's core calls. Require complete manifest/source-tree/history pagination and
+  all required pinned artifact/finding/evidence byte ranges through EOF, with
+  lengths/digests matching canonical records for each revision. Negative fixtures
+  remove a listing page, an artifact range and a prior-finding body; each must
+  refuse acceptance. Coverage claims and prompt instructions alone are insufficient.
+- [ ] Create a tiny disposable committed Python fixture with an actual calculation
+  defect and an explicit intended API. Start real Claude Code in print/structured
+  output mode with temporary strict MCP config for author core and Codex bridge.
+  Allow only the needed native tools; keep reviewer read-only/deny escalation.
+  Prompts instruct complete pinned reads, source-as-data handling and core verdict
+  submission. Do not tell Codex to report a predetermined finding or fake a verdict.
+- [ ] Claude opens review, records evidence, requests review through the bridge,
+  reads the persisted finding, fixes and commits the source, opens the next
+  revision, and requests continuation on the same native Codex thread. No outer
+  script fabricates model verdicts or substitutes a fake peer. The independent
+  verifier reads the actual store after native processes fully retire.
+- [ ] Run under one original native-owner deadline; preserve every attempt,
+  full bounded transcripts, canonical records/evidence, exact OIDs/config/package
+  versions and original exits/closure. Missing host auth/access leaves publication
+  held with concrete diagnostics. Fix verified integration failures and repeat
+  create-only; never waive this acceptance or rewrite previous reports.
+- [ ] Document installation, separate console/role configuration, experimental
+  runtime caveat, SDK thread lifecycle/restart limitations, cache/deadline bounds
+  and absence of any automatic GitHub approval/merge. Update six-paragraph
+  acceptance mapping with actual evidence only.
+- [ ] Commit `docs: prove the native Claude and Codex review workflow`.
+
+## Task 12: Local review, CI and ready PR
+
+**Files:** preserve/append migration reviews, canonical findings, carry-over,
+ledger and SHA-256 evidence indexes under the existing review history.
+
+- [ ] Preserve original approved spec/plan blobs and all reviews. Review the
+  amendment against the authorized SDK direction, then the plan against the amended
+  spec using all six lenses before formal document gates. Keep original finding
+  identities and dispositions; no history reset. Human's current migration directive
+  and earlier native execution selection remain the controlling scope/method.
+- [ ] After implementation, use one fresh whole-branch reviewer, then native local
+  Gauntlet review. Fix verified defects by class with RED→GREEN evidence and a
+  green suite. Do not rerun passing unchanged suites without a new reason.
+- [ ] Inspect the complete review packet before dispatch. Fixed character/byte
+  limits and stack-evidence gates still apply; no truncation, omitted source,
+  invented premise stamps or inherited prerequisite waivers. Preserve a concrete
+  refusal and escalate an actual unresolvable gate rather than bypassing it.
+- [ ] Only after the live workflow passes and local review clears, push the verified
+  branch as geoffroth and open a ready PR against main. Prominently document optional
+  SDK/runtime dependencies, native auth/configuration, restart/reload behavior,
+  experimental app-server status and fail-closed errors. No new secret or production
+  migration is required; native credentials remain in their native user stores.
+- [ ] Qualify all nine native matrix jobs and base-only job, fix verified CI findings,
+  then complete the authoritative exact-PR-head round with live base-tip checks.
+  A canonical review verdict does not authorize this chat to submit GitHub approval.
+  Preserve worktree/branch/all archives for review feedback. Neither approve nor merge.
+
+## Original planning handoff (historical)
 
 Before implementation: commit this plan, run all six required pre-review lenses
 against the approved spec, fix by class, then run the formal plan document gate with
