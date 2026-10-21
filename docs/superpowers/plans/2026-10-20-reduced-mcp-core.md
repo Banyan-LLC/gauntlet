@@ -110,6 +110,11 @@ finds the unique series by configured repository/ref tuple. At opening it accept
 `key` and `expected_version`; zero is valid for a new empty store. `review_status`
 without a review ID returns the configured series (or an explicit null series) and
 store version, allowing either role to obtain the first version.
+Compute a pre-creation `series_scope` digest from configured repository ID and raw
+source/target refs. Retry uniqueness is `(series_scope,participant,operation,key)`.
+The request fingerprint binds scope, configured role, policy digest and complete
+canonical request. A client cannot select scope. Identical keys in different
+configured series are independent; changed content within one scope conflicts.
 
 `SubmitReview` adds `verdict`, `summary`, `recommendations`, `coverage_digest`,
 `coverage` (unique change IDs acknowledging both old/new surfaces), and `carryover`.
@@ -159,11 +164,19 @@ strict canonical base64, maximum decoded 256 KiB; reject malformed/overlong form
 Git path maximum is 4,096 raw bytes per path; unsupported larger paths refuse with
 `LIMIT_EXCEEDED`, never normalize/truncate. Artifact pages return base64 for all
 source/evidence bytes; optional UTF-8 display must not replace exact bytes.
-Read pages: at most 100 manifest/history rows AND 120 KiB canonical envelope;
+Listing pages: at most 100 manifest/history rows AND 80 KiB canonical envelope;
 the MCP result, including text/structured representations, must remain <=256 KiB.
 stop at the first bound and return a continuation marker. Per-blob byte page is
 <=64 KiB, including additional source-tree blobs. Never classify an empty partial
 page as complete. Error detail <=1,024 bytes; never include raw bodies or secrets.
+Binary-page metadata is <=4 KiB and contains IDs/digests/offsets rather than source
+display text; base64 bytes avoid nested JSON escaping. History rows contain only
+bounded event descriptors (ID, sequence, kind, revision, length, digest and body-
+artifact ID), never inline large event bodies. Read canonical event-body bytes
+through the same <=64 KiB artifact paging contract. Status returns counts and
+<=200 compact finding rollups (ID, severity, disposition, digest, immutable record/
+body-artifact link); prose stays in pageable history. List every nit/blocker in
+the rollups without silently omitting entries.
 
 ## Task 1: Strict contracts, optional packaging and quota arithmetic
 
@@ -183,6 +196,29 @@ Envelope keys: `ok, assurance, review_id, revision_id, snapshot_digest,
 store_version, freshness, result, error`. Freshness is `match|stale` plus checked
 UTC/OIDs, `not_checked` without a new observation, or `unknown` on check failure.
 Errors use the same envelope, nullable identity/version when unavailable.
+Shared immutable data records are defined in `contracts.py`, rather than invented
+independently by neighboring tasks:
+
+| Type | Fields |
+| --- | --- |
+| `RefObservation` | source_oid, target_oid, checked_at |
+| `Change` | change_id, old_path_b64/new_path_b64, old_mode/new_mode, old_oid/new_oid, old_length/new_length, old_digest/new_digest; absent sides null |
+| `Snapshot` | header, changes (tuple of Change), digest |
+| `SourceEntry` | raw_path_b64, mode, oid, length, digest, artifact_id |
+| `BytePage` | data (bytes), offset, total, eof, digest |
+| `Event` | id, seq, revision_id, kind, body (canonical bytes), body_digest |
+| `SeriesView` | id, store_version, current_revision, snapshot, events, findings, verdict_count, revision_count, payload_bytes, evidence_bytes |
+| `StoreView` | store_version, series (SeriesView or null), store_payload_bytes |
+| `Mutation` | event, evidence_body (bytes or null), operation_result (canonical bytes) |
+| `StoredResult` | event_id, result_bytes, store_version, replayed |
+| `Page` | items, next_cursor (or null), complete, store_version |
+| `AcceptedVerdict` | normalized_verdict, recommendations, carryover, coverage_digest, status |
+| `Status` | status, finding_rollups, counts, snapshot_digest, freshness |
+
+Tests import `pytest`, `sys`, `dataclasses.replace` and the specific contract types
+used by their snippets. `valid_open_payload` returns `{"key":"initial",
+"expected_version":0}`. Remaining fixtures are defined in the tasks that introduce
+their owned repository/store/policy/core dependencies.
 
 - [ ] Create a dedicated environment only after this plan is approved. Capture a
   baseline legacy Python run before edits; record inherited failures separately.
@@ -193,6 +229,19 @@ Errors use the same envelope, nullable identity/version when unavailable.
   collection guards so a base-only environment skips this directory without import
   failure. Define the shared `cfg` fixture using a regular temporary local state
   directory and a temporary Git repository created through Dulwich.
+  Add this backend fixture, matching production startup rather than parametrizing
+  an uninstalled Trio backend:
+
+```python
+import pytest
+pytest.importorskip("mcp")
+pytest.importorskip("dulwich")
+pytest.importorskip("pydantic")
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
+```
 
 ```python
 def test_capacity_reserves_future_closure():
@@ -223,10 +272,13 @@ def test_bool_is_not_store_version(valid_open_payload):
 
 **Files:** create `collaborative/source.py`, `tests/collaborative/test_source.py`;
 extend the shared fixture with `GitFixture.commit(files, parents=None)->str` and
-`set_ref(ref: bytes, oid: str)->None`, both test-only Dulwich object writers.
+`set_ref(ref: bytes, oid: str)->None`, both test-only Dulwich object writers;
+`write_worktree_file(path: str, data: bytes)->None` writes a normal fixture file.
 
 **Interfaces:** `GitSource(config: OperatorConfig)` is a closing context manager;
 `observe()->RefObservation(source_oid,target_oid,checked_at)`;
+`check_snapshot(snapshot: Snapshot)->RefObservation` validates required changed
+objects/types/lengths/digests and rereads configured refs;
 `capture(policy: Policy)->Snapshot` with full manifest/digest;
 `read_blob(oid: str, offset: int, length: int)->BytePage`;
 `source_entries(snapshot: Snapshot)->Iterator[SourceEntry]` for additional pinned
@@ -287,8 +339,8 @@ initial `test_recovery.py`; shared fixtures add transaction fault checkpoints.
 
 **Interfaces:** `Store.open(config)->Store` (context manager),
 `read_series()->SeriesView|None`, `version()->int`,
-`lookup_retry(participant: str, operation: str, key: str, request_digest: str)->StoredResult|None`,
-`async mutate(participant,operation,key,request_digest,expected_version,
+`lookup_retry(series_scope: str, participant: str, operation: str, key: str, request_digest: str)->StoredResult|None`,
+`async mutate(series_scope,participant,operation,key,request_digest,expected_version,
 build: Callable[[StoreView],Awaitable[Mutation]], checkpoint: Callable[[],Awaitable[None]])->StoredResult`,
 and `read_page(review_id,revision_id,view,cursor,limit)->Page`.
 `Mutation` contains a canonical event, evidence body bytes if any, and canonical
@@ -310,6 +362,9 @@ async def test_exact_retry_precedes_stale_version(store, append_event):
   canonical test event and an async no-op checkpoint. Test same-key/different-
   payload conflict, participant/operation scoping, restart lookup and two independent
   connections submitting from the same expected version (exactly one wins).
+  Add a two-series regression with identical participant/operation/key values:
+  each creates/retries independently and neither replays the other's response.
+  Role/policy/request changes within a scope cannot silently replay.
 - [ ] Implement strict checked startup: absolute existing state directory, no
   symlink/reparse component (`lstat`, `stat.S_ISLNK`, Windows
   `st_file_attributes & FILE_ATTRIBUTE_REPARSE_POINT`), reject redirected DB and
@@ -319,12 +374,15 @@ async def test_exact_retry_precedes_stale_version(store, append_event):
   directories or delete existing files. Check missing paths distinctly from denied
   access. Trusted operator ownership protects the documented non-atomic path check.
 - [ ] Schema v1: `meta(schema_version,store_version,payload_bytes)`,
-  `series(id,repo_id,source_ref,target_ref,policy_digest,payload_bytes)` with unique
+  `series(id,repo_id,repo_binding,source_ref,target_ref,policy_digest,payload_bytes)` with unique
   repo/ref tuple; `events(id,series_id,seq,revision_id,kind,body,body_sha256)`;
-  `evidence(id,series_id,revision_id,bytes,sha256)`; `retries(participant,operation,key,
+  `evidence(id,series_id,revision_id,bytes,sha256)`; `retries(series_scope,participant,operation,key,
   request_sha256,event_id,result_bytes)` with composite unique key.
   Store refs as bytes; use SQL parameters exclusively. IDs are generated UUID4 hex
-  and persisted, never regenerated on retry. Finding records are canonical event
+  and persisted, never regenerated on retry. Reject an existing series bound to a
+  different resolved common Git directory or policy with `CONFIGURATION_MISMATCH`;
+  never create a replacement series. Linked worktrees sharing that common directory
+  use the same repository binding. Finding records are canonical event
   content; projections are rebuilt from events rather than accepted as authority.
 - [ ] Use SQLite foreign keys, rollback journal `DELETE`, `synchronous=FULL`, busy
   timeout 2,000 ms, `isolation_level=None`, `BEGIN IMMEDIATE`, then retry lookup,
@@ -425,6 +483,8 @@ async def test_new_revision_drops_approval_not_findings(flow):
   current revision inside admission; exact retries return stored results without
   pretending to recheck refs. Source capture/ref reread occurs before acceptance;
   status includes actual observation time/OIDs, not a promise against later movement.
+  Status calls `source.check_snapshot` so missing/corrupt required source objects
+  produce an error with unknown freshness rather than peer completion.
 - [ ] Define `ReadRequest.view` enum `history|manifest|source_tree|artifact|evidence`.
   It includes bound review/revision IDs; IDs select persisted records only. For
   artifact/evidence mode include offset/length, no path. `source_tree` enumerates
@@ -435,6 +495,12 @@ async def test_new_revision_drops_approval_not_findings(flow):
   its digest; validate every binding and integer. Digest is integrity formatting,
   not secret authentication. Reject changed-version cursor with `CONFLICT`, not
   silent page mixing; return next cursor and `complete` only at actual exhaustion.
+  History descriptors link to exact pageable canonical event bodies; artifact IDs
+  resolve only within the bound series/revision and collisions fail closed. Test a
+  legally admitted near-limit verdict: read every history descriptor/body page,
+  reconstruct exact bytes/digest and verify progress plus actual MCP size bounds.
+  Exercise 200 maximal finding texts through compact status rollups and complete
+  body reads; status must remain representable without concealing any finding.
 - [ ] Evidence bytes and digest are committed in the same transaction as metadata;
   external descriptors stay unopened/unverified. Return `freshness.not_checked`
   for reads/replays and `unknown` on failed ref checks. Only status emits current
@@ -447,7 +513,7 @@ async def test_new_revision_drops_approval_not_findings(flow):
   Error codes: `INVALID_ARGUMENT, FORBIDDEN, NOT_FOUND, NEEDS_SYNC, STALE,
   MISSING_OBJECT, UNSUPPORTED_REPOSITORY, DIGEST_MISMATCH, CONFLICT,
   LIMIT_EXCEEDED, STORAGE_ERROR, LOCK_TIMEOUT, UNSUPPORTED_SCHEMA, CORRUPT_STATE,
-  INTERNAL_ERROR`.
+  INTERNAL_ERROR, CONFIGURATION_MISMATCH`.
   Only lock timeout, version conflict and retryable transient I/O are marked
   retryable; retries still follow exact-key semantics.
 - [ ] Run `python -m pytest tests/collaborative/test_core.py -q`, then the complete
@@ -552,13 +618,13 @@ async def test_two_stdio_hosts_share_history(cfg, server_args):
   unsupported fixture outcome and retain a required junction/reparse test on a
   capable Windows runner; do not call skipped security coverage verified.
 - [ ] Matrix workflow: GitHub-hosted `ubuntu-latest, windows-latest, macos-latest`
-  × Python `3.11,3.14`; install `.[mcp,dev]`, run new suite and legacy Python suite,
+  × Python `3.11,3.14,3.15`; install `.[mcp,dev]`, run new suite and legacy Python suite,
   plus a separate base-only job. No model/API secrets, CI evidence promotion or
   production setup. The Python matrix script runs these exact local suite commands,
   records interpreter/platform/dependencies and original exit codes, and provides
   per-command timeouts via standard test-owned subprocess APIs (900s/new suite,
   900s/legacy); its scope is Python checks only. Existing PowerShell CI stays intact.
-- [ ] Run focused recovery/stdio on the current runtime, then all six remote matrix
+- [ ] Run focused recovery/stdio on the current runtime, then all nine remote matrix
   jobs on publication. Locally test every installed supported interpreter available
   without inventing coverage for unavailable platforms. Commit
   `test: cover collaborative MCP recovery and platform parity`.
@@ -595,7 +661,7 @@ async def test_two_stdio_hosts_share_history(cfg, server_args):
   the legacy Python suite `python -m pytest gauntlet-review/python/tests -q`, and
   `python -m pytest gauntlet-review/python/tests/collaborative -q` with the package
   installed in the selected environment. Run the base-only install fixture and
-  the six remote Python jobs. Serialize owned heavy tests/reviewer calls; retain
+  the nine remote Python jobs. Serialize owned heavy tests/reviewer calls; retain
   source hashes, original stdout/stderr/exits and closure receipts. Existing floor
   baseline failures remain scoped to unchanged dormant helpers; new active Python
   behavior must pass on its stated floor, and no dormant helper is activated.
@@ -632,4 +698,6 @@ Planning references (interface evidence, not application guarantees):
 [Pydantic 2.14.1 release metadata](https://pypi.org/pypi/pydantic/2.14.1/json),
 [SDK in-process testing](https://py.sdk.modelcontextprotocol.io/get-started/testing/),
 [Dulwich Repo API](https://www.dulwich.io/api/dulwich.repo.Repo.html),
+[Python 3.15 final release schedule](https://peps.python.org/pep-0790/),
+[AnyIO backend fixtures](https://anyio.readthedocs.io/en/stable/testing.html#specifying-the-backends-to-run-on),
 [Codex MCP host example](https://developers.openai.com/cookbook/examples/codex/codex_mcp_agents_sdk/building_consistent_workflows_codex_cli_agents_sdk).
