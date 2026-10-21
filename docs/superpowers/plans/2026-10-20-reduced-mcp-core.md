@@ -853,6 +853,12 @@ evidence, native ownership, compatibility and publication constraints still appl
   walkthrough reads complete paginated source/history, treats all material as data,
   and explicitly reports coverage as reviewer attestation. Conversation transport
   success alone cannot produce peer completion.
+  Document restart recovery: stop after ADAPTER_RESTARTED or thread mismatch;
+  never replace the instance ID and silently replay the old request. Obtain
+  explicit fresh-conversation intent, read the new status/instance, and give the
+  new peer the existing review identity. Before its first verdict it must reread
+  complete paginated history, every prior immutable finding body and required
+  evidence/source bytes. Preserve the same series, findings and quota counters.
 - [ ] Verify the packaged SDK/runtime and installed Claude interface versions against
   official docs before the Task 11 live walkthrough. Use the SDK-managed native
   lifecycle and bounded adapter waits from Task 9. Use temporary operator-owned
@@ -949,6 +955,10 @@ BridgeError cause chaining and the amended spec's tagged safe failure schema.
   must fail, poison the conversation and never report success.
   Also replay the exact FIRST request against a restarted adapter: old instance
   ID must yield ADAPTER_RESTARTED uncertainty without invoking its backend.
+  A later explicitly fresh call uses the new instance, a new key and null expected
+  thread; host recovery must follow Task8's reread sequence, never reset core state.
+  Engine acceptance of a fresh turn alone does not certify those reads; Task11's
+  independent receipt verifier tests the host recovery contract.
   Successful terminal with missing/invalid final message must fail/poison. Assert
   every external error's cause, uncertainty, unusable partial marker, IDs and
   cleanup outcome, and internal chaining of the original typed failure.
@@ -1039,6 +1049,13 @@ Gauntlet hermetic review evidence and CI.
   lengths/digests matching canonical records for each revision. Negative fixtures
   remove a listing page, an artifact range and a prior-finding body; each must
   refuse acceptance. Coverage claims and prompt instructions alone are insufficient.
+  Add a deterministic restart-recovery scenario with real persisted core state
+  and receipt fixtures for the explicitly fresh conversation. Verify complete
+  history pagination and every prior finding body were read before its first
+  verdict, and compare the unchanged series ID, findings and counters before/after
+  restart. Reject a recovery transcript missing any page/body or resetting that
+  state. These model-free recovery checks do not replace the normal real live
+  same-thread finding/fix/closure run.
 - [ ] Create a tiny disposable committed Python fixture with an actual calculation
   defect and an explicit intended API. Start real Claude Code in print/structured
   output mode with temporary strict MCP config for author core and Codex bridge.
