@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "client_date": "2026-10-21",
+  "artifact_commit": "dfed54755356e081a9e46f057a1a72a31b4e82d0",
+  "approved_spec_commit": "5c93d6b29d507ace5e7ad901e75a188924204ba2",
+  "rounds": 2,
+  "prior_recommendations": 5,
+  "carryover": "plan/carryover-round2.json",
+  "verdict": "approve",
+  "remaining_recommendations": 0,
+  "original_exit": 0,
+  "tree_retired": true,
+  "input_tokens": 33676,
+  "exact_original_archive": "C:/Users/geoff/Documents/Projects/Banyan/gauntlet/.git/info/reduced-mcp-core/20261020-plan-v1/round2-originals",
+  "files": [
+    {
+      "name": "carryover-round2.json",
+      "bytes": 6741,
+      "sha256": "21db64bb694c8e7989469339188faa3df8234c11f872ccebb731b2fa8b20a3fa"
+    },
+    {
+      "name": "cli-pin.json",
+      "bytes": 218,
+      "sha256": "b2a5b2766d56a39926aeec8adf89a451de70ed8f76c650f58e5eec831c75398e"
+    },
+    {
+      "name": "round-1-attempt-1-events.jsonl",
+      "bytes": 7711,
+      "sha256": "36f7ae0bfc449b19063796583aeefe6bd26e229cce14a4903728a241942062f5"
+    },
+    {
+      "name": "round-1-attempt-1-meta.json",
+      "bytes": 5956,
+      "sha256": "91ba336b9e7be1becc93640ea393bacb6dcf5cbd66187ce14b635d775425d95f"
+    },
+    {
+      "name": "round-1-attempt-1-process.json",
+      "bytes": 778,
+      "sha256": "0827e66011e4700fad396cebfbbd3811f7213faca3e69acd5778123ea47cde37"
+    },
+    {
+      "name": "round-1-attempt-1-transport.json",
+      "bytes": 11850,
+      "sha256": "192feae5f4ba855978f1f020823bf8af1be05a68faae6c08a295346a04f2b612"
+    },
+    {
+      "name": "round-1-attempt-1-usage.json",
+      "bytes": 260,
+      "sha256": "b3ef2425593996d329e0bccbe12abb507197f12d98636a8a0aa446a664bdc2d6"
+    },
+    {
+      "name": "round-1-attempt-1-verdict.raw.json",
+      "bytes": 4989,
+      "sha256": "db7b7939ce87cdf37189c0ff55614ebfec2b10057911232dbbf37337c432e1eb"
+    },
+    {
+      "name": "round-1-verdict.json",
+      "bytes": 4747,
+      "sha256": "1a1d177814637779869733f46ce9994c0d793ffc7ab54c02b5605b0e4e18c19b"
+    },
+    {
+      "name": "round-2-attempt-1-carryover.json",
+      "bytes": 6596,
+      "sha256": "64e80b8c565c7866fed34d2cd39b7c000f31f9946db46ef33a28ed7a06ae1167"
+    },
+    {
+      "name": "round-2-attempt-1-carryover.txt",
+      "bytes": 6335,
+      "sha256": "e3a8e67c2e711e5869c1640ad7bd17a8bd5f91cae48381a35c9984a4bffe85ca"
+    },
+    {
+      "name": "round-2-attempt-1-events.jsonl",
+      "bytes": 2848,
+      "sha256": "5152c1fee48bac96a800eda89c7428b0ea3135cff9b015f9985f1bb59bac205c"
+    },
+    {
+      "name": "round-2-attempt-1-meta.json",
+      "bytes": 6159,
+      "sha256": "4d25a2afa77914b94bbbf54ba7111518ffc10613d5a07e4d2e81252a746bfd4c"
+    },
+    {
+      "name": "round-2-attempt-1-process.json",
+      "bytes": 778,
+      "sha256": "cd91fa79b17f343f2e9ab4021621cd8e93c7ea65a9cbd9bab407901ebcd10324"
+    },
+    {
+      "name": "round-2-attempt-1-transport.json",
+      "bytes": 11849,
+      "sha256": "bc951d5269c8bb58b2cc4d9763d19922ca8905e9e0e58cd68495c303f3b71e62"
+    },
+    {
+      "name": "round-2-attempt-1-usage.json",
+      "bytes": 258,
+      "sha256": "2278f2682064d0432bbb38b1792c0b46e1e57b4fea6d701ba9ae85a2158cfbb1"
+    },
+    {
+      "name": "round-2-attempt-1-verdict.raw.json",
+      "bytes": 243,
+      "sha256": "fc68c13aabf5225a21192c5822cdd7f2b60f917448e2d40e426e76e7cc6b4bc2"
+    },
+    {
+      "name": "round-2-verdict.json",
+      "bytes": 230,
+      "sha256": "78e33f2dfcf2b047a227fdd40d576fcc564c132d0e6d2544a4fd65ca300891cd"
+    },
+    {
+      "name": "state.json",
+      "bytes": 275,
+      "sha256": "ae413233d7ddc2c8fcf20fa6cf4fb0e1bb8209db46926ea448ca4831bd69e498"
+    }
+  ],
+  "planning_checks": {
+    "payload_projection_bytes": 218196,
+    "payload_limit_bytes": 262144,
+    "headroom_bytes": 43948,
+    "python_blocks_parsed": 10,
+    "product_implementation": "not begun",
+    "product_dependencies": "not installed",
+    "product_tests": "not run, planning stage",
+    "human_plan_approval": "pending",
+    "execution_method": "not selected"
+  },
+  "raw_log_whitespace": "Exact raw JSONL final blank lines preserved; documentation whitespace check excludes raw event files only."
+}
