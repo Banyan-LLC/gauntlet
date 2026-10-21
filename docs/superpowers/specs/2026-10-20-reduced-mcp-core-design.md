@@ -79,6 +79,9 @@ the source of truth; there are no newline conversions, attribute filters or work
 directory reads. Symlink blobs are data and never followed. Gitlinks are explicit
 pointer changes, not claims that submodule contents were reviewed. Missing objects,
 unsupported object formats/extensions and incomplete enumeration fail closed.
+Git paths retain raw-byte identity, use reversible base64 in transport and sort by
+unsigned byte order. A separate escaped display label is informational only. Case,
+Unicode normalization and invalid UTF-8 never collapse paths or become OS filenames.
 
 The snapshot digest binds repository ID, source/target ref names and OIDs, the full
 manifest and the versioned policy. Refs are checked again before the snapshot is
@@ -110,9 +113,22 @@ The public interface has five tools; operations are structured, not free-form co
 | `submit_review` | reviewer | Append a schema-valid peer verdict, complete coverage attestation and validated carry-over ledger. |
 | `review_status` | author/reviewer | Recheck local refs and derive current revision, findings, evidence provenance and peer-review status. |
 
+There is one persisted review series per repository ID and configured source/target
+ref pair. `open_review` finds that series or creates it under a database uniqueness
+constraint; clients cannot create a replacement series for the same pair. Policy
+changes cannot reset it. New revisions, process restarts and limit refusals preserve
+its findings and counters. Operator configuration changes or deletion of the store
+are outside this cooperative boundary and cannot be presented as continuation of
+the same recorded review.
+
 Every mutation includes an idempotency key and expected store version. Exact retries
 return the original result, including after a lost response; reusing a key for different
-content fails. A non-retry with an old version fails with `CONFLICT`. Requests bind
+content fails. A non-retry with an old version fails with `CONFLICT`. Successful
+reads/status responses include their observed store version, and mutation responses
+include the resulting version. On conflict either role can refresh through
+`review_status`, reconsider the intervening events and submit with a new idempotency
+key/version; blindly changing the version of an old request is not a retry.
+Requests bind
 review ID, revision ID and snapshot digest. Only the current revision accepts new
 evidence or verdicts. Rejected/stale submissions cannot make status complete.
 
@@ -127,9 +143,12 @@ A verdict uses `approve` or `request_changes`, recommendations with severity
 non-nit finding is normalized to `request_changes`. Findings receive deterministic
 IDs using the existing round/index/content scheme, namespaced by review ID.
 
-Each subsequent accepted verdict carries every finding from all previous accepted
-verdicts exactly once, retaining its original severity, location, issue and suggestion.
-Each entry is `addressed`, `disputed` or `outstanding`; the latter two require reasons.
+Each subsequent accepted verdict accounts for every finding from all previous accepted
+verdicts exactly once. A carry-over entry references the immutable finding ID and record
+digest rather than resending its text; the core resolves and preserves the original
+severity, location, issue and suggestion. Unknown IDs, digest mismatches and attempts
+to replace that text fail validation. Each entry is `addressed`, `disputed` or
+`outstanding`; the latter two require reasons.
 Only an `addressed` non-nit can close that blocker. A disputed or outstanding non-nit
 keeps the review in `changes_requested`, even if the new verdict says approve.
 The reviewer owns these dispositions; an author's conversational claim cannot close
@@ -169,8 +188,14 @@ Status is computed from persisted events, never a client-supplied `approved` fla
 - `stale`: either configured local ref no longer matches the current snapshot.
 
 Errors are distinct from those four states and cannot be interpreted as completion.
-Every response includes assurance profile, revision/snapshot identity and freshness
-observation time. Nits remain visible when `peer_complete`. Evidence presence or a
+Every response includes assurance profile, available revision/snapshot identity and a
+freshness discriminant: `match`/`stale` with the actual observation time and OIDs,
+`not_checked` for an immutable historical read or replayed result, or `unknown` when
+the check failed. Identity is explicitly null when creation has not succeeded.
+An idempotent retry preserves the original mutation result and its original observation;
+the response envelope does not present it as a new check. Only `review_status` derives
+current completion from a new successful ref observation. Nits remain visible when
+`peer_complete`. Evidence presence or a
 self-reported green test never turns this status into CI success, hermetic certification,
 human approval or merge authorization. A new source revision requires a new verdict;
 prior findings carry forward while prior approval does not.
@@ -179,9 +204,14 @@ prior findings carry forward while prior approval does not.
 
 Version-one defaults are fixed policy inputs: 1,000 changed paths, 4 MiB per source
 blob, 64 MiB total changed old/new bytes, 64 KiB artifact pages, 256 KiB stored evidence
-per call, 16 MiB stored evidence per review, 256 KiB verdict payload, 1,000 findings per
-review, 10 accepted verdicts and 20 revisions per review. Metadata and strings have
-explicit schema limits in the implementation plan. Total event/evidence payload is
+per call, 16 MiB stored evidence per review, 256 KiB verdict payload, 200 findings per
+review, 20 new findings per verdict, 10 accepted verdicts and 20 revisions per review.
+Carry-over reasons are at most 256 UTF-8 bytes each. The verdict schema must reserve
+space for a full carry-over ledger at maximum reason lengths and coverage of the
+maximum manifest before accepting any new findings; the implementation plan must
+prove this fits the payload cap and specify all remaining metadata/string bounds.
+An earlier valid verdict must never make a later closure unrepresentable.
+Total event/evidence payload is
 limited to 64 MiB per review and 1 GiB per store; failure to reserve space refuses a
 mutation atomically. These are logical application payload quotas, not a claim about
 physical SQLite file size, SDK/parser allocations or Git decompression memory.
@@ -201,7 +231,8 @@ mutation; once committed, retry discovers the committed result. No background jo
 subprocess, model session or unbounded cleanup loop is created by the service.
 
 State uses one operator-created directory outside the working tree and legacy state.
-Startup rejects symlink/reparse components in its path and existing database files;
+Startup rejects symlink/reparse components in its path, including database files;
+existing regular database files are accepted after schema/integrity validation.
 no request-derived filesystem path is opened, and no cleanup recursively deletes
 anything. The operator must preserve ordinary local directory ownership and avoid
 concurrent path replacement. Repository metadata, linked-worktree pointers and object
@@ -226,8 +257,13 @@ The first implementation must demonstrate:
    findings, unknown IDs, approval-with-blockers and role misuse refuse clean completion.
 3. Concurrent writes, exact/conflicting retries, cancellation and crashes around commits
    preserve history and yield deterministic recovery without duplicate verdicts.
+   A second participant and a restarted process can reopen the existing store.
 4. Exact byte handling, page boundaries, all quotas and Unicode/binary/mode cases work
    consistently; symlink contents are data, and request strings cannot open host paths.
+   Raw non-UTF-8, case-distinct and normalization-distinct Git paths retain separate
+   identities and identical manifests on all supported platforms.
+   A near-limit accepted finding set can be closed with a complete carry-over ledger;
+   reopening the same ref pair after quota refusal cannot reset findings or counters.
 5. Legacy tests remain passing within their established supported-runtime boundaries;
    installing the legacy package without the extra neither imports nor starts MCP.
 6. A documented, explicitly collaborative Claude-to-Codex MCP walkthrough uses pinned
