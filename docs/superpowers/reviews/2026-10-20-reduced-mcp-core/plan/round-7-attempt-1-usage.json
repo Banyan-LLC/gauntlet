@@ -1,0 +1,6 @@
+{
+  "round": 7,
+  "attempt": 1,
+  "raw_event": "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":42411,\"cached_input_tokens\":0,\"cache_write_input_tokens\":0,\"output_tokens\":4527,\"reasoning_output_tokens\":4470}}",
+  "input_tokens": 42411
+}
