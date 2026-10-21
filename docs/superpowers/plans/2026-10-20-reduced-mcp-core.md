@@ -866,8 +866,8 @@ evidence, native ownership, compatibility and publication constraints still appl
   results, explicit skips/limitations, import isolation and `peer_complete` boundary.
   Confirm the diff has no legacy history/certificate/source integration changes.
 - [ ] Commit `docs: explain collaborative MCP setup and assurance`.
-- [ ] At implementation review transition, offer the human local-first or PR-per-round
-  review as required by gauntlet-dev. Preserve all findings through the chosen route;
+- [ ] At implementation review transition, use the Human's selected local-first
+  review, then one authoritative PR round. Preserve all findings through this route;
   the approved spec is the only trusted controlling document. Complete review fixes,
   verification and the required authoritative PR round, then publish the ready PR
   against `main` as geoffroth. Describe optional dependencies/host configuration,
@@ -883,7 +883,8 @@ modify `gauntlet-review/python/pyproject.toml`; create
 `gauntlet-review/python/tests/codex_bridge/{conftest,test_engine,test_server,test_sdk}.py`.
 
 **Interfaces:** `BridgeConfig(operator: OperatorConfig, model: str|None=None,
-timeout_seconds: int=600)`; `PeerReply(thread_id: str, turn_id: str, text: str)`;
+timeout_seconds: int=600)`; reject timeout values outside 10–1800 seconds,
+including coerced or boolean values. `PeerReply(thread_id: str, turn_id: str, text: str)`;
 `Conversation.run(prompt: str) -> PeerReply`, `Conversation.close() -> None`
 (async methods); `Bridge.call(request: dict) -> dict` (async),
 `create_server(config) -> mcp.server.lowlevel.Server`.
@@ -928,7 +929,7 @@ BridgeError cause chaining and the amended spec's tagged safe failure schema.
   cleanup outcome, and internal chaining of the original typed failure.
 - [ ] Implement strict request/config validation, one active operation, per-process
   exact replay, fixed logical bounds and safe typed errors. A five-second cleanup
-  reserve stays within the original application deadline. Error/uncertain paths
+  reserve stays within the original application deadline. Native uncertain paths
   poison the conversation; exact failed replay is safe, new turns refuse. No
   automatic retry, filesystem cleanup or model/config selection by clients.
   Only failures after native work may have started poison the conversation;
@@ -936,6 +937,11 @@ BridgeError cause chaining and the amended spec's tagged safe failure schema.
   refusal leave it usable. Test an explicitly fresh call after ADAPTER_RESTARTED.
   Cancellation attempts interruption and close within the remaining original
   deadline, then propagates; test propagation and bounded cleanup independently.
+  Count a cumulative maximum of 8 MiB decoded SDK-event bytes per turn; stop
+  consuming immediately on the first crossed byte and interrupt/close. Test the
+  exact boundary and one byte over. Apply the 256 KiB complete serialized MCP
+  result limit to success, error and replay responses, including escaped text
+  plus structured content, and test those paths without truncation.
 - [ ] Add `codex` extra with the existing three exact optional pins plus
   `openai-codex==0.163.0`, and `gauntlet-codex` console entry point. Verify wheel
   hash and runtime dependency against the preserved PyPI/source metadata before

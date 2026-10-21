@@ -1,0 +1,18 @@
+{
+  "verdict": "request_changes",
+  "summary": "The five prior-round findings appear addressed. Two plan gaps remain.",
+  "recommendations": [
+    {
+      "severity": "important",
+      "location": "Task 9: SDK notification handling, result serialization and BridgeConfig",
+      "issue": "[P2] The adapter steps do not state the approved 8 MiB cumulative decoded-event cap, 256 KiB complete serialized MCP-result cap, or 10–1800 second timeout range. Generic overflow and timeout tests could pass while those specific bounds are violated.",
+      "suggestion": "Specify and test each exact boundary. Stop consuming notifications immediately when the decoded-event cap is crossed, and apply the result cap to success, error and replay responses."
+    },
+    {
+      "severity": "important",
+      "location": "Task 8: implementation review transition",
+      "issue": "[P2] An active checkbox still offers a PR-per-round review route, conflicting with the amendment’s required local review followed by one authoritative PR round.",
+      "suggestion": "Replace that choice with the mandated local-first sequence before publication."
+    }
+  ]
+}

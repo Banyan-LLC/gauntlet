@@ -1,10 +1,10 @@
 {
-  "round": 2,
+  "harness_dir": "C:\\Users\\geoff\\AppData\\Local\\gauntlet-review\\harness\\6b19f8055972d64fe7667253c993c3e7",
+  "status": "in_review",
+  "attempt": 2,
   "state_version": 1,
   "downgraded": false,
-  "attempt": 1,
-  "harness_dir": "C:\\Users\\geoff\\AppData\\Local\\gauntlet-review\\harness\\6b19f8055972d64fe7667253c993c3e7",
-  "failure_reason": "round 3 attempt 1: codex exit 0 or no verdict file",
-  "verdict": "approve",
-  "status": "failed_attempt"
+  "failure_reason": null,
+  "round": 3,
+  "verdict": "request_changes"
 }
