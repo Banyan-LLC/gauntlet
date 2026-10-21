@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "date": "2026-10-21",
+  "question": "Approve the amended spec and plan with three documented limits: native SDK cleanup is not certified process-tree retirement; quotas do not certify physical SDK/parser memory; finite review budgets may expire with findings still open? I recommend retaining these limits and recording explicit exceptions for the conflicting Gauntlet requirements, while fixing all other verified findings and requiring the real Claude↔Codex workflow, CI and review before publication.",
+  "answer": "Approve SDK limits and exceptions (Recommended)",
+  "question_call_id": "call_4d1f9081f9444bc998eb7a5812d29484",
+  "approved_commit": "efdf3589c26941372e1c8c6a8a450f1ccc82f9e4",
+  "approved_spec_blob": "f9b94a453e2c6248dd80c3f6d31be8178c7237e4",
+  "approved_plan_blob": "1b5365c4a920a5eaaaa975e24ef4cb17ae5aa4bc",
+  "accepted_exception_ids": [
+    "r2-9bd8f87063ece82e65594fc91c747cfb",
+    "r2-3efc988d9abb0c13316869b939ee4459",
+    "r2-a54ae4c0c88390814e2ea398a45d453e",
+    "r3-67d32df86e7665bbe049fe8073f6b001",
+    "r3-41f4e78cf60c49ec47d47a185954c982",
+    "r3-be9e656bfe98ccb8eec571f4d6db6f43"
+  ],
+  "scope": "Only the three stated assurance limits are accepted exceptions. Canonical request_changes verdicts remain intact; no claim of fixes or canonical approval. All other verified findings require fixes; full real workflow, CI and review remain required before publication. No approval or merge authorization."
+}

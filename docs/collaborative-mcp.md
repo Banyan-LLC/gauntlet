@@ -171,6 +171,13 @@ response loss after COMMIT may require exact-key recovery.
 
 ## Native conversation walkthrough: remaining acceptance
 
+The Human has directed replacement through the official Python Codex SDK/app
+server. The [spec amendment](superpowers/specs/2026-10-20-reduced-mcp-core-design.md#host-integration-amendment-python-sdk-and-app-server)
+and [plan](superpowers/plans/2026-10-20-reduced-mcp-core.md#task-9-sdk-conversation-adapter-and-locked-configuration)
+describe the proposed adapter and mandatory real finding/fix/closure proof.
+Implementation and live acceptance remain pending; the following capability record
+is preserved historical evidence, not instructions to restore the removed endpoint.
+
 The approved design referenced Claude hosting the official Codex MCP server,
 calling its `codex` tool for the review and `codex-reply` for a later fix/closure.
 That endpoint is **absent from both available Codex binaries**, PATH version

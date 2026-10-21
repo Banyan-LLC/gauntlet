@@ -1,0 +1,24 @@
+{
+  "verdict": "request_changes",
+  "summary": "The final-message, typed-error, restart-identity, and state-sidecar clarifications address their earlier findings. Three substantive gaps remain.",
+  "recommendations": [
+    {
+      "severity": "blocking",
+      "location": "Host-integration amendment — deadline and poisoned-conversation paragraphs",
+      "issue": "[P1] Cleanup is only attempted through SDK interruption and close. The deadline does not guarantee termination and reaping of the app-server process tree, including descendants holding stdin, stdout, or stderr open, on timeout, cancellation, exceptions, or close failure.",
+      "suggestion": "Specify cleanup on every exit path, with one shared deadline covering all waits and platform-specific whole-tree termination and reaping when native close fails."
+    },
+    {
+      "severity": "blocking",
+      "location": "Limits, errors and filesystem behavior — verdict and revision budgets",
+      "issue": "[P1] The amendment explicitly permits exhaustion to leave findings open. A finding added by the tenth verdict, or one requiring a fix after the twentieth revision, has no remaining closure path. This contradicts the controlling guarantee that an accepted finding remains closable.",
+      "suggestion": "Reserve verdict and revision capacity for closure, or refuse an acceptance that would consume the final closure slot while leaving findings open."
+    },
+    {
+      "severity": "important",
+      "location": "Host-integration amendment — adapter limits; Limits, errors and filesystem behavior",
+      "issue": "[P2] The caps exclude retained native stdin, stdout and stderr data, SDK/parser buffers and queues, and Git decompression. An oversized input can therefore be retained before a decoded-event or logical payload cap is checked.",
+      "suggestion": "Define per-channel and aggregate retained-byte caps, enforce them before decoding or materializing oversized input, and stop the affected operation as soon as a cap is crossed."
+    }
+  ]
+}

@@ -34,7 +34,8 @@ identify their working source separately from their parent commit.
 | Windows Python 3.13.7 / SQLite 3.50.4 | Same 24 / 195 / 145 passed, six explicit skips | `task7-matrix313-v1` |
 | Focused real stdio, recovery, path security and matrix controller | 22 passed; actual exit 0 and full native tree retirement | `task7-task-done-v1` |
 | Separate base-only Python 3.14 environment | Full base suite passed without MCP/Dulwich/Pydantic; missing-extra startup and import isolation passed | `task6-base-suite-v1` |
-| Clean functional source, current PowerShell 7.6.6 | First attempt reached its 900-second deadline; incomplete, tree retired; longer fresh run pending | `task8-powershell-v1` |
+| Clean functional source, current PowerShell 7.6.6 | First attempt reached its 900-second deadline; incomplete, tree retired; preserved separately | `task8-powershell-v1` |
+| Clean `b8bd4d8`, PowerShell 7.6.6 | All 40 test files passed; 7,281 assertions; actual exit 0 and full native retirement | `task8-powershell-v2` |
 | Review fixes, Windows Python 3.14.6 | 28 custody probes passed, two POSIX-only skips; 221 collaborative and 145 legacy tests passed, six legacy/environment skips | `implementation-matrix314-v3` |
 | Review fixes, Windows Python 3.13.7 | Same 28 / 221 / 145 passed with the same explicit skips | `implementation-matrix313-v2` |
 | Final branch-review fix, Windows Python 3.14.6 | 28 custody probes passed, two POSIX-only skips; 224 collaborative and 145 legacy tests passed, six legacy/environment skips | `final-matrix314-v1` |
@@ -59,7 +60,7 @@ pass is inferred from Windows results.
 | 3. CAS/retries, cancellation, crashes, restart and second participant | Real before/after-COMMIT process exits 73 with required control checkpoints; exact-key recovery once; cancellation at three Store checkpoints and through SDK; post-COMMIT lost response; two-connection CAS | Cross-platform CI results pending |
 | 4. Exact bytes, quotas, raw paths, complete near-limit carry-over and persistent counters | `test_contracts.py`, `test_source.py`, `test_store.py`, `test_policy.py`, `test_path_security.py`; Git objects for case/normalization/raw-byte paths; whole-byte digests and pages; real 180-prior-finding closure in round ten | Cross-platform CI results pending; physical resource certification is outside the approved logical quotas |
 | 5. Legacy compatibility and base-only isolation | Legacy suite remains green on both installed supported Python runtimes; separate base-only venv has no optional dependencies; console missing-extra diagnostic is short and safe | Final PowerShell/base checks and remote floor job pending |
-| 6. Documented collaborative Claude-to-Codex native conversation walkthrough | Operator configuration and complete reading/submission flow documented; installed host versions and capability failures preserved | **Live walkthrough blocked:** both installed Codex binaries lack `mcp-server`; no native model-to-model pass is claimed |
+| 6. Documented collaborative Claude-to-Codex native conversation walkthrough | Original host capability failures preserved; Human directed official Python SDK/app-server migration; amended spec and plan committed | SDK adapter implementation and real finding/fix/closure walkthrough remain required before publication; no live pass claimed |
 
 ## Payload and assurance boundaries
 
@@ -133,6 +134,28 @@ them and changes no legacy history/certificate/source integration code.
 
 Final review, authoritative PR review, remote CI and the publication handoff are
 recorded as they complete. Approval and merge from this chat remain prohibited.
+
+## App-server migration amendment
+
+The Human directed migration through the official Python SDK and requires the full
+real Claude↔Codex workflow before publication. The [spec amendment](../superpowers/specs/2026-10-20-reduced-mcp-core-design.md#host-integration-amendment-python-sdk-and-app-server)
+and [plan Tasks 9–12](../superpowers/plans/2026-10-20-reduced-mcp-core.md#task-9-sdk-conversation-adapter-and-locked-configuration)
+keep SDK lifecycle in a separate optional MCP adapter. The original approved spec
+blob and pre-migration plan were archived create-only before amendment; original
+canonical rounds and findings remain intact.
+
+SDK `0.163.0` and its exact runtime dependency were checked against published PyPI
+metadata and wheel hashes without installing or executing the SDK. Runtime wheels
+exist for the required operating-system families; native qualification is pending.
+All six amendment lenses ran; their three conformance gaps were fixed. Formal spec
+rounds 2–3 and all original native process/usage/transcript evidence are preserved.
+Round 3 accepted the restart-identity, final-message, typed-error and state-sidecar
+clarifications. Its remaining three recommendations request native physical
+retirement, physical memory bounds and closure beyond finite review budgets.
+These conflict with the proposed disclosed SDK/cooperative assurance limits and
+remain explicitly disputed pending Human disposition. No clean formal verdict,
+SDK implementation, native handshake or live workflow is claimed yet. PR creation
+remains held.
 
 Six pre-hardening reviews are preserved under `prehardening-d06c1df` in the raw
 execution archive. Their verified findings produced regression tests and fixes
