@@ -1,0 +1,215 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-10-21T23:32:30.2190941Z",
+  "archive_root": "C:/Users/geoff/Documents/Projects/Banyan/gauntlet/.git/info/reduced-mcp-core/20261021-execution",
+  "prior_manifests": [
+    "execution-evidence-migration-plan.json",
+    "execution-evidence-task0.json",
+    "execution-evidence-task1.json",
+    "execution-evidence-task2.json",
+    "execution-evidence-task3.json",
+    "execution-evidence-task4.json",
+    "execution-evidence-task5.json",
+    "execution-evidence-task6.json",
+    "execution-evidence-task7.json",
+    "execution-evidence-task8-finalfix.json",
+    "execution-evidence-task8.json"
+  ],
+  "files": [
+    {
+      "path": "app-server-migration/task9-engine-green-v1.log",
+      "bytes": 1012070,
+      "sha256": "623ba27de04600c374de49c4243a5a67ca19c2fa29cce4d4020cee73e4f7eba8"
+    },
+    {
+      "path": "app-server-migration/task9-engine-green-v1/a5b279666f874f9cba913433819fec4c-budget.bin",
+      "bytes": 49,
+      "sha256": "ec99eaa4b6a21c74138b4259c75b98cad43203190c80889cc8a3e21da2980eb9"
+    },
+    {
+      "path": "app-server-migration/task9-engine-green-v1/a5b279666f874f9cba913433819fec4c-receipt.json",
+      "bytes": 1350687,
+      "sha256": "1b6714f5ba7ed18732245bec69f9e5ea4d1d7cde587170713aee9425ecbad2bf"
+    },
+    {
+      "path": "app-server-migration/task9-engine-green-v2.log",
+      "bytes": 335,
+      "sha256": "2faa395f5859dd47b8c0330bf86906059a670d6425455b90e4f5104470b41224"
+    },
+    {
+      "path": "app-server-migration/task9-engine-green-v2/38eadbd9ac904cc48c1853e41912932e-budget.bin",
+      "bytes": 49,
+      "sha256": "b559eef950ca8b30193baa24a9fcd648c6d3b0d115a2a0dc5fd7a4c3bfb0dce2"
+    },
+    {
+      "path": "app-server-migration/task9-engine-green-v2/38eadbd9ac904cc48c1853e41912932e-receipt.json",
+      "bytes": 1700,
+      "sha256": "27ea63ad9bf53f921cff0a6bf93cac4eb6ebead2abdb421388323c1fd9ad1064"
+    },
+    {
+      "path": "app-server-migration/task9-engine-red-v1.log",
+      "bytes": 1271,
+      "sha256": "54016c941739f557accd007e739b3d28cb5fe41f8ed0f2b210fcc95ee0c74622"
+    },
+    {
+      "path": "app-server-migration/task9-engine-red-v1/c568e12b8f0e4aa5a7f297f866d47072-budget.bin",
+      "bytes": 49,
+      "sha256": "8163dfaaaf1bad5d8c4525c1aa829186ce1fd29c0a975f2570a9b41d439b3083"
+    },
+    {
+      "path": "app-server-migration/task9-engine-red-v1/c568e12b8f0e4aa5a7f297f866d47072-receipt.json",
+      "bytes": 2948,
+      "sha256": "24173640dbee2468fa7c67bf57c52037a27439ed96db70f1a206c10c19a32451"
+    },
+    {
+      "path": "app-server-migration/task9-full-suite-v1.log",
+      "bytes": 1102,
+      "sha256": "2e0ca4ac9fd9dd8a0384c4a189a2a7adc34e1e3d16a5cbce035d1feb8a115ffe"
+    },
+    {
+      "path": "app-server-migration/task9-full-suite-v1/2f64f069e50442a4b418a0fc4d7642f9-budget.bin",
+      "bytes": 49,
+      "sha256": "dffb45e42d24362ea2d01cdc1dfdcebacbdafba326e07069197596a4d769d545"
+    },
+    {
+      "path": "app-server-migration/task9-full-suite-v1/2f64f069e50442a4b418a0fc4d7642f9-receipt.json",
+      "bytes": 2685,
+      "sha256": "d651d2a4e20a3b6ab037d06f85e536893bebbbd2035f1c4b29824068d830a8db"
+    },
+    {
+      "path": "app-server-migration/task9-full-suite-v2.log",
+      "bytes": 762,
+      "sha256": "3ed59f6c8d1ab93b8033faae0854603dce67359fc74beda298714987ab174f3d"
+    },
+    {
+      "path": "app-server-migration/task9-full-suite-v2/0aee8d83e3534bd39b24bfdb2b323172-receipt.json",
+      "bytes": 1935,
+      "sha256": "e1f75dc835476217f5d8febba0b390224d17315826d564fb3c77fd95a89b6b73"
+    },
+    {
+      "path": "app-server-migration/task9-full-suite-v2/0d30281255374def9cc2b042c13d4e81-receipt.json",
+      "bytes": 1886,
+      "sha256": "23744834fc3dee7dca65f40ccbc79546a06f1094c00db069e8b800110eb3dab9"
+    },
+    {
+      "path": "app-server-migration/task9-full-suite-v2/45d012f410954888b0bf337827d5b9a3-budget.bin",
+      "bytes": 49,
+      "sha256": "926e1d9a6d6c529a6dd5337cc9a58e8a0812c18699feb1c733c5dcfc6dd40d7b"
+    },
+    {
+      "path": "app-server-migration/task9-full-suite-v2/45d012f410954888b0bf337827d5b9a3-receipt.json",
+      "bytes": 2236,
+      "sha256": "f96201049710f57542f4ecfde4e3045402c498deb46d8a1c1ea9ebbf78835cf1"
+    },
+    {
+      "path": "app-server-migration/task9-full-suite-v2/5b292c29fcfd431f80ac4436ce170c7c-receipt.json",
+      "bytes": 2015,
+      "sha256": "9a337f8d8152032337df29e89c178f9d3f0b480c2f7067d86b6dc4f30cfc7503"
+    },
+    {
+      "path": "app-server-migration/task9-full-suite-v2/63006343a7294777b79256caa791e483-receipt.json",
+      "bytes": 12075,
+      "sha256": "817218ef80a0774c256197a9544aad88f20ecf11ecb1e4a15fac387ff0d5fb10"
+    },
+    {
+      "path": "app-server-migration/task9-full-suite-v2/6f37533e02f84837a622c5a815f8e6e3-receipt.json",
+      "bytes": 1996,
+      "sha256": "bb6371b862a0f8281a168def6e16085ae3a0de474bc8b4f7474e5aaac3d7fd25"
+    },
+    {
+      "path": "app-server-migration/task9-full-suite-v2/70b1408dd87649e0a64d592799d67b7d-receipt.json",
+      "bytes": 18213,
+      "sha256": "760aee730a446d4c42618ae9d077d1d9b8eeb148819583460ee397a22c00a827"
+    },
+    {
+      "path": "app-server-migration/task9-full-suite-v2/7202bf4b942943d395aec0c0626a8e7b-receipt.json",
+      "bytes": 2016,
+      "sha256": "bbca9da109c99b4f3381e6a1741043fca5123e5703c5c7ff94f9e6958082d7f8"
+    },
+    {
+      "path": "app-server-migration/task9-full-suite-v2/73ef239b13244dcfb5835df0119fa0fa-receipt.json",
+      "bytes": 1883,
+      "sha256": "ed55c5ce3341f595dad2012d21d4f45c0fb2cfbd630d89b8a559665664b2f643"
+    },
+    {
+      "path": "app-server-migration/task9-full-suite-v2/9c39b0b5c9304bde842b25d1cd30f2f4-receipt.json",
+      "bytes": 1933,
+      "sha256": "8c9bced952c311559529f62285aead94e577149c504b76cb954ef401f17149fc"
+    },
+    {
+      "path": "app-server-migration/task9-full-suite-v2/e8346d33fee8488cbb071e68c1b46aa5-receipt.json",
+      "bytes": 97292,
+      "sha256": "e3ada27fe31f3087db8d99514f4bf8ced446280782c46fe4482637a7fafb6228"
+    },
+    {
+      "path": "app-server-migration/task9-full-suite-v2/f6d209c92f194d7bb6d2dc0104a92a16-receipt.json",
+      "bytes": 77068,
+      "sha256": "ff8020ba575862ec9a74c65a374764ab1c48ee5e4a8857b83060ab9b922456bf"
+    },
+    {
+      "path": "app-server-migration/task9-sdk-install-v1.log",
+      "bytes": 7072,
+      "sha256": "4020b69d60c833b17e7eb3bc2c493abe3bb875e384a62de4b63adef6877c0237"
+    },
+    {
+      "path": "app-server-migration/task9-sdk-install-v1/57c13b20333443289bfcdab60d1ff65d-budget.bin",
+      "bytes": 49,
+      "sha256": "ebdd9e53480ccb2e8e44f3b77aaf03812d16d10e73ddd83a2523eab38a96acd2"
+    },
+    {
+      "path": "app-server-migration/task9-sdk-install-v1/57c13b20333443289bfcdab60d1ff65d-receipt.json",
+      "bytes": 10830,
+      "sha256": "8ecf4f7b4f08e12ff011348cd4957521a1eecea770c47e78b2a71509b11bdff7"
+    },
+    {
+      "path": "app-server-migration/task9-sdk-install-v2.log",
+      "bytes": 11470,
+      "sha256": "4f3fb0c3809b33cdf5930bd8f87a2db19e00d631cf19409eaecd4cd76f21dd11"
+    },
+    {
+      "path": "app-server-migration/task9-sdk-install-v2/9fb118cd9c0646cebfdd8105718b5ca6-budget.bin",
+      "bytes": 49,
+      "sha256": "8eaf02c007682b37ca0686c781628c9bfe4ebb25227339102196068f518e7eeb"
+    },
+    {
+      "path": "app-server-migration/task9-sdk-install-v2/9fb118cd9c0646cebfdd8105718b5ca6-receipt.json",
+      "bytes": 16796,
+      "sha256": "aa1e77100b0548dbb992711e08b4e11a3de9fdd21e38b9b67f6172b8a17aa295"
+    },
+    {
+      "path": "app-server-migration/task9-sdk-server-green-v1.log",
+      "bytes": 969,
+      "sha256": "eea7d03dabd4fac54b645dc073021474de09cfb496db33db3953514bbe673c85"
+    },
+    {
+      "path": "app-server-migration/task9-sdk-server-green-v1/0604080379e5479f97dfb1c436b15e8e-budget.bin",
+      "bytes": 49,
+      "sha256": "ea391e152987dcbe8cf8dce9277aaf18cb9bfd4cd4f86b8715d929b91c918497"
+    },
+    {
+      "path": "app-server-migration/task9-sdk-server-green-v1/0604080379e5479f97dfb1c436b15e8e-receipt.json",
+      "bytes": 2529,
+      "sha256": "203ef6ada2bb852e99ecb6dd5e66c487d1104cf9d50c5ebfabf3d479f026ff8d"
+    },
+    {
+      "path": "app-server-migration/task9-sdk-server-red-v1.log",
+      "bytes": 2227,
+      "sha256": "b611f9b46ade99fef13d0bfd822feb1797388c708460fa08fdda1d1509a1ea19"
+    },
+    {
+      "path": "app-server-migration/task9-sdk-server-red-v1/34d98bd74771427e88fa144e9b6809c5-budget.bin",
+      "bytes": 49,
+      "sha256": "f82f299a5c01ae815aa18b19161d944908c4788d2d825c799e11bfa97c2cd66f"
+    },
+    {
+      "path": "app-server-migration/task9-sdk-server-red-v1/34d98bd74771427e88fa144e9b6809c5-receipt.json",
+      "bytes": 4257,
+      "sha256": "77d796940961f0bc1d981963ed70afc78b420802978b3ed65eb79c3374a56f05"
+    },
+    {
+      "path": "app-server-migration/task9-source-v1.json",
+      "bytes": 2048,
+      "sha256": "3f5b8b1d0096a941044be43271d648384815a9d605fb5161f1ffab3d6f85ba6b"
+    }
+  ]
+}

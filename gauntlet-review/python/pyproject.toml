@@ -11,9 +11,11 @@ dependencies = ["jsonschema>=4.0"]
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
 mcp = ["mcp==2.3.0", "dulwich==1.2.17", "pydantic==2.14.1"]
+codex = ["mcp==2.3.0", "dulwich==1.2.17", "pydantic==2.14.1", "openai-codex==0.163.0"]
 
 [project.scripts]
 gauntlet-mcp = "gauntlet_review.collaborative.server:main"
+gauntlet-codex = "gauntlet_review.codex_bridge.server:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
