@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "round": 1,
+  "original_exit": 0,
+  "tree_retired": true,
+  "verdict": "request_changes",
+  "recommendations": 5,
+  "input_tokens": 29873,
+  "exact_original_archive": "C:/Users/geoff/Documents/Projects/Banyan/gauntlet/.git/info/reduced-mcp-core/20261020-plan-v1/round1-originals",
+  "files": [
+    {
+      "name": "cli-pin.json",
+      "bytes": 218,
+      "sha256": "b2a5b2766d56a39926aeec8adf89a451de70ed8f76c650f58e5eec831c75398e"
+    },
+    {
+      "name": "round-1-attempt-1-events.jsonl",
+      "bytes": 7711,
+      "sha256": "36f7ae0bfc449b19063796583aeefe6bd26e229cce14a4903728a241942062f5"
+    },
+    {
+      "name": "round-1-attempt-1-meta.json",
+      "bytes": 5956,
+      "sha256": "91ba336b9e7be1becc93640ea393bacb6dcf5cbd66187ce14b635d775425d95f"
+    },
+    {
+      "name": "round-1-attempt-1-process.json",
+      "bytes": 778,
+      "sha256": "0827e66011e4700fad396cebfbbd3811f7213faca3e69acd5778123ea47cde37"
+    },
+    {
+      "name": "round-1-attempt-1-transport.json",
+      "bytes": 11850,
+      "sha256": "192feae5f4ba855978f1f020823bf8af1be05a68faae6c08a295346a04f2b612"
+    },
+    {
+      "name": "round-1-attempt-1-usage.json",
+      "bytes": 260,
+      "sha256": "b3ef2425593996d329e0bccbe12abb507197f12d98636a8a0aa446a664bdc2d6"
+    },
+    {
+      "name": "round-1-attempt-1-verdict.raw.json",
+      "bytes": 4989,
+      "sha256": "db7b7939ce87cdf37189c0ff55614ebfec2b10057911232dbbf37337c432e1eb"
+    },
+    {
+      "name": "round-1-verdict.json",
+      "bytes": 4747,
+      "sha256": "1a1d177814637779869733f46ce9994c0d793ffc7ab54c02b5605b0e4e18c19b"
+    },
+    {
+      "name": "state.json",
+      "bytes": 284,
+      "sha256": "270858ae25e454a0315eb1e2f2cba732765b68dfc9c61b2289ed368a531713f5"
+    }
+  ],
+  "raw_log_whitespace": "Original JSONL final blank line retained unchanged; documentation whitespace check excludes raw events only."
+}

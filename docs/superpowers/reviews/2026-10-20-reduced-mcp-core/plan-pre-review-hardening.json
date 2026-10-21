@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "phase": "plan",
+  "artifact": "docs/superpowers/plans/2026-10-20-reduced-mcp-core.md",
+  "initial_commit": "7f21e1a464f7750ca6ae4138344be5b2f6499d76",
+  "hardened_commit": "697b39f90540f840f45e04974834806f6f87d539",
+  "approved_controlling_spec_commit": "5c93d6b29d507ace5e7ad901e75a188924204ba2",
+  "lenses": [
+    {
+      "lens": "fail-closed",
+      "findings": [],
+      "recheck": "No findings at 394f811; final binding-before-retry strengthening separately rechecked by path and conformance lenses."
+    },
+    {
+      "lens": "resource-bounds-and-lifecycle",
+      "findings": [
+        {
+          "priority": "P2",
+          "commit": "7f21e1a",
+          "lines": "162-166,321-328,428-437",
+          "issue": "A legal stored verdict event can exceed the 120 KiB history page limit; an oversized first row has no fragment/body protocol and could make accepted history unreadable.",
+          "requested_change": "Use bounded event descriptors and separately pageable canonical event bodies; test actual MCP result bounds and exact reconstruction."
+        }
+      ],
+      "resolution": "History descriptors plus 64 KiB event-body artifacts; compact status rollups; 80 KiB listing envelopes and actual total MCP serialization checks.",
+      "recheck": "No findings at 4ad768f; later changes align status fields and strengthen retry binding."
+    },
+    {
+      "lens": "path-and-filesystem",
+      "findings": [
+        {
+          "priority": "P2",
+          "commit": "394f811",
+          "lines": "113-116,388-389",
+          "issue": "Repository binding is absent from retry ordering, so a reused key could replay success after the configured repository changes but before CONFIGURATION_MISMATCH validation.",
+          "requested_change": "Require persisted repository/policy binding validation before every retry path, including core shortcuts; test mismatched common directories and same-common-directory linked worktrees."
+        }
+      ],
+      "resolution": "Startup-validated GitSource.repo_binding passed to Store.open; persisted binding precedes every lookup and write-transaction retry path.",
+      "recheck": "No findings at 697b39f."
+    },
+    {
+      "lens": "cross-platform-parity",
+      "findings": [
+        {
+          "priority": "P2",
+          "commit": "7f21e1a",
+          "line": 554,
+          "issue": "Python 3.11+ support lacks current stable Python 3.15 in the platform matrix.",
+          "requested_change": "Add Python 3.15 across the three platforms and reconcile job counts."
+        },
+        {
+          "priority": "P2",
+          "commit": "7f21e1a",
+          "line": 191,
+          "issue": "AnyIO-marked tests default to all backends, including uninstalled Trio, because no backend fixture is specified.",
+          "requested_change": "Provide an explicit asyncio backend fixture matching production startup."
+        }
+      ],
+      "resolution": "Nine jobs cover 3.11/3.14/3.15 across Windows/Linux/macOS; shared conftest selects asyncio. Primary release/testing sources verified.",
+      "recheck": "No findings at 394f811; later change strengthens retry binding only."
+    },
+    {
+      "lens": "typed-errors-and-api-completeness",
+      "findings": [
+        {
+          "priority": "P2",
+          "commit": "7f21e1a",
+          "line": 324,
+          "issue": "Initial open requests lack review IDs while retry uniqueness only includes participant/operation/key, allowing cross-series replay or permanent conflicts.",
+          "requested_change": "Bind the configured repository/ref-pair scope into retry lookup, uniqueness and request fingerprints; test two independent series with identical keys."
+        },
+        {
+          "priority": "P3",
+          "commit": "4ad768f",
+          "line": 476,
+          "issue": "A flow assertion uses result.findings while the shared compact status contract names finding_rollups.",
+          "requested_change": "Align the assertion to result.finding_rollups."
+        }
+      ],
+      "resolution": "Operator-resolved series scope namespaces retries; shared DTO/status assertion aligned and null first status specified.",
+      "recheck": "No findings at 394f811; final binding ordering checked by path/conformance."
+    },
+    {
+      "lens": "spec-conformance",
+      "findings": [
+        {
+          "priority": "P2",
+          "commit": "7f21e1a",
+          "line": 324,
+          "issue": "Retry lookup and schema uniqueness omit the configured series tuple, contradicting independent series and configuration-change continuity requirements.",
+          "requested_change": "Namespace lookup, uniqueness and fingerprints by operator-resolved repository/source/target; add the two-series same-key regression."
+        }
+      ],
+      "resolution": "Series-scoped retry identity plus repository/policy binding validation before lookup; independent-series and linked-worktree regressions specified.",
+      "recheck": "No findings at 697b39f against the exact approved spec."
+    }
+  ],
+  "verification_scope": "Read-only plan inspection, standard-library payload arithmetic, Python snippet AST parsing and documentation whitespace checks. Product dependencies were not installed; product implementation/tests have not begun."
+}
