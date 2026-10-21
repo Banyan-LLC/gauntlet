@@ -213,7 +213,7 @@ independently by neighboring tasks:
 | `StoredResult` | event_id, result_bytes, store_version, replayed |
 | `Page` | items, next_cursor (or null), complete, store_version |
 | `AcceptedVerdict` | normalized_verdict, recommendations, carryover, coverage_digest, status |
-| `Status` | status, finding_rollups, counts, snapshot_digest, freshness |
+| `Status` | series (null or compact id/current_revision), status (null before series creation), finding_rollups, counts, snapshot_digest, freshness |
 
 Tests import `pytest`, `sys`, `dataclasses.replace` and the specific contract types
 used by their snippets. `valid_open_payload` returns `{"key":"initial",
@@ -473,7 +473,7 @@ async def test_new_revision_drops_approval_not_findings(flow):
     await flow.commit_fix_and_open_revision()
     status = await flow.reviewer.review_status(flow.status_request())
     assert status["result"]["status"] == "awaiting_review"
-    assert status["result"]["findings"][0]["id"] == first.finding_id
+    assert status["result"]["finding_rollups"][0]["id"] == first.finding_id
 ```
 
 - [ ] `flow` fixture owns two independently configured cores/connections with shared
