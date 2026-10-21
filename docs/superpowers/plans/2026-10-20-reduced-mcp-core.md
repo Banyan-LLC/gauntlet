@@ -882,14 +882,20 @@ timeout_seconds: int=600)`; `PeerReply(thread_id: str, turn_id: str, text: str)`
 `SdkConversation` implements Conversation using public Python SDK APIs. Only
 the separate adapter imports the SDK. The core's five operations remain intact.
 
+Each Bridge generates an instance ID. `codex_status` exposes it without native
+work; every review request must echo it before any cache lookup/backend call.
+The five-tool core's existing budgets remain unchanged. New errors use typed
+BridgeError cause chaining and the amended spec's tagged safe failure schema.
+
 - [ ] Write model-free engine regressions with a fake Conversation. Pin exact
   retry/continuation behavior and watch failure before implementation:
 
   ```python
-  first=await bridge.call({"key":"first","prompt":"Review pinned source","expected_thread_id":None})
+  instance=bridge.status()["instance_id"]
+  first=await bridge.call({"instance_id":instance,"key":"first","prompt":"Review pinned source","expected_thread_id":None})
   assert first["ok"] and first["thread_id"]=="fixture-thread"
-  assert await bridge.call({"key":"first","prompt":"Review pinned source","expected_thread_id":None})=={**first,"replayed":True}
-  second=await bridge.call({"key":"fix","prompt":"Review committed fix","expected_thread_id":"fixture-thread"})
+  assert await bridge.call({"instance_id":instance,"key":"first","prompt":"Review pinned source","expected_thread_id":None})=={**first,"replayed":True}
+  second=await bridge.call({"instance_id":instance,"key":"fix","prompt":"Review committed fix","expected_thread_id":"fixture-thread"})
   assert second["ok"] and second["turn_id"]!=first["turn_id"]
   assert backend.calls==2
   ```
@@ -904,6 +910,11 @@ the separate adapter imports the SDK. The core's five operations remain intact.
   thread ID: it must refuse before invoking its backend. Separately end/lose the
   SDK notification stream before a matching successful terminal event: response
   must fail, poison the conversation and never report success.
+  Also replay the exact FIRST request against a restarted adapter: old instance
+  ID must yield ADAPTER_RESTARTED uncertainty without invoking its backend.
+  Successful terminal with missing/invalid final message must fail/poison. Assert
+  every external error's cause, uncertainty, unusable partial marker, IDs and
+  cleanup outcome, and internal chaining of the original typed failure.
 - [ ] Implement strict request/config validation, one active operation, per-process
   exact replay, fixed logical bounds and safe typed errors. A five-second cleanup
   reserve stays within the original application deadline. Error/uncertain paths

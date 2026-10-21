@@ -141,9 +141,9 @@ evidence or verdicts. Rejected/stale submissions cannot make status complete.
 
 The native host gives its peer the review/revision IDs, scope and server access.
 It chooses model, permissions, prompt, session continuity, timeouts and cancellation.
-The core never calls a model or waits for a peer. Native Codex MCP `codex` and
-`codex-reply` tools are the initial conversation example; the record protocol itself
-does not depend on Codex being reviewer or Claude being author.
+The core never calls a model or waits for a peer. The separate host adapter connects
+Claude Code through the official Python SDK to the Codex app server; the record
+protocol itself does not depend on Codex being reviewer or Claude being author.
 
 A verdict uses `approve` or `request_changes`, recommendations with severity
 `blocking`, `important` or `nit`, and a prose summary. Approval containing any new
@@ -217,7 +217,12 @@ Carry-over reasons are at most 256 UTF-8 bytes each. The verdict schema must res
 space for a full carry-over ledger at maximum reason lengths and coverage of the
 maximum manifest before accepting any new findings; the implementation plan must
 prove this fits the payload cap and specify all remaining metadata/string bounds.
-An earlier valid verdict must never make a later closure unrepresentable.
+An earlier valid verdict must never make a later closure payload unrepresentable
+within the remaining verdict/revision budget. This is a payload-capacity guarantee,
+not an additional verdict or revision beyond the fixed caps. Exhaustion can leave
+findings open; it preserves them and refuses further mutations rather than claiming
+completion or resetting history. A separate explicit policy change would be needed
+to extend a consumed budget.
 Total event/evidence payload is
 limited to 64 MiB per review and 1 GiB per store; failure to reserve space refuses a
 mutation atomically. These are logical application payload quotas, not a claim about
@@ -235,10 +240,14 @@ have stable error codes with safe structured detail and retryability. Exceptions
 remain typed inside the core. stdout contains MCP protocol only; stderr diagnostics
 exclude source/evidence bodies and credentials. Cancellation before commit aborts the
 mutation; once committed, retry discovers the committed result. No background job,
-subprocess, model session or unbounded cleanup loop is created by the service.
+subprocess, model session or unbounded cleanup loop is created by the five-tool core.
 
 State uses one operator-created directory outside the working tree and legacy state.
-Startup rejects symlink/reparse components in its path, including database files;
+Startup and core database opens reject symlink/reparse components in the state
+path, including the database and its journal, WAL and SHM sidecars; only genuine
+ENOENT is absence, and other stat/open failures refuse use. No request-supplied
+temporary entry is opened. Repository metadata/object storage remains trusted
+operator configuration under the separate cooperative boundary below;
 existing regular database files are accepted after schema/integrity validation.
 no request-derived filesystem path is opened, and no cleanup recursively deletes
 anything. The operator must preserve ordinary local directory ownership and avoid
@@ -316,16 +325,28 @@ credentials, rewrite global host configuration or open a network listener.
 This is collaborative native-host access, not hermetic isolation from the
 native host's existing configuration or proof of model independence.
 
-One adapter process owns one SDK conversation. A single `codex_review` tool
-accepts only a bounded key, prompt and nullable expected thread ID. First use
+One adapter process owns one SDK conversation and a fresh random instance ID.
+`codex_status` returns this ID, owned thread ID and ready/poisoned/busy state without
+starting a model turn. `codex_review` accepts only that required instance ID, a
+bounded key, prompt and nullable expected thread ID. Check the instance ID before
+cache lookup or native work: a retry carrying the previous process's ID returns
+structured `ADAPTER_RESTARTED` uncertainty, including for a lost first response.
+The caller must not automatically replace the instance ID and repeat that request.
+First use
 creates the thread; later new turns require its exact returned ID. Clients
 cannot select models, permissions, refs, paths, executables or arbitrary saved
 threads. Exact-key replay returns the original response without a second turn;
 different content conflicts. Admit at most 20 keys, 64 KiB UTF-8 prompt, 128 KiB
-returned text and 4 MiB cached responses per process. Consume SDK notifications
-incrementally with an 8 MiB decoded-event total per turn; never silently truncate.
-Only a matching successful terminal turn notification permits success. Return
-thread/turn IDs and the model's complete final message, not a claim of review
+returned text, 256 KiB complete serialized MCP result and 4 MiB total logical
+cache bytes per process, counting keys, prompt digests, responses and metadata.
+Cache prompt SHA-256, not prompt bodies. Consume SDK notifications incrementally
+with an 8 MiB decoded-event total per turn. On a crossed logical cap, immediately
+stop consuming/retaining application events and interrupt/close; never truncate.
+SDK-owned pre-parse buffers and native stdio are outside these application caps.
+Only a matching successful terminal notification AND a validated complete final
+message from the same thread/turn permit success. Missing/invalid final messages
+or EOF before the matching terminal event refuse success. Return thread/turn IDs
+and the complete final message, not a claim of review
 completion. There is no `peer_complete` field in this adapter's results.
 
 There is one active call per adapter. Concurrent calls refuse with `BUSY`.
@@ -334,14 +355,25 @@ The operator sets a per-call application deadline (default 600 seconds, range
 cancellation, stream loss, invalid terminal state, overflow or SDK failure
 poisons the conversation: attempt native interruption/close within the remaining
 budget, preserve a safe uncertain/error response and refuse further new turns.
+These bounds limit application waits; they do not promise termination/reaping of
+native SDK worker threads or descendants within that wall-clock interval.
 Never automatically retry a model call. Cancellation propagates after cleanup.
 Diagnostic codes/correlation IDs exclude prompts, responses, exception strings
-and credentials. SDK buffers, threads, OS blocking and process-tree retirement
+and credentials. Internal `BridgeError` retains its underlying typed cause through
+exception chaining. External errors have a fixed `code`, safe `cause` category,
+correlation ID, `uncertain` boolean, `partial_usable=false`, available thread/turn
+IDs and structured cleanup outcomes (`not_attempted`, `succeeded`, `failed` or
+`timed_out`). Categories distinguish invalid input, instance/thread mismatch,
+conflict, busy, logical limit, deadline, cancellation, SDK/RPC/transport failure,
+missing terminal/final message and cleanup failure. No partial model text is
+returned as usable data. A native close result never certifies process retirement.
+SDK buffers, threads, OS blocking and process-tree retirement
 are native-host responsibilities, not newly certified physical resource bounds.
 Deterministic/live verification uses the existing external native test owner to
 prove actual process closure; SDK close alone is not a closure receipt.
 
-Retry cache/ownership is process-local. Restart does not implicitly resume an
+Retry cache/ownership is process-local and bound to the fresh instance ID.
+Restart does not implicitly resume an
 arbitrary native thread or recreate a lost turn. A caller carrying the previous
 thread ID receives a mismatch before any new model work. An explicit fresh
 conversation must re-read the existing Gauntlet review and every prior finding;
