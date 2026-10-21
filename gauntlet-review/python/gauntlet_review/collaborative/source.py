@@ -10,6 +10,7 @@ import hashlib
 import os
 from pathlib import Path
 import re
+import stat
 import zlib
 
 from dulwich.diff_tree import tree_changes
@@ -90,13 +91,21 @@ class GitSource:
             elif extension.lower() not in (b"worktreeconfig", b"relativeworktrees"):
                 raise CoreError("UNSUPPORTED_REPOSITORY", detail={"reason": "repository_extension"})
         common = Path(repo.commondir())
-        if (common / "shallow").exists():
+        try:
+            (common / "shallow").stat()
+        except FileNotFoundError:
+            pass
+        else:
             raise CoreError("UNSUPPORTED_REPOSITORY", detail={"reason": "shallow_repository"})
         for section in config.sections():
             if section[0].lower() == b"remote" and config.get_boolean(section, b"promisor", False):
                 raise CoreError("UNSUPPORTED_REPOSITORY", detail={"reason": "promisor_repository"})
         pack = common / "objects" / "pack"
-        if pack.is_dir():
+        try:
+            pack_mode=pack.stat().st_mode
+        except FileNotFoundError:
+            pack_mode=None
+        if pack_mode is not None and stat.S_ISDIR(pack_mode):
             with os.scandir(pack) as entries:
                 if any(entry.name.endswith(".promisor") for entry in entries):
                     raise CoreError("UNSUPPORTED_REPOSITORY", detail={"reason": "promisor_objects"})
@@ -226,7 +235,7 @@ class GitSource:
             result = self._build(repo, before, policy)
             after = self._observe(repo)
             if (before.source_oid, before.target_oid) != (after.source_oid, after.target_oid):
-                raise CoreError("STALE", detail={"reason": "refs_moved_during_capture"})
+                raise CoreError("STALE", detail={"reason": "refs_moved_during_capture"},observation=after)
             return result
 
     def _validate_snapshot(self, snapshot):

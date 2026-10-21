@@ -237,7 +237,7 @@ async def test_verdict_retry_receipt_must_name_the_committed_finding_ids(store,a
         connection.execute("UPDATE retries SET result_bytes=?,result_sha256=? WHERE operation='submit_review'",
                            (changed,hashlib.sha256(changed).hexdigest()))
     config=replace(store.config,participant="peer",role="reviewer")
-    with Store.open(config,store.repo_binding) as reviewer:
-        with pytest.raises(CoreError) as error:
+    with pytest.raises(CoreError) as error:
+        with Store.open(config,store.repo_binding) as reviewer:
             reviewer.lookup_retry(config.series_scope,config.participant,"submit_review",row[0],row[1])
-        assert error.value.code == "CORRUPT_STATE"
+    assert error.value.code == "CORRUPT_STATE"

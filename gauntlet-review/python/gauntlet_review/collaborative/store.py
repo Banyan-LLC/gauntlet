@@ -132,8 +132,9 @@ class Store:
             try:
                 tables={row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
                 if not tables:
-                    if connection.execute("PRAGMA application_id").fetchone()[0] not in (0,_APPLICATION_ID):
-                        raise CoreError("UNSUPPORTED_SCHEMA",detail={"reason":"foreign_database"})
+                    if (connection.execute("PRAGMA application_id").fetchone()[0]!=0
+                            or connection.execute("PRAGMA user_version").fetchone()[0]!=0):
+                        raise CoreError("UNSUPPORTED_SCHEMA",detail={"reason":"unrecognized_empty_database"})
                     for statement in _DDL:
                         connection.execute(statement)
                     connection.execute("INSERT INTO meta VALUES(1,0,0)")
@@ -255,8 +256,7 @@ class Store:
             raise CoreError("CONFIGURATION_MISMATCH",detail={"reason":"persisted_repository_or_policy"})
         return row
 
-    @staticmethod
-    def _accounting(connection):
+    def _accounting(self,connection,current_version):
         totals={}
         evidence={}
         for row in connection.execute("SELECT series_id,length(body) AS n FROM events"):
@@ -264,9 +264,11 @@ class Store:
         for row in connection.execute("SELECT series_id,length(bytes) AS n FROM evidence"):
             totals[row["series_id"]]=totals.get(row["series_id"],0)+row["n"]
             evidence[row["series_id"]]=evidence.get(row["series_id"],0)+row["n"]
-        for row in connection.execute("SELECT retries.*,events.series_id FROM retries JOIN events ON events.id=retries.event_id"):
+        for row in connection.execute("SELECT retries.*,events.* FROM retries JOIN events ON events.id=retries.event_id"):
             if type(row["result_bytes"]) is not bytes:
                 _corrupt("receipt_storage_type")
+            # Receipts remain history when their exact key is not being replayed.
+            self._verify_receipt(row,_row_event(row),current_version,row["series_scope"],row["request_sha256"])
             size=len(row["result_bytes"])+len(encode(_retry_metadata(row)))
             totals[row["series_id"]]=totals.get(row["series_id"],0)+size
         return sum(totals.values()),totals,evidence
@@ -310,7 +312,7 @@ class Store:
                 seen.add(row["id"])
             if seen!=set(expected_evidence):
                 _corrupt("missing_evidence_body")
-        aggregate,totals,evidence=self._accounting(connection)
+        aggregate,totals,evidence=self._accounting(connection,meta["store_version"])
         if aggregate!=meta["payload_bytes"]:
             _corrupt("store_payload_accounting")
         for row in connection.execute("SELECT id,payload_bytes FROM series"):

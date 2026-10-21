@@ -89,6 +89,9 @@ class CommandOutcome:
     expected_exit: dict | None = None
     started: bool = False
     pid: int | None = None
+    bootstrap_pid: int | None = None
+    bootstrap_exit_code: int | None = None
+    bootstrap_status_b64: str | None = None
     completed: bool = False
     exit_code: int | None = None
     timed_out: bool = False
@@ -303,18 +306,31 @@ class RawPipe:
         self.eof = False
         self.parent_closed = False
         self.child_closed = False
-        if os.name == "nt":
-            attrs = SECURITY_ATTRIBUTES(ctypes.sizeof(SECURITY_ATTRIBUTES), None, True)
-            rd, wr = W.HANDLE(), W.HANDLE()
-            _check(_create_pipe(ctypes.byref(rd), ctypes.byref(wr), ctypes.byref(attrs), CHUNK))
-            self.child, self.parent = (rd.value, wr.value) if child_reads else (wr.value, rd.value)
-            _check(_handle_info(self.parent, 1, 0))
-        else:
-            rd, wr = os.pipe()
-            self.child, self.parent = (rd, wr) if child_reads else (wr, rd)
-            os.set_inheritable(self.child, True)
-            if not child_reads:
-                os.set_blocking(self.parent, False)
+        self.child = self.parent = None
+        try:
+            if os.name == "nt":
+                attrs = SECURITY_ATTRIBUTES(ctypes.sizeof(SECURITY_ATTRIBUTES), None, True)
+                rd, wr = W.HANDLE(), W.HANDLE()
+                created = _create_pipe(ctypes.byref(rd), ctypes.byref(wr), ctypes.byref(attrs), CHUNK)
+                self.child, self.parent = (rd.value, wr.value) if child_reads else (wr.value, rd.value)
+                _check(created)
+                _check(_handle_info(self.parent, 1, 0))
+            else:
+                rd, wr = os.pipe()
+                self.child, self.parent = (rd, wr) if child_reads else (wr, rd)
+                os.set_inheritable(self.child, True)
+                if not child_reads:
+                    os.set_blocking(self.parent, False)
+        except BaseException as initiating:
+            failures=[initiating]
+            for close in (self.close_child,self.close_parent):
+                try:
+                    close()
+                except BaseException as error:
+                    failures.append(error)
+            if len(failures)>1:
+                raise BaseExceptionGroup("pipe allocation and rollback failed",failures)
+            raise
 
     def read(self):
         if self.eof:
@@ -348,12 +364,12 @@ class RawPipe:
         return os.write(self.parent, data)
 
     def close_child(self):
-        if not self.child_closed:
+        if not self.child_closed and self.child is not None:
             _check(_close(self.child)) if os.name == "nt" else os.close(self.child)
             self.child_closed = True
 
     def close_parent(self):
-        if not self.parent_closed:
+        if not self.parent_closed and self.parent is not None:
             _check(_close(self.parent)) if os.name == "nt" else os.close(self.parent)
             self.parent_closed = True
 
@@ -368,6 +384,11 @@ class NativeChild:
         self.returncode = None
         self.baseline = set()
         self.group = None
+        self.launch_failed = False
+        self.bootstrap_status = None
+        self.registered_groups=set()
+        self.retired_groups=set()
+        self.pending_sessions=set()
         if os.name == "nt":
             info = PROCESS_INFORMATION()
             startup = STARTUPINFO()
@@ -410,16 +431,64 @@ class NativeChild:
             if not fresh:
                 self.group = json.loads(environment[OWNER_ENV])["group"]
                 self.baseline = self.members()
-            self.process = subprocess.Popen(argv, cwd=cwd, env=environment,
+            exec_read=exec_write=None
+            child_environment=dict(environment)
+            inherited={pipes["control"].child,json.loads(environment[OWNER_ENV])["control"]}
+            try:
+                if fresh:
+                    exec_read,exec_write=os.pipe()
+                    os.set_blocking(exec_read,False)
+                    inherited.add(exec_write)
+                    child_environment["GAUNTLET_TEST_EXEC_STATUS"]=str(exec_write)
+                self.process = subprocess.Popen(argv, cwd=cwd, env=child_environment,
                                             stdin=pipes["stdin"].child,
                                             stdout=pipes["stdout"].child,
                                             stderr=pipes["stderr"].child,
-                                            pass_fds=tuple({pipes["control"].child,
-                                                            json.loads(environment[OWNER_ENV])["control"]}),
+                                            pass_fds=tuple(inherited),
                                             start_new_session=fresh)
-            self.pid = self.process.pid
-            if fresh:
-                self.group = self.pid
+                self.pid = self.process.pid
+                if fresh:
+                    self.group = self.pid
+                    os.close(exec_write); exec_write=None
+                    status=bytearray()
+                    context=json.loads(environment[OWNER_ENV])
+                    deadline=context["execution_deadline"]
+                    budget=Budget(context["budget"],context["token"],deadline=deadline)
+                    while True:
+                        if time.monotonic()>=deadline:
+                            raise TimeoutError("bootstrap exec acknowledgement deadline expired")
+                        try:
+                            part=os.read(exec_read,1025-len(status))
+                        except BlockingIOError:
+                            time.sleep(min(.002,max(0,deadline-time.monotonic())))
+                            continue
+                        if not part:
+                            break
+                        budget.reserve(0,len(part))
+                        status.extend(part)
+                        self.bootstrap_status=bytes(status)
+                        if len(status)>1024:
+                            raise CaptureOverflow("bootstrap exec status exceeds 1 KiB")
+                    if bytes(status)!=b"ready\n":
+                        packets=bytes(status).splitlines()
+                        if len(packets)==2 and packets[0]==b"ready":
+                            failure=json.loads(packets[1])
+                            raise OSError(failure.get("errno") or 5,"workload exec failed: "+failure["exception_type"])
+                        raise OSError("bootstrap exec acknowledgement incomplete")
+            except BaseException:
+                if fresh:
+                    self.launch_failed=True
+                raise
+            finally:
+                failures=[]
+                for descriptor in (exec_read,exec_write):
+                    if descriptor is not None:
+                        try:
+                            os.close(descriptor)
+                        except BaseException as error:
+                            failures.append(error)
+                if failures:
+                    raise BaseExceptionGroup("bootstrap descriptor closure failed",failures)
         if not fresh:
             _NESTED_CHILDREN.add(self)
 
@@ -447,21 +516,54 @@ class NativeChild:
             accounting = ACCOUNTING()
             _check(_query_job(self.job, 1, ctypes.byref(accounting), ctypes.sizeof(accounting), None))
             return accounting.ActiveProcesses > 0
-        try:
-            os.killpg(self.pid, 0)
-            return True
-        except ProcessLookupError:
-            return False
+        return bool(self.members())
 
     def terminate(self):
         if os.name == "nt":
             _check(_terminate_job(self.job, 74) if self.fresh else
                    _terminate_process(self.process, 74))
         else:
-            try:
-                os.killpg(self.pid, signal.SIGKILL) if self.fresh else os.kill(self.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+            failures=[]
+            targets=({self.group}|self.registered_groups)-self.retired_groups if self.fresh else {self.pid}
+            for target in targets:
+                try:
+                    if self.fresh:
+                        if self.members(group=target):
+                            os.killpg(target,signal.SIGKILL)
+                        else:
+                            self.retired_groups.add(target)
+                    else:
+                        os.kill(target,signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                except BaseException as error:
+                    failures.append(error)
+            if failures:
+                raise BaseExceptionGroup("process group termination failed",failures)
+
+    def session_notice(self,message):
+        if os.name!="posix" or message.get("parent")!=self.pid:
+            raise RuntimeError("session registration is outside its retained parent")
+        identity=message.get("session")
+        if type(identity) is not str or len(identity)!=32 or any(c not in "0123456789abcdef" for c in identity):
+            raise ValueError("invalid session registration identifier")
+        phase=message["checkpoint"]
+        if phase=="session-begin":
+            if identity in self.pending_sessions:
+                raise ValueError("duplicate session launch")
+            self.pending_sessions.add(identity)
+        elif identity not in self.pending_sessions:
+            raise ValueError("session launch was not declared")
+        elif phase=="session-register":
+            group=message.get("group")
+            if type(group) is not int or group<=1 or group==self.group:
+                raise ValueError("invalid new session group")
+            self.registered_groups.add(group)
+            self.pending_sessions.remove(identity)
+        elif phase=="session-cancel":
+            self.pending_sessions.remove(identity)
+        else:
+            raise ValueError("unknown session phase")
 
     def has_descendants(self):
         members = self.members() if self.fresh else self.owned_members()
@@ -524,8 +626,16 @@ class NativeChild:
             return info.prefix[4]
         raise RuntimeError("unsupported process ancestry platform")
 
-    def members(self):
+    def members(self,group=None):
         if os.name == "posix":
+            if group is None:
+                result=set()
+                for current in ({self.group}|self.registered_groups)-self.retired_groups:
+                    found=self.members(group=current)
+                    if not found:
+                        self.retired_groups.add(current)
+                    result.update(found)
+                return result
             if sys.platform == "darwin":
                 # Apple's libproc.h: proc_listpgrppids returns an int PID count.
                 # https://github.com/apple-oss-distributions/xnu/blob/main/libsyscall/wrappers/libproc/libproc.h
@@ -535,7 +645,7 @@ class NativeChild:
                 enumerate_group.restype = ctypes.c_int
                 buffer = (ctypes.c_int * 65536)()
                 ctypes.set_errno(0)
-                count = enumerate_group(self.group, buffer, ctypes.sizeof(buffer))
+                count = enumerate_group(group, buffer, ctypes.sizeof(buffer))
                 if count < 0 or (count == 0 and ctypes.get_errno()):
                     raise OSError(ctypes.get_errno(), "process-group inventory unavailable")
                 if count >= len(buffer):
@@ -553,7 +663,7 @@ class NativeChild:
                     if not entry.name.isdecimal():
                         continue
                     try:
-                        if os.getpgid(int(entry.name)) == self.group:
+                        if os.getpgid(int(entry.name)) == group:
                             members.add(int(entry.name))
                     except ProcessLookupError:
                         pass
@@ -573,17 +683,22 @@ class NativeChild:
         raise RuntimeError("job membership inventory exceeds test limit")
 
     def close(self):
+        failures=[]
         if os.name == "nt":
-            if self.process:
-                _check(_close(self.process))
-            if self.job:
-                _check(_close(self.job))
+            for handle in (self.process,self.job):
+                if handle:
+                    try:
+                        _check(_close(handle))
+                    except BaseException as error:
+                        failures.append(error)
         _NESTED_CHILDREN.discard(self)
+        if failures:
+            raise BaseExceptionGroup("native handle closure failed",failures)
 
 
-def checkpoint(name):
+def checkpoint(name,**fields):
     context = owner_context()
-    message = json.dumps({"token": context["token"], "checkpoint": name},
+    message = json.dumps({"token": context["token"], "checkpoint": name,**fields},
                          separators=(",", ":")).encode("utf-8") + b"\n"
     if len(message) > 1024:
         raise ValueError("control frame exceeds 1 KiB")
@@ -613,6 +728,50 @@ def _save(outcome, directory, identity):
         os.fsync(stream.fileno())
 
 
+def _terminal_failure(outcome,directory,identity,notice,observe=None):
+    """Diagnostics cannot turn a failed nested operation into continuation."""
+    outcome.completed=outcome.expectation_match=False
+    try:
+        if observe is not None:
+            try:
+                observe()
+            except BaseException as error:
+                outcome.errors.append(StageError.from_exception("observation",error))
+        try:
+            _save(outcome,directory,identity)
+        except BaseException as error:
+            outcome.errors.append(StageError.from_exception("receipt",error))
+            # The external owner captures these exact bounded StageErrors if
+            # the nested receipt destination itself is unavailable.
+            emergency=json.dumps({"failed_owner_diagnostics":{
+                "errors":[asdict(e) for e in outcome.errors],
+                "cleanup_errors":[asdict(e) for e in outcome.cleanup_errors]}},separators=(",",":" )).encode()+b"\n"
+            try:
+                os.write(2,emergency)
+            except BaseException:
+                pass  # still terminal; no successful result is manufactured
+        try:
+            checkpoint(notice)
+        except BaseException:
+            pass
+    finally:
+        os._exit(74)
+
+
+def _observe_root(outcome,child):
+    actual=child.poll()
+    outcome.root_reaped=actual is not None
+    outcome.started=not child.launch_failed
+    outcome.pid=child.pid if outcome.started else None
+    outcome.exit_code=actual if outcome.started else None
+    if child.bootstrap_status is not None:
+        outcome.bootstrap_pid=child.pid
+        outcome.bootstrap_status_b64=base64.b64encode(child.bootstrap_status).decode("ascii")
+        if child.launch_failed:
+            outcome.bootstrap_exit_code=actual
+    return actual
+
+
 def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
              deadline_seconds: float, expected: ExpectedExit = ExpectedExit()) -> CommandOutcome:
     started_at = time.monotonic()
@@ -627,12 +786,14 @@ def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
     child = None
     pipes = {}
     writer = None
+    writer_started = False
     write_errors = []
     done_writing = threading.Event()
     fatal = False
     faults = environment.get("GAUNTLET_TEST_FAULT")
     control_pending = bytearray()
     checkpoints = set()
+    write_permitted = threading.Event()
 
     def error(stage, exception, *, cleanup=False):
         nonlocal fatal
@@ -676,6 +837,7 @@ def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
         child_env.pop("GAUNTLET_TEST_STDIN", None)
         child_env.pop("GAUNTLET_TEST_FAULT", None)
         child_env.pop("GAUNTLET_TEST_CLOSE_STDIN", None)
+        child_env.pop("GAUNTLET_TEST_STDIN_AFTER_CHECKPOINT", None)
         child_env[OWNER_ENV] = json.dumps(child_context, separators=(",", ":"))
         # POSIX group is the suspended-equivalent new session's leader PID. A
         # tiny bootstrap sets its own group value before executing user code.
@@ -694,6 +856,10 @@ def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
 
         def write_input():
             try:
+                if environment.get("GAUNTLET_TEST_STDIN_AFTER_CHECKPOINT"):
+                    while not write_permitted.wait(min(.002,max(0,execution_deadline-time.monotonic()))):
+                        if time.monotonic()>=execution_deadline:
+                            raise TimeoutError("stdin checkpoint deadline expired")
                 offset = 0
                 while offset < len(input_data):
                     if time.monotonic() >= execution_deadline:
@@ -712,6 +878,7 @@ def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
         # stdin are detected from membership, not hidden by an early EOF.
         writer = threading.Thread(target=write_input, daemon=True, name="owned-stdin")
         writer.start()
+        writer_started = True
 
         def drain():
             nonlocal fatal
@@ -740,7 +907,20 @@ def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
                                 message = json.loads(frame)
                                 if message.get("token") != context["token"]:
                                     raise RuntimeError("control ownership token mismatch")
+                                if message["checkpoint"].startswith("session-"):
+                                    child.session_notice(message)
+                                    if nested:
+                                        checkpoint(message["checkpoint"],session=message["session"],
+                                                   parent=os.getpid(),**({"group":message["group"]} if "group" in message else {}))
+                                    elif message["checkpoint"]=="session-begin":
+                                        ack=Path(context["receipts"])/("session-"+context["token"]+"-"+message["session"]+".ack")
+                                        with ack.open("xb") as stream:
+                                            stream.write(b"declared\n")
+                                            stream.flush()
+                                            os.fsync(stream.fileno())
                                 checkpoints.add(message["checkpoint"])
+                                if message["checkpoint"]==environment.get("GAUNTLET_TEST_STDIN_AFTER_CHECKPOINT"):
+                                    write_permitted.set()
                             if len(control_pending) >= 1024:
                                 raise CaptureOverflow("unterminated control frame exceeds 1 KiB")
                 except BaseException as exception:
@@ -762,9 +942,7 @@ def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
                 fatal = True
             if faults == "cancel":
                 raise KeyboardInterrupt("injected cancellation")
-            outcome.exit_code = child.poll()
-            if outcome.exit_code is not None:
-                outcome.root_reaped = True
+            if _observe_root(outcome,child) is not None:
                 # Membership may transiently lag exit observation on Windows.
                 # Poll with the original execution deadline, never a new grace.
                 if not child.active() and all(pipes[c].eof for c in CHANNEL_LIMITS):
@@ -795,22 +973,24 @@ def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
             for channel in CHANNEL_LIMITS:
                 getattr(outcome, channel).incomplete = True
             outcome.elapsed_seconds = time.monotonic() - started_at
-            _save(outcome, directory, identity)
+            _terminal_failure(outcome,directory,identity,"nested-fatal")
+        # A launch handshake can fail after bootstrap creation but before the
+        # normal post-launch close loop. Never retain our copies of child ends
+        # while waiting for EOF from that partially launched process.
+        for pipe in pipes.values():
             try:
-                checkpoint("nested-fatal")
-            finally:
-                os._exit(74)
+                pipe.close_child()
+            except BaseException as exception:
+                error("child-pipe-close",exception,cleanup=True)
         if child is not None and child.pid is not None:
-            outcome.started = True
-            outcome.pid = child.pid
             try:
+                _observe_root(outcome,child)
                 if child.active() or fatal:
                     outcome.termination_requested = True
                     child.terminate()
                     outcome.termination_result = "requested"
                 while time.monotonic() < outcome.deadline:
-                    outcome.exit_code = child.poll()
-                    outcome.root_reaped = outcome.exit_code is not None
+                    _observe_root(outcome,child)
                     if "drain" in locals():
                         drain()
                     retired = not child.active()
@@ -820,6 +1000,12 @@ def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
                     time.sleep(min(0.005, max(0, outcome.deadline - time.monotonic())))
                 if not outcome.tree_retired:
                     error("retirement", TimeoutError("tree retirement unconfirmed at owner deadline"), cleanup=True)
+                if child.pending_sessions:
+                    outcome.tree_retired=False
+                    error("session-registration",RuntimeError("new session launch has unconfirmed custody"),cleanup=True)
+                if child.registered_groups or child.pending_sessions:
+                    outcome.ownership_inventory={"registered_groups":sorted(child.registered_groups),
+                        "retired_groups":sorted(child.retired_groups),"pending_sessions":sorted(child.pending_sessions)}
                 # Drain EOF only after retirement; no buffered stream is closed
                 # under a live reader or writer.
                 while time.monotonic() < outcome.deadline and not all(
@@ -834,9 +1020,12 @@ def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
         else:
             outcome.tree_retired = True  # no process was created
             outcome.readers_settled = True
-        if writer is not None:
-            writer.join(max(0, outcome.deadline - time.monotonic()))
-            outcome.writer_settled = not writer.is_alive()
+        if writer is not None and writer_started:
+            try:
+                writer.join(max(0, outcome.deadline - time.monotonic()))
+                outcome.writer_settled = not writer.is_alive()
+            except BaseException as exception:
+                error("write-settlement",exception,cleanup=True)
             outcome.errors.extend(write_errors)
             if write_errors:
                 fatal = True
@@ -845,12 +1034,11 @@ def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
         else:
             outcome.writer_settled = True
         for pipe in pipes.values():
-            try:
-                pipe.close_child()
-                if outcome.writer_settled:
-                    pipe.close_parent()
-            except BaseException as exception:
-                error("pipe-close", exception, cleanup=True)
+            for close in (pipe.close_child,pipe.close_parent) if outcome.writer_settled else (pipe.close_child,):
+                try:
+                    close()
+                except BaseException as exception:
+                    error("pipe-close",exception,cleanup=True)
         if child is not None:
             try:
                 child.close()
@@ -879,10 +1067,7 @@ def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
             outcome.completed = outcome.expectation_match = False
             outcome.errors.append(StageError.from_exception("receipt", exception))
             if nested:
-                try:
-                    checkpoint("receipt-write-failure")
-                finally:
-                    os._exit(74)
+                _terminal_failure(outcome,directory,identity+"-failed-persistence","receipt-write-failure")
             raise CommandFailure(outcome) from exception
     if not outcome.completed:
         if nested:
@@ -947,6 +1132,7 @@ class OwnedTransport:
         reader_done = anyio.Event()
         stderr_done = anyio.Event()
         stdin_bytes = 0
+        protocol_finished = False
         read_send, read_receive = anyio.create_memory_object_stream(0)
         write_send, write_receive = anyio.create_memory_object_stream(0)
 
@@ -957,17 +1143,12 @@ class OwnedTransport:
             outcome.cancelled |= isinstance(exception, anyio.get_cancelled_exc_class())
             for name in CHANNEL_LIMITS:
                 getattr(outcome, name).incomplete = True
-            if child is not None:
-                outcome.exit_code = child.poll()
-                outcome.root_reaped = outcome.exit_code is not None
             outcome.elapsed_seconds = time.monotonic() - started_at
-            _save(outcome, context["receipts"], identity)
-            try:
-                checkpoint("transport-fatal")
-            finally:
-                # Do not turn a partially closed peer into an accepted result.
-                # The retained external job/group owner kills the entire worker.
-                os._exit(74)
+            def observe():
+                if child is not None:
+                    outcome.exit_code = child.poll()
+                    outcome.root_reaped = outcome.exit_code is not None
+            _terminal_failure(outcome,context["receipts"],identity,"transport-fatal",observe)
 
         async def tick():
             if time.monotonic() >= deadline:
@@ -1112,14 +1293,26 @@ class OwnedTransport:
                         if outcome.exit_code != 0 or not outcome.tree_retired:
                             raise RuntimeError("MCP peer exit/retirement incomplete")
                         group.cancel_scope.cancel()
-            outcome.completed = outcome.expectation_match = True
+            protocol_finished = True
         except BaseException as exception:
             fail("transport", exception)
         finally:
-            if outcome.completed:
+            if protocol_finished:
                 for pipe in pipes.values():
-                    pipe.close_child()
-                    pipe.close_parent()
-                child.close()
+                    for close in (pipe.close_child,pipe.close_parent):
+                        try:
+                            close()
+                        except BaseException as error:
+                            outcome.cleanup_errors.append(StageError.from_exception("pipe-close",error))
+                try:
+                    child.close()
+                except BaseException as error:
+                    outcome.cleanup_errors.append(StageError.from_exception("handle-close",error))
+                if outcome.cleanup_errors:
+                    fail("cleanup",RuntimeError("transport closure incomplete"))
+                outcome.completed = outcome.expectation_match = True
                 outcome.elapsed_seconds = time.monotonic() - started_at
-                _save(outcome, context["receipts"], identity)
+                try:
+                    _save(outcome, context["receipts"], identity)
+                except BaseException as error:
+                    fail("receipt",error)

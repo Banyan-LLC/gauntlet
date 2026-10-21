@@ -34,7 +34,9 @@ identify their working source separately from their parent commit.
 | Windows Python 3.13.7 / SQLite 3.50.4 | Same 24 / 195 / 145 passed, six explicit skips | `task7-matrix313-v1` |
 | Focused real stdio, recovery, path security and matrix controller | 22 passed; actual exit 0 and full native tree retirement | `task7-task-done-v1` |
 | Separate base-only Python 3.14 environment | Full base suite passed without MCP/Dulwich/Pydantic; missing-extra startup and import isolation passed | `task6-base-suite-v1` |
-| Clean functional source, current PowerShell 7.6.6 | Running; no completion claim yet | `task8-powershell-v1` |
+| Clean functional source, current PowerShell 7.6.6 | First attempt reached its 900-second deadline; incomplete, tree retired; longer fresh run pending | `task8-powershell-v1` |
+| Review fixes, Windows Python 3.14.6 | 28 custody probes passed, two POSIX-only skips; 221 collaborative and 145 legacy tests passed, six legacy/environment skips | `implementation-matrix314-v3` |
+| Review fixes, Windows Python 3.13.7 | Same 28 / 221 / 145 passed with the same explicit skips | `implementation-matrix313-v2` |
 | Final clean-source Python/base verification | Pending Task 8 completion | final execution evidence index |
 | Linux/Windows/macOS × Python 3.11/3.14/3.15 plus base-only | Workflow configured; remote results pending publication | `.github/workflows/collaborative-python.yml` |
 
@@ -123,3 +125,11 @@ them and changes no legacy history/certificate/source integration code.
 
 Final review, authoritative PR review, remote CI and the publication handoff are
 recorded as they complete. Approval and merge from this chat remain prohibited.
+
+Six pre-hardening reviews are preserved under `prehardening-d06c1df` in the raw
+execution archive. Their verified findings produced regression tests and fixes
+for common-path receipt validation, filesystem probe errors, known stale ref
+observations, unsupported empty database versions, independent cleanup, fatal
+diagnostic handling and POSIX process custody. The POSIX launch handshake and
+legacy-session registration require native CI; Windows results do not certify
+them. Earlier failed test attempts remain preserved beside the passing runs.

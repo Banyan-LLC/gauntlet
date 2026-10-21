@@ -12,6 +12,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -140,7 +141,8 @@ class ProcessContract(unittest.TestCase):
         self.assertTrue(result.tree_retired)
 
     def test_stdin_write_failure_is_structured(self):
-        result = self.case("stdin-closed", GAUNTLET_TEST_STDIN="x" * 32768)
+        result = self.case("stdin-closed", GAUNTLET_TEST_STDIN="x" * 32768,
+                           GAUNTLET_TEST_STDIN_AFTER_CHECKPOINT="stdin-closed")
         self.assert_failure(result)
         self.assertIn("write", [error.stage for error in result.errors])
 
@@ -160,6 +162,57 @@ class ProcessContract(unittest.TestCase):
         result = self.case("success", GAUNTLET_TEST_FAULT="cleanup")
         self.assert_failure(result)
         self.assertTrue(result.cleanup_errors)
+
+    def test_unstarted_stdin_thread_still_closes_and_persists_failed_outcome(self):
+        with mock.patch.object(self.api.threading.Thread,"start",side_effect=RuntimeError("injected writer start failure")):
+            result=self.case("sleep",seconds=3)
+        self.assert_failure(result)
+        self.assertTrue(result.root_reaped and result.tree_retired and result.writer_settled)
+        self.assertTrue(any("writer start failure" in error.detail for error in result.errors))
+
+    def test_pipe_setup_failure_closes_both_allocated_endpoints(self):
+        if os.name=="nt":
+            handles=[]
+            original=self.api._create_pipe
+            def allocate(rd,wr,*args):
+                result=original(rd,wr,*args)
+                handles.extend([rd._obj.value,wr._obj.value])
+                return result
+            with mock.patch.object(self.api,"_create_pipe",allocate),mock.patch.object(self.api,"_handle_info",return_value=False):
+                with self.assertRaises(OSError):
+                    self.api.RawPipe()
+            for handle in handles:
+                self.assertFalse(self.api._handle_info(handle,0,0),"allocated pipe handle leaked")
+                self.assertEqual(self.api.ctypes.get_last_error(),6)
+        else:
+            descriptors=[]
+            original=os.pipe
+            def allocate():
+                value=original(); descriptors.extend(value); return value
+            with mock.patch.object(os,"pipe",allocate),mock.patch.object(os,"set_inheritable",side_effect=OSError("injected pipe setup")):
+                with self.assertRaises(OSError):
+                    self.api.RawPipe()
+            for descriptor in descriptors:
+                with self.assertRaises(OSError):
+                    os.fstat(descriptor)
+
+    def test_nested_receipt_write_failure_cannot_allow_worker_continuation(self):
+        result=self.case("nested-save-failure",seconds=5)
+        self.assert_failure(result)
+        self.assertNotIn(b"continued",result.stdout.prefix)
+        self.assertIn(b"ValueError",result.stderr.prefix)
+        self.assertIn(b"receipt",result.stderr.prefix)
+
+    @unittest.skipUnless(importlib.util.find_spec("mcp"),"optional SDK not installed")
+    def test_transport_diagnostic_and_cleanup_failures_are_always_terminal(self):
+        for failure in ("save","poll","close"):
+            with self.subTest(failure=failure):
+                result=self.case("mcp-fatal-"+failure,seconds=8)
+                self.assert_failure(result)
+                self.assertNotIn(b"continued",result.stdout.prefix)
+                self.assertTrue(result.root_reaped and result.tree_retired)
+                if failure=="close":
+                    self.assertIn(b"handle-close-attempt",result.control.prefix)
 
     def test_nested_owner_inherits_deadline_and_no_new_job(self):
         result = self.case("nested-success")
@@ -202,6 +255,21 @@ class ProcessContract(unittest.TestCase):
         self.assertTrue(result.timed_out)
         self.assertTrue(result.root_reaped and result.tree_retired)
         self.assertEqual(result.stdout.prefix.count(b"host-ready"), 2)
+
+    @unittest.skipUnless(os.name=="posix","legacy separate-session custody is POSIX; Windows uses the enclosing job")
+    def test_outer_expiry_retires_legacy_sut_separate_session_and_descendant(self):
+        result=self.case("legacy-session-expiry",seconds=4)
+        self.assert_failure(result)
+        self.assertTrue(result.timed_out and result.root_reaped and result.tree_retired,result)
+        self.assertTrue(result.ownership_inventory["registered_groups"])
+        self.assertFalse(result.ownership_inventory["pending_sessions"])
+
+    @unittest.skipUnless(os.name=="posix","POSIX session registration protocol")
+    def test_unconfirmed_session_launch_cannot_claim_complete_retirement(self):
+        result=self.case("legacy-pending",seconds=4)
+        self.assert_failure(result)
+        self.assertFalse(result.tree_retired)
+        self.assertTrue(result.ownership_inventory["pending_sessions"])
 
     @unittest.skipUnless(importlib.util.find_spec("mcp"), "optional SDK not installed")
     def test_sdk_transport_roundtrip_and_normal_shutdown(self):

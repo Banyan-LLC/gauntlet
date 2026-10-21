@@ -33,6 +33,8 @@ def run_suites(receipts,*,base_only):
     status=0
     for name,paths in suites:
         environment=dict(os.environ,PYTHONDONTWRITEBYTECODE="1",GAUNTLET_TEST_RECEIPTS=str(receipts))
+        if name in ("legacy","base"):
+            environment["GAUNTLET_TEST_TRACK_LEGACY_SESSIONS"]="1"
         if base_only:
             environment["GAUNTLET_EXPECT_BASE_ONLY"]="1"
         else:

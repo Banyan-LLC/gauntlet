@@ -69,8 +69,10 @@ class ReviewCore:
         return value
 
     def error_response(self,error,*,view=None,snapshot=None,revision_id=None):
+        freshness=({"state":"stale",**asdict(error.observation)}
+                   if error.code=="STALE" and error.observation is not None else {"state":"unknown"})
         return self._envelope(error=error,view=view,snapshot=snapshot,revision_id=revision_id,
-                              freshness={"state":"unknown"})
+                              freshness=freshness)
 
     async def open_review(self,request):
         return await self._call("open_review",request)
@@ -192,7 +194,7 @@ class ReviewCore:
     @staticmethod
     def _matches(snapshot,observation):
         if observation.source_oid!=snapshot.header["source_oid"] or observation.target_oid!=snapshot.header["target_oid"]:
-            raise CoreError("STALE",detail={"reason":"configured_refs_changed"})
+            raise CoreError("STALE",detail={"reason":"configured_refs_changed"},observation=observation)
 
     def _fresh(self,snapshot):
         observation=self.source.check_snapshot(snapshot)

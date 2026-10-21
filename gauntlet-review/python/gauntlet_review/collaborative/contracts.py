@@ -21,8 +21,9 @@ ASSURANCE = "collaborative-v1"
 
 
 class CoreError(Exception):
-    def __init__(self, code: str, retryable: bool = False, detail: dict | None = None):
+    def __init__(self, code: str, retryable: bool = False, detail: dict | None = None, *, observation: RefObservation | None = None):
         self.code, self.retryable, self.detail = code, retryable, detail or {}
+        self.observation=observation
         # Call sites supply bounded safe identifiers/reasons, never source bodies.
         try:
             if len(canonical_bytes(self.detail)) > 1024:

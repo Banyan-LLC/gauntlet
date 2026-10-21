@@ -12,6 +12,16 @@ import time
 def main():
     from collaborative_process import ExpectedExit, checkpoint, owner_context, run_case
     scenario = sys.argv[1]
+    if scenario=="nested-save-failure":
+        import collaborative_process as api
+        def broken(*args):
+            raise OSError("injected receipt failure")
+        api._save=broken
+        try:
+            run_case([],cwd=Path(__file__).parent,environment=dict(os.environ),deadline_seconds=5)
+        except BaseException:
+            print("continued",flush=True)
+        return
     if scenario == "success":
         os.write(1, b"hello\x00\xff\n")
         os.write(2, b"diagnostic\n")
@@ -40,7 +50,18 @@ def main():
         subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"], **kwargs)
     elif scenario == "stdin-closed":
         os.close(0)
+        checkpoint("stdin-closed")
         time.sleep(0.2)
+    elif scenario=="legacy-session-expiry":
+        from collaborative_legacy import track_sessions
+        from gauntlet_review.bounded import run_bounded
+        subprocess.Popen=track_sessions(subprocess.Popen)
+        run_bounded([sys.executable,"-c",
+            "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c','import time; time.sleep(120)']); time.sleep(120)"],timeout_sec=120)
+    elif scenario=="legacy-pending":
+        import uuid
+        checkpoint("session-begin",session=uuid.uuid4().hex,parent=os.getpid())
+        os._exit(74)
     elif scenario == "context":
         print(json.dumps(owner_context()))
     elif scenario.startswith("nested-"):
@@ -80,6 +101,41 @@ def main():
         from collaborative_process import OwnedTransport
 
         async def exercise():
+            if scenario.startswith("mcp-fatal-"):
+                import collaborative_process as api
+                failure=scenario.rsplit("-",1)[1]
+                if failure=="save":
+                    def broken(*args):
+                        raise OSError("injected receipt failure")
+                    api._save=broken
+                elif failure=="poll":
+                    def broken(*args):
+                        raise OSError("injected observation failure")
+                    api.NativeChild.poll=broken
+                else:
+                    original=api.RawPipe.close_parent
+                    calls=0
+                    def broken(self):
+                        nonlocal calls
+                        calls+=1
+                        if calls==3:
+                            raise OSError("injected final pipe close failure")
+                        original(self)
+                    api.RawPipe.close_parent=broken
+                    close=api.NativeChild.close
+                    def observed_close(self):
+                        checkpoint("handle-close-attempt")
+                        close(self)
+                    api.NativeChild.close=observed_close
+                try:
+                    argv=[sys.executable,str(Path(__file__).with_name("collaborative_echo.py"))]
+                    async with Client(OwnedTransport(argv,cwd=Path(__file__).parent)) as client:
+                        await client.list_tools()
+                        if failure!="close":
+                            raise RuntimeError("initiating transport failure")
+                except BaseException:
+                    print("continued",flush=True)
+                return
             if scenario == "mcp-real-expiry":
                 import tempfile
                 from dulwich.repo import Repo
