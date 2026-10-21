@@ -536,6 +536,13 @@ async def test_exact_retry_precedes_stale_version(store, append_event):
   checkout or resolved common Git directory/legacy history; do not create parent
   directories or delete existing files. Check missing paths distinctly from denied
   access. Trusted operator ownership protects the documented non-atomic path check.
+  Before each core database open, validate every intermediate state component,
+  database and journal/WAL/SHM entry with platform `lstat` and Windows reparse
+  flags; refuse any symlink/reparse entry and every error except genuine ENOENT.
+  This is the approved cooperative non-atomic validation, not an atomic SQLite
+  VFS or hostile concurrent-replacement guarantee. The core never removes a
+  sidecar itself; SQLite manages its rollback journal in the validated private
+  directory. Tests preserve rejected entries and existing ordinary sidecars.
 - [ ] Schema v1: `meta(schema_version,store_version,payload_bytes)`,
   `series(id,repo_id,repo_binding,source_ref,target_ref,policy_digest,payload_bytes)` with unique
   repo/ref tuple; `events(id,series_id,seq,store_version,revision_id,kind,body,body_sha256)`;
@@ -835,17 +842,17 @@ evidence, native ownership, compatibility and publication constraints still appl
   migration or production activation is required. An optional MCP host config is
   required only to use the feature; changing it requires host restart/reload and
   fails closed for bad paths/configuration. Never rewrite user configs automatically.
-- [ ] Claude host config registers `gauntlet-author` stdio plus the official Codex
-  MCP server. The Codex native host config registers `gauntlet-reviewer` with reviewer
+- [ ] Claude host config registers `gauntlet-author` stdio plus the separate SDK
+  bridge from Tasks 9–11. The bridge configures `gauntlet-reviewer` with reviewer
   role. Show opening review, recording evidence, sending peer the IDs/manifest
-  scope, native `codex`/`codex-reply` conversation, and reviewer submission. The
+  scope, `codex_status`/`codex_review` same-thread conversation, and reviewer submission. The
   walkthrough reads complete paginated source/history, treats all material as data,
   and explicitly reports coverage as reviewer attestation. Conversation transport
   success alone cannot produce peer completion.
-- [ ] Verify the actual installed Codex/Claude native interface versions against
-  official docs before the live walkthrough. Let those hosts own model permissions,
-  auth, timeouts, session IDs and cancellation; do not add their lifecycle code to
-  Gauntlet. Use temporary operator-owned host configs without copying credentials.
+- [ ] Verify the packaged SDK/runtime and installed Claude interface versions against
+  official docs before the Task 11 live walkthrough. Use the SDK-managed native
+  lifecycle and bounded adapter waits from Task 9. Use temporary operator-owned
+  host configs without copying credentials.
   Record a separately labelled live integration run on a disposable repository:
   real author/reviewer connections, one real finding/fix/closure, exact OIDs,
   tool receipts, canonical records and actual process closures. It is collaborative
@@ -855,8 +862,9 @@ evidence, native ownership, compatibility and publication constraints still appl
 - [ ] From clean exact source, run current-runtime `pwsh -NoProfile -File tests/run-tests.ps1`,
   the legacy Python suite `python -m pytest gauntlet-review/python/tests -q`, and
   `python -m pytest gauntlet-review/python/tests/collaborative -q` with the package
-  installed in the selected environment. Run the base-only install fixture and
-  the nine remote Python jobs. Serialize owned heavy tests/reviewer calls; retain
+  installed in the selected environment. Run the base-only install fixture;
+  qualify the nine remote Python jobs after ready-PR publication in Task 12.
+  Serialize owned heavy tests/reviewer calls; retain
   source hashes, original stdout/stderr/exits and closure receipts. Existing floor
   baseline failures remain scoped to unchanged dormant helpers; new active Python
   behavior must pass on its stated floor, and no dormant helper is activated.
@@ -896,6 +904,11 @@ thread ID (nullable) and state `ready`, `busy` or `poisoned` without native work
 test each state transition. Every review request must echo the instance ID before
 any cache lookup/backend call. Cache only prompt SHA-256, never prompt bodies;
 count keys, digests, response bytes and metadata in total logical cache usage.
+Before native work, reserve a conservative maximum cache charge for the key,
+digest, metadata and largest permitted complete result (including safe errors).
+Refuse admission if the total reserved plus retained charge exceeds 4 MiB; settle
+the reservation to actual stored bytes after completion. Test near-cap success,
+failure and lost-response replay; none may start an uncachable native turn.
 The five-tool core's existing budgets remain unchanged. New errors use typed
 BridgeError cause chaining and the amended spec's tagged safe failure schema.
 
