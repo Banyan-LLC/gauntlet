@@ -254,6 +254,19 @@ def test_inherited_pipe_is_not_success(probe_case):
   and remain controllable by the outer owner; an unregistered/escaping descendant or
   unconfirmable retirement makes the command incomplete. Never infer containment
   from the direct parent's exit or a CI job finishing.
+  **Nested ownership:** only the top-level controller may create a fresh case
+  group/job. A `run_case` invoked inside an owned worker inherits the same ownership
+  token, absolute deadline and shared capture budget; it launches no new session/job
+  and cannot extend time or retention. Its failure requests termination of the
+  entire enclosing case, not local continuation. Matrix pytest workers and their
+  nested stdio/fault scenarios therefore remain in the same controllable group/job.
+  Keep the inherited context explicit in worker startup/control messages; absence
+  or mismatch fails before spawning. Tests must reject a nested fresh-session launch.
+  Run intentionally fatal supervision probes from the external controller before
+  starting pytest, rather than killing an enclosing suite to test its own owner.
+  Add a matrix-level-expiry probe with two inner MCP-host processes active: terminate
+  the outer case and confirm pytest plus both hosts and inherited-pipe descendants
+  retire. Repeat with real MCP hosts in Task 7 after the optional package exists.
 - [ ] Use bounded fixed-size nonblocking pipe reads/writes. Retain at most 4 MiB
   each for stdout/stderr and 64 KiB checkpoint/control data, with an 8 MiB combined
   capture budget per owner/worker layer and 16 MiB total across both layers. Reserve
@@ -286,6 +299,9 @@ def test_inherited_pipe_is_not_success(probe_case):
   platform cannot establish the contract, stop that verification path and report
   incomplete acceptance rather than downgrade it. Commit
   `test: bound collaborative test process ownership and outcomes`.
+  The matrix driver imports and calls the probe assertions in the external owner
+  controller; it does not put those intentionally fatal probes inside another
+  `run_case` worker. The controller never attempts recursive self-supervision.
 
 ## Task 1: Strict contracts, optional packaging and quota arithmetic
 
@@ -779,6 +795,8 @@ async def scenario_two_stdio_hosts_share_history(cfg, server_args, owned_transpo
   production setup. The Python matrix script runs these exact local suite commands,
   records interpreter/platform/dependencies and original exit codes, and provides
   Task 0 `run_case` deadlines (900s/new suite, 900s/legacy, including all cleanup).
+  Nested scenario calls inherit the suite's owner/deadline/budget and never create
+  an escaping process group; a nested fatal failure fails the entire suite case.
   Persist each completed/partial CommandOutcome before advancing; fail the matrix
   on unexpected exit, launch/pipe/overflow/timeout/cancellation failure or incomplete
   capture/retirement. Keep earlier outcomes after later failure. Its scope is Python
