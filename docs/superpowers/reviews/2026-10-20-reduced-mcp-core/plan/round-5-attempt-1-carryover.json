@@ -1,0 +1,92 @@
+[
+  {
+    "id": "r1-46ce0944c6a552dd6220ecd55d9eb725",
+    "severity": "important",
+    "location": "Wire contracts: Change; Tasks 2 and 5: artifact IDs and manifest reads",
+    "issue": "[P1] Base-side artifacts have no discoverable read handles. Change contains paths, OIDs, lengths and digests, but no old/new artifact IDs. source_tree exposes only head-tree entries, while artifact reads require an opaque ID. Consequently, the specified interface cannot retrieve deleted files or the old bytes of modified files, despite requiring complete review of both sides.",
+    "suggestion": "Define manifest response records exposing nullable old/new artifact handles and their byte metadata, keeping lookup metadata outside source identity. Cover additions, modifications, deletions and symlinks through actual MCP reads to EOF; represent gitlinks explicitly as pointers without blob handles.",
+    "status": "addressed",
+    "reason": "ManifestRow exposes nullable old/new ArtifactHandle metadata outside Change identity; actual MCP discovery and EOF reads cover added, modified, deleted and symlink blobs, with explicit gitlink pointers."
+  },
+  {
+    "id": "r1-1997f70ca9eaee5cf50cd40ab4519107",
+    "severity": "important",
+    "location": "Tasks 1, 6, 7 and 8: installation checks, spawned protocol checks, stdio/crash tests, matrix runner and captured verification commands",
+    "issue": "[P1] The test-owned process lifecycle is insufficiently bounded. The 10-second checkpoint wait, 900-second command timeouts and unspecified outer deadline do not bound retained stdout/stderr/checkpoint data or cleanup. SDK context shutdown, kill/wait, pipe readers, joins and fallback calls have no shared cleanup deadline. Killing only the immediate crash child also leaves descendants able to hold stdout, stderr or stdin open. These gaps affect both stdio hosts, the fault helper and all test-run/",
+    "suggestion": "Specify one test-only supervision contract for every spawned path: per-channel and aggregate retained-byte caps, termination immediately upon overflow, one monotonic deadline covering execution and every cleanup operation, and finally-based process-tree termination and reaping. Require equivalent Windows and POSIX behavior, with probes for descendants inheriting each of stdout, stderr and stdin, reader failures, cancellation and failed cleanup.",
+    "status": "addressed",
+    "reason": "Task 0 specifies shared test-only ownership, retained per-channel/aggregate bounds, one execution-and-cleanup deadline, Windows suspended Job assignment, POSIX case group, bounded SDK OwnedTransport and nested ownership inheritance. Every spawned test path uses it; matrix-level expiry probes cover both inner hosts and pipe descendants."
+  },
+  {
+    "id": "r1-ec4a124dc3c591e33be69aa53dd4ecd4",
+    "severity": "important",
+    "location": "Tasks 2, 3 and 5: read_blob, read_page, lookup_retry and retries schema",
+    "issue": "[P2] Integrity validation does not explicitly cover every returned payload. The specified gates concern snapshot/status checks and validation before policy derivation or mutation; paginated artifact reads and early retry returns lack equivalent requirements. In addition, retries.result_bytes has no persisted content digest. Structurally valid SQLite content or Git object data can therefore change without a required check before returning historical bytes or an apparently successful original,",
+    "suggestion": "Require verification before returning source pages, event-body pages, evidence pages and replay receipts. Compare source content with its pinned identity, validate stored bodies against their recorded digests, and persist/check a digest and event/version bindings for result_bytes. Add corruption tests for every read/replay path and return typed integrity errors rather than successful envelopes.",
+    "status": "addressed",
+    "reason": "Every source/event/evidence page validates full content and binding before slicing. Retry receipts persist result_sha256 and committing version; all replay paths verify hash, strict shape, event digest/kind, request, scope/revision/snapshot and version bindings before returning the original receipt."
+  },
+  {
+    "id": "r1-ba61dfb93b3cbb0e6438d8c37522f67c",
+    "severity": "important",
+    "location": "Tasks 1, 6, 7 and 8: test command helpers and matrix result reporting",
+    "issue": "[P2] Recording original exit codes does not define outcomes for launch failure, timeout, output overflow, pipe failure or incomplete cleanup. No structured partial-failure contract or aggregate exit policy is specified. Such failures can discard earlier results, lose underlying errors or leave recorded partial evidence mistaken for a completed verification run.",
+    "suggestion": "Define a structured command outcome containing completion state, observed exit status, bounded capture details, termination/reaping results and underlying errors. Typed helper exceptions should preserve that outcome. Persist completed and partial outcomes, and make the driver fail for every unexpected failure or incomplete run; declare and verify deliberately injected crash outcomes separately.",
+    "status": "addressed",
+    "reason": "Task 0 defines CommandOutcome, Capture, StageError and typed CommandFailure preserving partial data, original exits and underlying errors. Matrix persists completed/partial outcomes and fails unexpected or incomplete runs; expected crashes require exact declared checkpoint/exit and verified retirement/recovery."
+  },
+  {
+    "id": "r1-13128a351e1b5bd7183bd01d52fe4fce",
+    "severity": "important",
+    "location": "Task 1: OperatorConfig; Task 2: GitSource startup; Task 6: CLI validation",
+    "issue": "[P2] Absolute-path validation is explicit for state_dir but absent for repo_path. Path typing and Repo(path) allow relative repository paths, contrary to the controlling specification. Their meaning depends on the launching host's working directory.",
+    "suggestion": "Reject non-absolute repository paths before normalization or resource opening, through shared configuration validation used by CLI and direct-core callers. Test POSIX relative paths and Windows drive-relative/root-relative forms, with typed configuration errors.",
+    "status": "addressed",
+    "reason": "Shared validate_operator_config rejects non-absolute native repository and state paths before normalization or resource opens, including Windows drive/root-relative and POSIX relative forms, for CLI and direct GitSource/Store/Core callers."
+  },
+  {
+    "id": "r3-b2bee44c75d1a52a63ff82374cf1cfd5",
+    "severity": "important",
+    "location": "Task 9: SDK notification handling, result serialization and BridgeConfig",
+    "issue": "[P2] The adapter steps do not state the approved 8 MiB cumulative decoded-event cap, 256 KiB complete serialized MCP-result cap, or 10–1800 second timeout range. Generic overflow and timeout tests could pass while those specific bounds are violated.",
+    "suggestion": "Specify and test each exact boundary. Stop consuming notifications immediately when the decoded-event cap is crossed, and apply the result cap to success, error and replay responses.",
+    "status": "addressed",
+    "reason": "Task 9 now states and tests the exact 8 MiB decoded-event cap, 256 KiB complete MCP success/error/replay result cap, immediate overflow stop, and strict 10–1800 second timeout range."
+  },
+  {
+    "id": "r3-9d6e8efc315d35f17922b2e6e7be55c0",
+    "severity": "important",
+    "location": "Task 8: implementation review transition",
+    "issue": "[P2] An active checkbox still offers a PR-per-round review route, conflicting with the amendment’s required local review followed by one authoritative PR round.",
+    "suggestion": "Replace that choice with the mandated local-first sequence before publication.",
+    "status": "addressed",
+    "reason": "Task 8 now fixes the already-selected local-first sequence followed by one authoritative PR round."
+  },
+  {
+    "id": "r4-0bebf8ea691ac119237fc2994e23386f",
+    "severity": "important",
+    "location": "Task 8: host walkthrough and verification checkboxes",
+    "issue": "[P2] Active steps still instruct use of the removed Codex MCP conversation endpoint (`codex`/`codex-reply`) and its old host lifecycle, despite the SDK adapter amendment. Task 8 also places the nine remote jobs before publication, while Task 12 places qualification after the PR is opened.",
+    "suggestion": "Replace the obsolete walkthrough and live-verification steps with the Task 9–11 SDK bridge flow, and make the CI sequence consistent with Task 12.",
+    "status": "addressed",
+    "reason": "Task8 now uses Task9–11 SDK bridge tools and lifecycle; remote nine-job qualification follows ready-PR publication in Task12."
+  },
+  {
+    "id": "r4-60d6491ab31cc19e6459a0a0079f9965",
+    "severity": "important",
+    "location": "Task 9: Bridge retry cache admission",
+    "issue": "[P2] The plan requires exact replay within a 4 MiB cache but does not reserve space for the eventual complete success or error response before starting a native turn. A turn admitted near the cache limit could produce a response that cannot be retained, leaving a lost response unreplayable.",
+    "suggestion": "Reserve a conservative maximum cache charge before native work, or refuse admission. Test near-cap success, error and lost-response retries without a second turn.",
+    "status": "addressed",
+    "reason": "Task9 now reserves a conservative maximum result/error and metadata cache charge before native work; near-cap success/failure/lost-response replay tests ensure every admitted result can be retained."
+  },
+  {
+    "id": "r4-02f71457399ad456a282971305bdd9b2",
+    "severity": "important",
+    "location": "Task 3: Store.open state-path and SQLite sidecar handling",
+    "issue": "[P2] The specified `lstat` preflight does not define no-follow opening of intermediate path components, the database, or journal/WAL/SHM sidecars. It also does not require validation before SQLite opens or removes a sidecar. Ordinary pathname opens can follow a redirected entry after the preflight.",
+    "suggestion": "Specify platform-specific no-follow validation for each database and sidecar access, including intermediate components, and verify any sidecar removal. Refuse startup or operation when that guarantee cannot be established.",
+    "status": "disputed",
+    "reason": "Approved spec Limits, errors and filesystem behavior explicitly excludes hostile same-user filesystem races/concurrent path replacement and trusts operator ownership. Task3 now spells out all-component and database/journal/WAL/SHM lstat/reparse validation before opens, genuine-ENOENT-only handling and no core removal. Atomic SQLite VFS no-follow enforcement/removal certification against concurrent replacement is outside that approved cooperative boundary."
+  }
+]

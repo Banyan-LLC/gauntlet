@@ -405,7 +405,9 @@ def test_bool_is_not_store_version(valid_open_payload):
   U+0001 refusal, and valid four-byte Unicode; measure actual canonical bytes.
   Add shared configuration tests for POSIX relative, Windows drive-relative and
   Windows root-relative repositories/state paths. Assert `CONFIGURATION_ERROR`
-  before opening resources through CLI and direct GitSource/Store/Core entry paths.
+  in the shared validator now. Add resource-opening entry-path regressions as each
+  consumer arrives: GitSource in Task 2, Store in Task 3, ReviewCore in Task 5,
+  CLI in Task 6. Each must fail before resources open.
   Execute all spawned commands below through Task 0; displayed commands specify
   inner argv, not permission to bypass the test supervisor.
 - [ ] Base-only test uses a separate clean venv: install `.[dev]`, import
@@ -481,8 +483,10 @@ def test_pinned_bytes_ignore_worktree(git_fixture, cfg):
   handles: modified files have base and head handles, deletions base only, additions
   head only, symlink blobs ordinary byte handles, and gitlinks explicit pointer
   metadata without a blob handle. Handles are lookup metadata, not additions to
-  immutable Change identity. Test actual MCP discovery/read-to-EOF of every side,
-  including deleted paths absent from the head-tree inventory.
+  immutable Change identity. Test direct-source discovery/read-to-EOF of every side,
+  including deleted paths absent from the head-tree inventory. Run equivalent
+  actual MCP discovery/EOF tests after the server exists in Task 6, retained in
+  the Task 7 real-stdio acceptance.
   Every source page verifies the complete object's Git identity, stored byte length
   and expected SHA-256 before returning requested bytes; a page hash is insufficient.
   A prior transaction's successful check cannot bypass current-byte validation.
@@ -876,9 +880,10 @@ evidence, native ownership, compatibility and publication constraints still appl
 - [ ] Commit `docs: explain collaborative MCP setup and assurance`.
 - [ ] At implementation review transition, use the Human's selected local-first
   review, then one authoritative PR round. Preserve all findings through this route;
-  the approved spec is the only trusted controlling document. Complete review fixes,
-  verification and the required authoritative PR round, then publish the ready PR
-  against `main` as geoffroth. Describe optional dependencies/host configuration,
+  the approved spec is the only trusted controlling document. Follow Task 12:
+  finish the live gate, local fixes and verification; publish the ready PR against
+  `main` as geoffroth; qualify CI; then review the exact published PR head.
+  Describe optional dependencies/host configuration,
   reload behavior, local-ref freshness and all remaining limitations prominently.
   Do not approve or merge from this chat.
 
@@ -919,11 +924,18 @@ BridgeError cause chaining and the amended spec's tagged safe failure schema.
   instance=bridge.status()["instance_id"]
   first=await bridge.call({"instance_id":instance,"key":"first","prompt":"Review pinned source","expected_thread_id":None})
   assert first["ok"] and first["thread_id"]=="fixture-thread"
-  assert await bridge.call({"instance_id":instance,"key":"first","prompt":"Review pinned source","expected_thread_id":None})=={**first,"replayed":True}
+  assert await bridge.call({"instance_id":instance,"key":"first","prompt":"Review pinned source","expected_thread_id":None})==first
   second=await bridge.call({"instance_id":instance,"key":"fix","prompt":"Review committed fix","expected_thread_id":"fixture-thread"})
   assert second["ok"] and second["turn_id"]!=first["turn_id"]
   assert backend.calls==2
   ```
+
+  After instance validation, fingerprint all request fields (including nullable
+  expected_thread_id) with prompt digest rather than body. Exact cache lookup
+  precedes new-turn thread validation. Return the stored response unchanged;
+  retry metadata does not modify it. Repeat the first key after the second turn
+  and assert the original response without a third turn. Changing only
+  expected_thread_id under the same key must conflict, not invoke native work.
 
 - [ ] Add invalid/extra/coerced keys and fields, surrogate/64-KiB UTF-8 prompt,
   changed-key conflict, missing/wrong continuation ID, BUSY, 20-key/4-MiB cache,
