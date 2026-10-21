@@ -59,6 +59,7 @@ class Policy:
     store_payload_bytes: int = 1024 * 1024 * 1024
     graph_commits: int = 1_000_000
     tree_entries: int = 100_000
+    tree_entry_accounting: str = "all_entries_v1"
     raw_path_bytes: int = 4096
     listing_rows: int = 100
     listing_bytes: int = 80 * 1024

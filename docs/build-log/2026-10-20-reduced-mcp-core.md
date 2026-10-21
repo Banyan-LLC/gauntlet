@@ -37,6 +37,8 @@ identify their working source separately from their parent commit.
 | Clean functional source, current PowerShell 7.6.6 | First attempt reached its 900-second deadline; incomplete, tree retired; longer fresh run pending | `task8-powershell-v1` |
 | Review fixes, Windows Python 3.14.6 | 28 custody probes passed, two POSIX-only skips; 221 collaborative and 145 legacy tests passed, six legacy/environment skips | `implementation-matrix314-v3` |
 | Review fixes, Windows Python 3.13.7 | Same 28 / 221 / 145 passed with the same explicit skips | `implementation-matrix313-v2` |
+| Final branch-review fix, Windows Python 3.14.6 | 28 custody probes passed, two POSIX-only skips; 224 collaborative and 145 legacy tests passed, six legacy/environment skips | `final-matrix314-v1` |
+| Fresh separate base-only Python 3.14.6 | 147 passed, four explicit inherited/environment skips; optional dependencies absent | `implementation-base314-v2` |
 | Final clean-source Python/base verification | Pending Task 8 completion | final execution evidence index |
 | Linux/Windows/macOS × Python 3.11/3.14/3.15 plus base-only | Workflow configured; remote results pending publication | `.github/workflows/collaborative-python.yml` |
 
@@ -77,6 +79,12 @@ These are logical payload bounds. They do not certify physical SDK/parser
 memory, Git decompression, SQLite-file size or OS I/O. Coverage is attested;
 stored evidence bytes are checked while command/runtime/origin/exit claims and
 external descriptors remain unverified.
+
+Source traversal additionally admits at most 100,000 tree-entry occurrences per
+complete tree, counting directories before queuing them, including repeated empty
+subtrees. The `all_entries_v1` accounting rule is bound into the policy digest.
+The final fresh branch review identified this missing bound; object-level and
+transaction regressions reproduced it before the fix and now pass.
 
 Only fresh `review_status` derives `peer_complete`. Mutation acknowledgements
 and exact retries cannot claim it. Local-ref freshness is independent of remote

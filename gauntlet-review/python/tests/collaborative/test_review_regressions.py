@@ -1,5 +1,6 @@
 """Failures found by implementation review, exercised through public boundaries."""
 import errno
+from dataclasses import replace
 import hashlib
 import json
 from pathlib import Path
@@ -10,6 +11,54 @@ import pytest
 from gauntlet_review.collaborative.contracts import CoreError,Policy,encode
 from gauntlet_review.collaborative.source import GitSource
 from gauntlet_review.collaborative.store import Store
+
+
+def repeated_empty_tree(writer,depth=12):
+    from dulwich.objects import Tree
+    tree=Tree()
+    writer.repo.object_store.add_object(tree)
+    for _ in range(depth):
+        parent=Tree()
+        parent.add(b"a",0o040000,tree.id)
+        parent.add(b"b",0o040000,tree.id)
+        writer.repo.object_store.add_object(parent)
+        tree=parent
+    return tree
+
+
+def test_repeated_empty_subtrees_consume_the_inventory_budget(git_fixture,cfg):
+    tree=repeated_empty_tree(git_fixture)
+    with GitSource(cfg) as source,source._repository() as repo:
+        with pytest.raises(CoreError) as caught:
+            source._inventory(repo,tree.id.decode("ascii"),replace(Policy(),tree_entries=64))
+        assert caught.value.code=="LIMIT_EXCEEDED"
+        assert caught.value.detail=={"limit":"tree_entries"}
+
+
+@pytest.mark.anyio
+async def test_directory_limit_rolls_back_open_review(flow,monkeypatch):
+    from dulwich.objects import Commit
+    tree=repeated_empty_tree(flow.writer)
+    parent=flow.writer.repo.refs[flow.config.source_ref]
+    commit=Commit.from_raw_string(Commit.type_num,flow.writer.repo.object_store[parent].as_raw_string())
+    commit.tree=tree.id
+    commit.parents=[parent]
+    flow.writer.repo.object_store.add_object(commit)
+    flow.writer.set_ref(flow.config.source_ref,commit.id.decode("ascii"))
+    original=flow.author.source._inventory
+    monkeypatch.setattr(flow.author.source,"_inventory",
+                        lambda repo,root,policy:original(repo,root,replace(policy,tree_entries=64)))
+    result=await flow.author.open_review({"key":"directory_limit","expected_version":0})
+    assert not result["ok"] and result["error"]["code"]=="LIMIT_EXCEEDED"
+    assert flow.author.store.read_series() is None
+    with sqlite3.connect(flow.author.store.path) as connection:
+        assert connection.execute("SELECT store_version FROM meta").fetchone()[0]==0
+        assert connection.execute("SELECT count(*) FROM events").fetchone()[0]==0
+
+
+def test_tree_entry_accounting_is_bound_into_policy_digest():
+    assert Policy().tree_entry_accounting=="all_entries_v1"
+    assert replace(Policy(),tree_entry_accounting="files_only").digest!=Policy().digest
 
 
 @pytest.mark.anyio

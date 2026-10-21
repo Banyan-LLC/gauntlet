@@ -152,10 +152,16 @@ class GitSource:
 
     def _inventory(self, repo, root, policy):
         entries, pending = {}, [(b"", root)]
+        expanded = 0
         while pending:
             prefix, oid = pending.pop()
             tree = self._object(repo, oid, Tree)
             for name, mode, child in tree.iteritems(name_order=True):
+                # Count every path occurrence, including repeated empty subtrees,
+                # before queuing it. Unique object/file counts cannot bound a DAG.
+                if expanded >= policy.tree_entries:
+                    _limit("tree_entries")
+                expanded += 1
                 path = prefix + name
                 if len(path) > policy.raw_path_bytes:
                     _limit("raw_path_bytes")
@@ -165,8 +171,6 @@ class GitSource:
                 if mode == 0o040000:
                     pending.append((path + b"/", child_oid))
                 elif mode in (0o100644, 0o100755, 0o120000, 0o160000):
-                    if len(entries) >= policy.tree_entries:
-                        _limit("tree_entries")
                     if path in entries:
                         raise CoreError("UNSUPPORTED_REPOSITORY", detail={"reason": "duplicate_tree_path"})
                     entries[path] = mode, child_oid
