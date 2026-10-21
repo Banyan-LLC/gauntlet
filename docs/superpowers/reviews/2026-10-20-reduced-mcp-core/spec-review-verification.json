@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "artifact_commit": "5c93d6b29d507ace5e7ad901e75a188924204ba2",
+  "verdict": "approve",
+  "recommendations": 0,
+  "native_exit": 0,
+  "native_tree_retired": true,
+  "input_tokens": 18929,
+  "exact_original_archive": "C:\\Users\\geoff\\Documents\\Projects\\Banyan\\gauntlet\\.git\\info\\reduced-mcp-core\\20261020-v1\\spec-round1-originals",
+  "files": [
+    {
+      "name": "cli-pin.json",
+      "bytes": 218,
+      "sha256": "b2a5b2766d56a39926aeec8adf89a451de70ed8f76c650f58e5eec831c75398e"
+    },
+    {
+      "name": "round-1-attempt-1-events.jsonl",
+      "bytes": 3017,
+      "sha256": "91a10083a62ff9669647c4ef93721b058a68ef0e70f04755b839b60c16d53efd"
+    },
+    {
+      "name": "round-1-attempt-1-meta.json",
+      "bytes": 5963,
+      "sha256": "31f71fdc8c7ba59af3745592d799e592a04499b62c4cf994054182efd87452d6"
+    },
+    {
+      "name": "round-1-attempt-1-process.json",
+      "bytes": 778,
+      "sha256": "35b359dec7bf4384aab38a1e63a9aadcea8570e777dad96a8497bb52d86e34e8"
+    },
+    {
+      "name": "round-1-attempt-1-transport.json",
+      "bytes": 11848,
+      "sha256": "571171ea7d252e9253f94f9b71fe1a22103cfe85f8c7e04da26760663fb3c4c5"
+    },
+    {
+      "name": "round-1-attempt-1-usage.json",
+      "bytes": 258,
+      "sha256": "6e14933df04315b907c3050e16d4e8734829195a254081a3410e20f465a1bff0"
+    },
+    {
+      "name": "round-1-attempt-1-verdict.raw.json",
+      "bytes": 209,
+      "sha256": "8aa003435c70996e88f6dd163987e47e7b46162bd26521a2f5a6c842b9d13952"
+    },
+    {
+      "name": "round-1-verdict.json",
+      "bytes": 196,
+      "sha256": "a99b8a01c7ba72a51aa8198bd1058f5254a3f4a48a133c325a01ee958d04c73a"
+    },
+    {
+      "name": "state.json",
+      "bytes": 275,
+      "sha256": "b16ec1e32d2998c5f8bb3f558486af9b3785fd2903517c0f6cad47c869cddbd9"
+    }
+  ],
+  "whitespace_check": "Exact raw events contain one final blank line. Retained unchanged. git diff --cached --check applies to all other paths; no product code changed."
+}

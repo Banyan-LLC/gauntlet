@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "phase": "spec",
+  "artifact": "docs/superpowers/specs/2026-10-20-reduced-mcp-core-design.md",
+  "initial_commit": "13b2a28f957f805360ab131f3996d0a28d792a78",
+  "hardened_commit": "5c93d6b29d507ace5e7ad901e75a188924204ba2",
+  "approved_controlling_spec": null,
+  "lenses": [
+    {
+      "lens": "fail-closed",
+      "initial_findings": [
+        {
+          "priority": "P2",
+          "line": 107,
+          "issue": "open_review permits a fresh review while finding IDs and mandatory carry-over are scoped to one review. After a limit refusal, another review for the same branch could reach peer_complete without prior blockers.",
+          "requested_change": "Persist lineage or reject replacement resets, with a limit-refusal replacement acceptance test."
+        }
+      ],
+      "resolution": "One persisted series per repository ID and configured ref pair; uniqueness, counters and findings survive reopening and policy changes.",
+      "recheck": "No findings at 5c93d6b."
+    },
+    {
+      "lens": "resource-bounds-and-lifecycle",
+      "initial_findings": [
+        {
+          "priority": "P2",
+          "line": 130,
+          "issue": "Verbatim carry-over can exceed the 256 KiB verdict limit after a valid near-limit initial verdict, making later closure impossible.",
+          "requested_change": "Reserve carry-over capacity or reference immutable finding records, and test near-limit closure."
+        },
+        {
+          "priority": "P2",
+          "line": 204,
+          "issue": "The phrase rejecting existing database files prevents a second participant or restart from opening the shared store.",
+          "requested_change": "Accept validated existing regular databases and reject symlink/reparse files; test shared startup and restart."
+        }
+      ],
+      "resolution": "Immutable finding references replace repeated text; finding/reason limits and maximum-ledger/coverage reservation require a plan-level byte proof. Existing validated regular databases are explicitly accepted.",
+      "recheck": "No findings at 5c93d6b."
+    },
+    {
+      "lens": "path-and-filesystem",
+      "initial_findings": [],
+      "recheck": "No findings at either 13b2a28 or 5c93d6b within the explicit trusted local-operator boundary."
+    },
+    {
+      "lens": "cross-platform-parity",
+      "initial_findings": [
+        {
+          "priority": "P2",
+          "line": 75,
+          "issue": "Unspecified Git path encoding and ordering could collapse or reject non-UTF-8, case-distinct or normalization-distinct paths differently across platforms.",
+          "requested_change": "Require reversible raw-byte identity and ordering with parity fixtures, or explicitly reject unsupported paths."
+        }
+      ],
+      "resolution": "Raw bytes, base64 transport, unsigned-byte ordering and informational display labels; explicit path parity fixtures.",
+      "recheck": "No findings at 5c93d6b."
+    },
+    {
+      "lens": "typed-errors-and-api-completeness",
+      "initial_findings": [
+        {
+          "priority": "P2",
+          "line": 113,
+          "issue": "Every mutation needs an expected store version, but only author-only open_review explicitly returns it; reviewers lack a specified refresh path after CONFLICT.",
+          "requested_change": "Return observed versions from reads/status, resulting versions from writes, and specify conflict refresh."
+        }
+      ],
+      "resolution": "Version-bearing responses and role-independent review_status refresh; explicit freshness discriminants and replay observation semantics.",
+      "recheck": "No findings at 5c93d6b."
+    },
+    {
+      "lens": "spec-conformance",
+      "applicability": "Not applicable: this proposed spec has no separate approved controlling spec and is not its own trusted context."
+    }
+  ],
+  "verification": "Documentation-only change. Staged and unstaged whitespace checks passed; product tests were not run and product implementation has not begun."
+}
