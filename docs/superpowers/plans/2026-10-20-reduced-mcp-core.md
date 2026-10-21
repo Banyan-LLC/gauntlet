@@ -115,6 +115,12 @@ source/target refs. Retry uniqueness is `(series_scope,participant,operation,key
 The request fingerprint binds scope, configured role, policy digest and complete
 canonical request. A client cannot select scope. Identical keys in different
 configured series are independent; changed content within one scope conflicts.
+Repository binding is a startup-validated fact from `GitSource.repo_binding` (the
+resolved common Git directory), not a client argument. Compare it and the policy
+against any persisted series before every retry lookup, including core shortcuts.
+Scope/role/policy/request hashing never substitutes for that binding check. A key
+reused with a different repository binding returns `CONFIGURATION_MISMATCH`; a
+linked worktree with the same common directory can recover the original result.
 
 `SubmitReview` adds `verdict`, `summary`, `recommendations`, `coverage_digest`,
 `coverage` (unique change IDs acknowledging both old/new surfaces), and `carryover`.
@@ -276,6 +282,7 @@ extend the shared fixture with `GitFixture.commit(files, parents=None)->str` and
 `write_worktree_file(path: str, data: bytes)->None` writes a normal fixture file.
 
 **Interfaces:** `GitSource(config: OperatorConfig)` is a closing context manager;
+`repo_binding: str` is its normalized resolved common-directory property;
 `observe()->RefObservation(source_oid,target_oid,checked_at)`;
 `check_snapshot(snapshot: Snapshot)->RefObservation` validates required changed
 objects/types/lengths/digests and rereads configured refs;
@@ -337,7 +344,7 @@ def test_pinned_bytes_ignore_worktree(git_fixture, cfg):
 **Files:** create `collaborative/store.py`, `tests/collaborative/test_store.py` and
 initial `test_recovery.py`; shared fixtures add transaction fault checkpoints.
 
-**Interfaces:** `Store.open(config)->Store` (context manager),
+**Interfaces:** `Store.open(config, repo_binding: str)->Store` (context manager),
 `read_series()->SeriesView|None`, `version()->int`,
 `lookup_retry(series_scope: str, participant: str, operation: str, key: str, request_digest: str)->StoredResult|None`,
 `async mutate(series_scope,participant,operation,key,request_digest,expected_version,
@@ -365,6 +372,10 @@ async def test_exact_retry_precedes_stale_version(store, append_event):
   Add a two-series regression with identical participant/operation/key values:
   each creates/retries independently and neither replays the other's response.
   Role/policy/request changes within a scope cannot silently replay.
+  Add reused-key tests against a different common Git directory with identical
+  configured repo ID/refs: both the direct lookup and mutate paths must refuse
+  `CONFIGURATION_MISMATCH`. A linked worktree sharing the old common directory
+  must still recover the old result without a fresh source/ref check.
 - [ ] Implement strict checked startup: absolute existing state directory, no
   symlink/reparse component (`lstat`, `stat.S_ISLNK`, Windows
   `st_file_attributes & FILE_ATTRIBUTE_REPARSE_POINT`), reject redirected DB and
@@ -385,8 +396,9 @@ async def test_exact_retry_precedes_stale_version(store, append_event):
   use the same repository binding. Finding records are canonical event
   content; projections are rebuilt from events rather than accepted as authority.
 - [ ] Use SQLite foreign keys, rollback journal `DELETE`, `synchronous=FULL`, busy
-  timeout 2,000 ms, `isolation_level=None`, `BEGIN IMMEDIATE`, then retry lookup,
-  CAS version, state validation, quota reservation, event/evidence/retry insert,
+  timeout 2,000 ms, `isolation_level=None`, `BEGIN IMMEDIATE`, then persisted
+  repository/policy binding validation, retry lookup, CAS version, full state
+  validation, quota reservation, event/evidence/retry insert,
   version increment and COMMIT. New-file initialization also runs under the write
   lock and schema uniqueness, so two initial hosts cannot overwrite metadata.
   Read pages/status use a single read transaction and return its observed version.
@@ -479,6 +491,7 @@ async def test_new_revision_drops_approval_not_findings(flow):
 - [ ] `flow` fixture owns two independently configured cores/connections with shared
   storage, and a test Git writer. Builders obtain observed versions from status;
   they do not bypass core validation. Implement role checks on every operation,
+  validate persisted repository/policy binding before any retry shortcut,
   plus role-specific server registration later. New keys revalidate fresh refs and
   current revision inside admission; exact retries return stored results without
   pretending to recheck refs. Source capture/ref reread occurs before acceptance;
