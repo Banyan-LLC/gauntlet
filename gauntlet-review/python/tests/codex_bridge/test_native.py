@@ -39,5 +39,3 @@ def test_installed_runtime_and_real_mcp_close_without_model_calls(config,mode):
             assert report["scope_cancelled"] is True
     else:
         assert report["state"]=="ready" and report["invalid_refused"]
-
-
