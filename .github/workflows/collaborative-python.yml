@@ -1,0 +1,52 @@
+name: Collaborative Python
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  collaborative:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ['3.11', '3.14', '3.15']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      GAUNTLET_REQUIRE_FILE_SYMLINK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -e './gauntlet-review/python[mcp,dev]'
+      - name: Native custody probes, collaborative and legacy suites
+        shell: bash
+        run: python tests/run-collaborative-matrix.py --receipts "$RUNNER_TEMP/collaborative-evidence" --source-revision '${{ github.sha }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: collaborative-${{ matrix.os }}-py${{ matrix.python }}
+          path: ${{ runner.temp }}/collaborative-evidence
+          if-no-files-found: error
+          retention-days: 90
+  base-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e './gauntlet-review/python[dev]'
+      - run: python tests/run-collaborative-matrix.py --base-only --receipts "$RUNNER_TEMP/base-evidence" --source-revision '${{ github.sha }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: collaborative-base-only
+          path: ${{ runner.temp }}/base-evidence
+          if-no-files-found: error
+          retention-days: 90

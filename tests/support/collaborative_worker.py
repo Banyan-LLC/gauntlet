@@ -80,6 +80,49 @@ def main():
         from collaborative_process import OwnedTransport
 
         async def exercise():
+            if scenario == "mcp-real-expiry":
+                import tempfile
+                from dulwich.repo import Repo
+                from gauntlet_review.collaborative.contracts import OperatorConfig
+                from collaborative_scenario import server_args
+                root=Path(tempfile.mkdtemp(prefix="real-expiry-",dir=owner_context()["receipts"]))
+                repo,state=root/"repo",root/"state"
+                repo.mkdir(); state.mkdir(mode=0o700)
+                Repo.init(str(repo)).close()
+                config=OperatorConfig(repo,state,"expiry",b"refs/heads/topic",b"refs/heads/main","author","author")
+                async with Client(OwnedTransport([sys.executable,*server_args(config,"author")],cwd=root)) as first:
+                    await first.list_tools()
+                    os.write(1,b"host-ready\n")
+                    async with Client(OwnedTransport([sys.executable,*server_args(config,"reviewer")],cwd=root)) as second:
+                        await second.list_tools()
+                        os.write(1,b"host-ready\n")
+                        # Deliberate pipe-holding descendants remain inside the
+                        # same native owner; production peers spawn no children.
+                        subprocess.Popen([sys.executable,"-c",
+                            "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c','import time; time.sleep(120)']); time.sleep(120)"])
+                        await anyio.sleep(120)
+                return
+            if scenario == "mcp-sibling-closure":
+                first_ready, second_ready, first_closed = (anyio.Event() for _ in range(3))
+                argv = [sys.executable, str(Path(__file__).with_name("collaborative_echo.py"))]
+                async def first():
+                    async with Client(OwnedTransport(argv, cwd=Path(__file__).parent)) as client:
+                        await client.list_tools()
+                        first_ready.set()
+                        await second_ready.wait()
+                    first_closed.set()
+                async def second():
+                    await first_ready.wait()
+                    async with Client(OwnedTransport(argv, cwd=Path(__file__).parent)) as client:
+                        await client.list_tools()
+                        second_ready.set()
+                        await first_closed.wait()
+                        assert (await client.list_tools()).tools[0].name == "probe-tool"
+                async with anyio.create_task_group() as group:
+                    group.start_soon(first)
+                    group.start_soon(second)
+                print("both-peers-closed")
+                return
             if scenario == "mcp-frame-overflow":
                 argv = [sys.executable, "-c", "import os; os.write(1,b'x'*(512*1024+1)+b'\\n')"]
             else:

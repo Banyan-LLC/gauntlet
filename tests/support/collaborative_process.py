@@ -28,6 +28,7 @@ CHANNEL_LIMITS = {"stdout": 4 * 1024 * 1024, "stderr": 4 * 1024 * 1024,
                   "control": 64 * 1024}
 LAYER_LIMIT = 8 * 1024 * 1024
 OWNER_ENV = "GAUNTLET_TEST_OWNER"
+_NESTED_CHILDREN = set()
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,13 @@ class StageError:
             seen.add(id(cause))
             causes.append(f"{type(cause).__name__}: {str(cause)[:256]}")
             cause = cause.__cause__ or cause.__context__
+        pending = list(getattr(error, "exceptions", ()))
+        while pending and len(causes) < 4:
+            nested = pending.pop(0)
+            if isinstance(nested, BaseExceptionGroup):
+                pending.extend(nested.exceptions)
+            else:
+                causes.append(f"{type(nested).__name__}: {str(nested)[:256]}")
         return cls(stage, type(error).__name__, str(error)[:1024], tuple(causes))
 
 
@@ -80,6 +88,7 @@ class CommandOutcome:
     started_at_utc: str | None = None
     expected_exit: dict | None = None
     started: bool = False
+    pid: int | None = None
     completed: bool = False
     exit_code: int | None = None
     timed_out: bool = False
@@ -264,6 +273,14 @@ if os.name == "nt":
     _open_process = _bind("OpenProcess", [W.DWORD, W.BOOL, W.DWORD], W.HANDLE)
     _image_name = _bind("QueryFullProcessImageNameW", [W.HANDLE, W.DWORD, W.LPWSTR,
                                                     ctypes.POINTER(W.DWORD)])
+    class PROCESS_BASIC_INFORMATION(ctypes.Structure):
+        _fields_ = [("ExitStatus", ctypes.c_long), ("PebBaseAddress", W.LPVOID),
+                    ("AffinityMask", SIZE_T), ("BasePriority", ctypes.c_long),
+                    ("UniqueProcessId", SIZE_T), ("InheritedFromUniqueProcessId", SIZE_T)]
+
+    _query_process = ctypes.WinDLL("ntdll").NtQueryInformationProcess
+    _query_process.argtypes = [W.HANDLE, ctypes.c_int, W.LPVOID, W.ULONG, ctypes.POINTER(W.ULONG)]
+    _query_process.restype = ctypes.c_long
 
     def _check(result):
         if not result:
@@ -403,6 +420,8 @@ class NativeChild:
             self.pid = self.process.pid
             if fresh:
                 self.group = self.pid
+        if not fresh:
+            _NESTED_CHILDREN.add(self)
 
     def poll(self):
         if self.process is None:
@@ -423,7 +442,7 @@ class NativeChild:
 
     def active(self):
         if not self.fresh:
-            return bool(self.members() - self.baseline)
+            return bool(self.owned_members())
         if os.name == "nt":
             accounting = ACCOUNTING()
             _check(_query_job(self.job, 1, ctypes.byref(accounting), ctypes.sizeof(accounting), None))
@@ -445,10 +464,65 @@ class NativeChild:
                 pass
 
     def has_descendants(self):
-        members = self.members()
+        members = self.members() if self.fresh else self.owned_members()
         self.inventory = {"root": self.pid, "members": sorted(members),
                           "baseline": sorted(self.baseline)}
         return bool(members - self.baseline - {self.pid})
+
+    def owned_members(self):
+        members = self.members()
+        # Peers share the enclosing group/job. A later registered peer is not a
+        # descendant of this one; excluding only launch-time members deadlocks
+        # first-peer shutdown. Unknown/orphan members remain owned conservatively.
+        siblings = {peer.pid for peer in _NESTED_CHILDREN if peer is not self}
+        excluded = set(siblings)
+        parents = {pid: self.parent_pid(pid) for pid in members - self.baseline}
+        while True:
+            expanded = excluded | {pid for pid, parent in parents.items() if parent in excluded}
+            if expanded == excluded:
+                break
+            excluded = expanded
+        return members - self.baseline - excluded
+
+    @staticmethod
+    def parent_pid(pid):
+        if os.name == "nt":
+            handle = _open_process(0x1000, False, pid)
+            if not handle:
+                if ctypes.get_last_error() == 87:  # exited between inventories
+                    return None
+                raise ctypes.WinError(ctypes.get_last_error())
+            try:
+                info, returned = PROCESS_BASIC_INFORMATION(), W.ULONG()
+                status = _query_process(handle, 0, ctypes.byref(info), ctypes.sizeof(info), ctypes.byref(returned))
+                if status < 0 or returned.value != ctypes.sizeof(info):
+                    raise OSError(f"process ancestry query failed: {status:#x}")
+                return info.InheritedFromUniqueProcessId
+            finally:
+                _check(_close(handle))
+        if sys.platform.startswith("linux"):
+            try:
+                fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+                return int(fields[1])
+            except FileNotFoundError:
+                return None
+        if sys.platform == "darwin":
+            class BsdInfo(ctypes.Structure):
+                _fields_ = [("prefix", ctypes.c_uint32 * 12), ("comm", ctypes.c_char * 16),
+                            ("name", ctypes.c_char * 32), ("suffix", ctypes.c_uint32 * 6),
+                            ("start_sec", ctypes.c_uint64), ("start_usec", ctypes.c_uint64)]
+            library = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+            query = library.proc_pidinfo
+            query.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64, ctypes.c_void_p, ctypes.c_int]
+            query.restype = ctypes.c_int
+            info = BsdInfo()
+            count = query(pid, 3, 0, ctypes.byref(info), ctypes.sizeof(info))
+            if count == 0 and ctypes.get_errno() == 3:
+                return None
+            if count != ctypes.sizeof(info):
+                raise OSError(ctypes.get_errno(), "process ancestry query unavailable")
+            return info.prefix[4]
+        raise RuntimeError("unsupported process ancestry platform")
 
     def members(self):
         if os.name == "posix":
@@ -504,6 +578,7 @@ class NativeChild:
                 _check(_close(self.process))
             if self.job:
                 _check(_close(self.job))
+        _NESTED_CHILDREN.discard(self)
 
 
 def checkpoint(name):
@@ -600,6 +675,7 @@ def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
         child_env = dict(environment)
         child_env.pop("GAUNTLET_TEST_STDIN", None)
         child_env.pop("GAUNTLET_TEST_FAULT", None)
+        child_env.pop("GAUNTLET_TEST_CLOSE_STDIN", None)
         child_env[OWNER_ENV] = json.dumps(child_context, separators=(",", ":"))
         # POSIX group is the suspended-equivalent new session's leader PID. A
         # tiny bootstrap sets its own group value before executing user code.
@@ -609,6 +685,7 @@ def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
         child = NativeChild.__new__(NativeChild)
         child.__init__(argv, cwd, child_env, pipes, fresh=not nested)
         outcome.started = True
+        outcome.pid = child.pid
         for pipe in pipes.values():
             pipe.close_child()
         input_data = environment.get("GAUNTLET_TEST_STDIN", "").encode("utf-8")
@@ -675,6 +752,10 @@ def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
 
         while True:
             progress = drain()
+            if environment.get("GAUNTLET_TEST_CLOSE_STDIN") == "1" and done_writing.is_set():
+                # Explicit raw-protocol EOF probe; normal custody tests keep the
+                # pipe open so inherited-stdin descendants cannot hide.
+                pipes["stdin"].close_parent()
             if write_errors:
                 outcome.errors.extend(write_errors)
                 write_errors.clear()
@@ -689,6 +770,11 @@ def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
                 if not child.active() and all(pipes[c].eof for c in CHANNEL_LIMITS):
                     break
             if fatal:
+                break
+            if (expected.checkpoint and expected.checkpoint not in checkpoints and
+                    time.monotonic() >= min(execution_deadline, started_at + 10)):
+                outcome.timed_out = True
+                error("checkpoint", TimeoutError("declared checkpoint not observed within existing budget"))
                 break
             if time.monotonic() >= execution_deadline:
                 if outcome.root_reaped and not nested and child.has_descendants():
@@ -716,6 +802,7 @@ def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
                 os._exit(74)
         if child is not None and child.pid is not None:
             outcome.started = True
+            outcome.pid = child.pid
             try:
                 if child.active() or fatal:
                     outcome.termination_requested = True
@@ -993,6 +1080,7 @@ class OwnedTransport:
             child = NativeChild.__new__(NativeChild)
             child.__init__(self.argv, self.cwd, self.environment, pipes, fresh=False)
             outcome.started = True
+            outcome.pid = child.pid
             for pipe in pipes.values():
                 pipe.close_child()
             async with anyio.create_task_group() as group:

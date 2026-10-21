@@ -210,6 +210,20 @@ class ProcessContract(unittest.TestCase):
         self.assertIn(b"probe-tool", result.stdout.prefix)
 
     @unittest.skipUnless(importlib.util.find_spec("mcp"), "optional SDK not installed")
+    def test_outer_expiry_retires_real_mcp_peers_and_pipe_fault_descendants(self):
+        result = self.case("mcp-real-expiry", seconds=10)
+        self.assert_failure(result)
+        self.assertTrue(result.timed_out)
+        self.assertTrue(result.root_reaped and result.tree_retired)
+        self.assertEqual(result.stdout.prefix.count(b"host-ready"), 2)
+
+    @unittest.skipUnless(importlib.util.find_spec("mcp"), "optional SDK not installed")
+    def test_first_peer_can_close_while_second_remains_usable(self):
+        result = self.case("mcp-sibling-closure", seconds=12)
+        self.assertTrue(result.completed, result)
+        self.assertIn(b"both-peers-closed", result.stdout.prefix)
+
+    @unittest.skipUnless(importlib.util.find_spec("mcp"), "optional SDK not installed")
     def test_sdk_transport_refuses_oversized_frame_before_parsing(self):
         result = self.case("mcp-frame-overflow", seconds=10)
         self.assert_failure(result)
