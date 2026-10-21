@@ -1,0 +1,3057 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-10-21T11:51:49.5419589Z",
+  "archive_root": "C:/Users/geoff/Documents/Projects/Banyan/gauntlet/.git/info/reduced-mcp-core/20261021-execution",
+  "files": [
+    {
+      "path": "build-wheelhouse-v1.py",
+      "bytes": 3557,
+      "sha256": "d80abe6d9f69fee4b19ab6714437dfe4a149ed75e98fb2dc379dca6a59fa413b"
+    },
+    {
+      "path": "build-wheelhouse-v2.py",
+      "bytes": 3565,
+      "sha256": "fdabab5101fd14b815873e643ed50c5509b4ad7a8ac63d9543030c96b9932c82"
+    },
+    {
+      "path": "build-wheelhouse-v3.py",
+      "bytes": 3707,
+      "sha256": "d8b5fd4640e3fba3cc5c4cdcb22fca7c9eeacf0b6bd4c3da104299e246d7bfe6"
+    },
+    {
+      "path": "dependencies-install-v1/cf953b5b652e4ec983411738417b6366-budget.bin",
+      "bytes": 49,
+      "sha256": "26c075b58d453df658f245365053dea0c3a9584962ebbae87315ca53a7e6871e"
+    },
+    {
+      "path": "dependencies-install-v1/cf953b5b652e4ec983411738417b6366-receipt.json",
+      "bytes": 8305,
+      "sha256": "6171001b55a33d665c87d19913a09dfa64fefef55713375d933f056cee91c8c6"
+    },
+    {
+      "path": "dependencies-install-v2/bcee8208480c4b06922a69e36c0a4f6c-budget.bin",
+      "bytes": 49,
+      "sha256": "fd478c79e72793a135c92d6076d64198ad5e17f9d858eb011e94fb18aea51fa2"
+    },
+    {
+      "path": "dependencies-install-v2/bcee8208480c4b06922a69e36c0a4f6c-receipt.json",
+      "bytes": 8366,
+      "sha256": "77eb3614f0aeed0f8d031cbce558ce3785b98af85d4de8533d4b86df80ba9fa9"
+    },
+    {
+      "path": "dependencies-install-v3/6e8da164c0f44a56b292d2f91510c84c-budget.bin",
+      "bytes": 49,
+      "sha256": "3711a4d136f9424cd65a978736ad8d726132cfe5e3c0f5e6bfb6b71523e8099b"
+    },
+    {
+      "path": "dependencies-install-v3/6e8da164c0f44a56b292d2f91510c84c-receipt.json",
+      "bytes": 228391,
+      "sha256": "dae7a78465b445baf5bbea12d774c4ddc2b1bb88dd0d59fc2423f4f1180c08ab"
+    },
+    {
+      "path": "dependencies-install-v4/c3ce7e258770469585a5f14b85896242-budget.bin",
+      "bytes": 49,
+      "sha256": "95d37dd909605fdf53e889ca5b6df72a720bbd6dec6822321a701ff5a6164073"
+    },
+    {
+      "path": "dependencies-install-v4/c3ce7e258770469585a5f14b85896242-receipt.json",
+      "bytes": 13565,
+      "sha256": "8ce98adcdb51faf19db2a5f971d543296c630976f4ee1d8381a7b5799cfc3ad1"
+    },
+    {
+      "path": "dulwich-metadata-recheck-v1.json",
+      "bytes": 66498,
+      "sha256": "3028bda64afdd1964a8322bdd053ea6c09838ec2a20bca6d206c007b768351ec"
+    },
+    {
+      "path": "environment-facts-v1/42ed3ee2938249b7937752e78253d5d9-budget.bin",
+      "bytes": 49,
+      "sha256": "924d034301e3a4590dd10bc6657cbc4af8f9591a974e182278f968ce2da53a90"
+    },
+    {
+      "path": "environment-facts-v1/42ed3ee2938249b7937752e78253d5d9-receipt.json",
+      "bytes": 1727,
+      "sha256": "43899a89c482388e52155106d8bd5a627d7a4b35643b04f8b92bdb223716fc86"
+    },
+    {
+      "path": "environment-freeze-v1/93755e493ffa4014857e08a3eab52374-budget.bin",
+      "bytes": 49,
+      "sha256": "9ea719d1e4be6c4f4637fde73b7dec70273fedd192aae4b8217b3fd8166080c9"
+    },
+    {
+      "path": "environment-freeze-v1/93755e493ffa4014857e08a3eab52374-receipt.json",
+      "bytes": 2621,
+      "sha256": "8d4c043d6d6c128635e726a5240d079b1af84b92ac2a2c8749ec928288ddeb50"
+    },
+    {
+      "path": "legacy-python-baseline-v1/bda3c99e5a9b4bbf94a176c67cd35ffe-budget.bin",
+      "bytes": 49,
+      "sha256": "b992696ff9d67a471805dd87bfc63fd3a50804bf41c022758f8f0dbf4a398521"
+    },
+    {
+      "path": "legacy-python-baseline-v1/bda3c99e5a9b4bbf94a176c67cd35ffe-receipt.json",
+      "bytes": 1345,
+      "sha256": "c35d79ce29659490bd37256afdbfe08487e063d285f3c0a1ff08efd4add0d6a6"
+    },
+    {
+      "path": "mcp-metadata-recheck-v1.json",
+      "bytes": 9856,
+      "sha256": "6bdfe9cb7bc7f29006a53a2a61c42cc1bb1fc3fc69fd4903ece91cd7e83cd049"
+    },
+    {
+      "path": "mcp-wheel-recheck-v1.whl",
+      "bytes": 368664,
+      "sha256": "dd0c44c089d16453e8ae31a3877a0054d7a2314caaa81f5e0541b9b1734b2377"
+    },
+    {
+      "path": "pip-identity-v1.py",
+      "bytes": 406,
+      "sha256": "f3119bc6b1080457ae242696df25300db6d843fb8b7a5a8ccb85fab0b41ad548"
+    },
+    {
+      "path": "pydantic-metadata-recheck-v1.json",
+      "bytes": 137531,
+      "sha256": "8bc15a178a31d0640afae6d220ba0342ab21173a004e88317f775c3001b096ad"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-_ax71ac1/f8c96013576e400c93e45a108b7975d6-budget.bin",
+      "bytes": 49,
+      "sha256": "9b0b926f432623ddf83dd63bd0d3b3d29a8a0e9c0f53d9c8dfcd99382164accd"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-_ax71ac1/f8c96013576e400c93e45a108b7975d6-receipt.json",
+      "bytes": 1066,
+      "sha256": "651e9f80cc7dfebd93944ca04799d1cd27ff920adc685503b3951bf8db8414e9"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-1wnv8s7r/4eb3b5e77f2b43b18177f0551351b97b-budget.bin",
+      "bytes": 49,
+      "sha256": "f7428880106d1ee83dce76a3b8408a5968bf6fa6a36c9d72482d02db488a03e1"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-1wnv8s7r/4eb3b5e77f2b43b18177f0551351b97b-receipt.json",
+      "bytes": 1147,
+      "sha256": "a92aaff4617e6e1e8cd540dabc26d7e2ca8269c1723d7cb7e5cbe7da336fd2a3"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-3vwb8x7m/da6498ce63df41eb9f05464efd871da9-budget.bin",
+      "bytes": 49,
+      "sha256": "1cebbdcfe62f12a53c3fed0475e8d0fc737209d5085c0926965b3ee5935cd33b"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-3vwb8x7m/da6498ce63df41eb9f05464efd871da9-receipt.json",
+      "bytes": 1138,
+      "sha256": "ae181da07b838320eebf32a57887a0976aa14d20104165b38a60fb29e0debdcc"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-3vwb8x7m/e62aa377cb624b388d4d50ea8e3e6507-budget.bin",
+      "bytes": 49,
+      "sha256": "37a2d6af6893f0f3e414590aee7b1dcdc46ecd638638644315b22d8f114a3299"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-3vwb8x7m/e62aa377cb624b388d4d50ea8e3e6507-receipt.json",
+      "bytes": 1035,
+      "sha256": "3cb0114792272e6e3a8d2e40482fece8a9e74d37b91a1be826a1f734cc08dde4"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-41fmvep3/4c55701268044a0a8cc13b6b90dc5435-budget.bin",
+      "bytes": 49,
+      "sha256": "33a28a4838f7775d0764559243555ffb9a8e7d67d2eeec4a7c5c3de41b528f42"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-41fmvep3/4c55701268044a0a8cc13b6b90dc5435-receipt.json",
+      "bytes": 1177,
+      "sha256": "9080c8f0677a6f59f9d3c8333b3d549e7d944197b141d3a201d720435471f6ec"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-71fjs3yz/0c71a93690884289a16d4df427703b75-budget.bin",
+      "bytes": 49,
+      "sha256": "347c1480a1ed193789a01288df215db4bc9add7b234c654e1dae96bc10474a0b"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-71fjs3yz/0c71a93690884289a16d4df427703b75-receipt.json",
+      "bytes": 1167,
+      "sha256": "b21e814e80d24acb125b54cde88d147118a6cffa1ddf4c035f86aba8d2c71d04"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-7r_nc6ew/0970a2dd344e455b83c9823f35673f05-budget.bin",
+      "bytes": 49,
+      "sha256": "d91c0fe6a432070b837bf0ef2e9d5fd35235899f160c5d1b1b48e79ad207de93"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-7r_nc6ew/0970a2dd344e455b83c9823f35673f05-receipt.json",
+      "bytes": 1074,
+      "sha256": "d64494c8c13bae24077c10fce678d13e8b81bd6cb1d5fc1faa7807b61cb9e840"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-98efy91q/e6865bfc92c4450784774a149f991439-budget.bin",
+      "bytes": 49,
+      "sha256": "fa238806346baf349aad0c3e455d3c12d276fc276d70675614944520287058dd"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-98efy91q/e6865bfc92c4450784774a149f991439-receipt.json",
+      "bytes": 84195,
+      "sha256": "3305731be5580d196d31ef3a3925f7be1cdedae7e023cf33baa66bdc9fed5d7e"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-bxiahijv/dfeee50e1f6d481f890b2cadfcfce2d5-budget.bin",
+      "bytes": 49,
+      "sha256": "d83d39e203f3393b6cb57547927a8ae8f0d4ae51bfa10a49aeef44f820981763"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-bxiahijv/dfeee50e1f6d481f890b2cadfcfce2d5-receipt.json",
+      "bytes": 1334,
+      "sha256": "e054fe5f053c3c2e5fe427d295db8c40684a47ad10ceb74bb40c09456f6d993b"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-clig2gwp/bc6d12039df14a0ab0853656252f5a54-budget.bin",
+      "bytes": 49,
+      "sha256": "8167c96a7c57f1255397dd976ffa7f6912b7f8c869763551c2cf376d342cfb7f"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-clig2gwp/bc6d12039df14a0ab0853656252f5a54-receipt.json",
+      "bytes": 1162,
+      "sha256": "8db0e4c0722d1d51c75326999b45cefc79b5aa9b7daaa398b6c7f0f79886814f"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-d_suvydu/5bac0e7059ac46529d028c3f3bfe1087-budget.bin",
+      "bytes": 49,
+      "sha256": "886fe7b37f5701c3e255c1d3292dcced68eb5f66820f362fd7c5894160328682"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-d_suvydu/5bac0e7059ac46529d028c3f3bfe1087-receipt.json",
+      "bytes": 1218,
+      "sha256": "2d8117345e82cff062519bafbb240900c47127e1279d8209525312c605d000c2"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-d_suvydu/6cefc2f133b348d0b7c5eeccc45c0435-budget.bin",
+      "bytes": 49,
+      "sha256": "ba142039cac0408f5b715c7374dedc93c8d02824582bd53ef6010adae095b034"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-d_suvydu/6cefc2f133b348d0b7c5eeccc45c0435-receipt.json",
+      "bytes": 1218,
+      "sha256": "256701d5609385b20b62d93e9f2c9f392ce1a39987094e4b3bbf00f3fb94c81b"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-d_suvydu/7ab46d1b78a44c7a97ceaa0dc611d715-budget.bin",
+      "bytes": 49,
+      "sha256": "87876f2926a5d3ab8da540d7240090b38072d20931bc662b1b31eb5202882a3a"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-d_suvydu/7ab46d1b78a44c7a97ceaa0dc611d715-receipt.json",
+      "bytes": 1219,
+      "sha256": "238da0fb2047b2558f1a760ab13c1e8bd4f89470cc9534a7dd6da5c16e5c8a07"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-hnbyeuie/0382967339d04ba1a751d99fb955477e-budget.bin",
+      "bytes": 49,
+      "sha256": "2007100db01dab8a359cbf68fc6674b0829012f84553debaf6fcb7b7dbfb04f2"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-hnbyeuie/0382967339d04ba1a751d99fb955477e-receipt.json",
+      "bytes": 1141,
+      "sha256": "9059ddee9de3dd80debc97aa3ce39df0002d450e6bb59b353cc1fc2b097d51dc"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-hnbyeuie/c0bf9f0362b645438ce36608759900cf-receipt.json",
+      "bytes": 700232,
+      "sha256": "0356027176c6215eaaa6dc02dfba2cc622e52d22cb733f02e254cfc35cdaa043"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-osqsoxf8/2f68221523b6454aa942e71b65863c44-budget.bin",
+      "bytes": 49,
+      "sha256": "d35bc40372e4238a08ce0cedb0f5144b125daa4f45f18626c9beaf41682c0306"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-osqsoxf8/2f68221523b6454aa942e71b65863c44-receipt.json",
+      "bytes": 11180749,
+      "sha256": "74a28e5c3db027819f18cc6bb8df295ea8413dde44a150293e68419a10948e40"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-pegspbjt/d9c4b197b083408dae6e1f2be653d425-budget.bin",
+      "bytes": 49,
+      "sha256": "bda25156713b748a3c118fb3a16412d2e2e5295866f6c458b3ac1054ab58ff3f"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-pegspbjt/d9c4b197b083408dae6e1f2be653d425-receipt.json",
+      "bytes": 1156,
+      "sha256": "5f57aa849bb740443b9525e9c6587ee1465b6c0c5c5e9d98674ce3b8b2c8fb8d"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-qtba13md/e20a7b8777114a18b7dd836c3b16db79-budget.bin",
+      "bytes": 49,
+      "sha256": "c168512ac861d65b85ca09aac2c2fc4af2c2c4a89d70e041f0d45b951a6b1141"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-qtba13md/e20a7b8777114a18b7dd836c3b16db79-receipt.json",
+      "bytes": 1040,
+      "sha256": "16cd10c21e24ba854b99400466949eecd3703fb4c4af0a655a48942058bc244b"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-sndcb8a5/46c6d031075d4f299405c453fb751879-budget.bin",
+      "bytes": 49,
+      "sha256": "5cd658d6baf0b3bd758214711b48bb2a12198326eef2385e098e19852fa04cee"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-sndcb8a5/46c6d031075d4f299405c453fb751879-receipt.json",
+      "bytes": 5593668,
+      "sha256": "b714d90e71cd4da228d2c059722223b0b1949311d881c6cc8604a3b464e0a588"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-tusbhndq/15a047f72f2c4934b86007b12f2e44ee-budget.bin",
+      "bytes": 49,
+      "sha256": "b9bf926129ccaf3c7c02c1b3ec77f413bf7242cf1144c23d41f7cf22771e3c62"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-tusbhndq/15a047f72f2c4934b86007b12f2e44ee-receipt.json",
+      "bytes": 1507,
+      "sha256": "a7657a9a82931cfa65d76a0f54c33f47ff87d01daf3e35eb1eb5deb38371c6c2"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-tusbhndq/90335fd028d8437ab4ff640c9621c88d-receipt.json",
+      "bytes": 1735,
+      "sha256": "74df71363d578ebbb33786243ba8ba4e29b143c2adb01c11b29705e329250100"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-vfg0h5g7/34983abe52f048b2b5fac939628faaea-receipt.json",
+      "bytes": 1872,
+      "sha256": "2eee33618d60faddbea7cccf50d028f7debae22006cf4b62488c355bbf389d53"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-vfg0h5g7/f20799e2c1ea4db4bcbc714099521d36-budget.bin",
+      "bytes": 49,
+      "sha256": "ae2d2eaba3ea5c564b5f0d748e32daddb3cce7bc9f592e4d37ec47eb0f97a8d3"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-vfg0h5g7/f20799e2c1ea4db4bcbc714099521d36-receipt.json",
+      "bytes": 1137,
+      "sha256": "3b0ac914359d4eaeb7ef61c14799805a092a1f88997fdafea3d7061e97a21d59"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-vne24243/e2959c9d00ae4d82bc1204c671f57257-budget.bin",
+      "bytes": 49,
+      "sha256": "cc3176c10491e08d56fd2a0ff5463d3982917f920eded1c3f4668757ddc02bf3"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-vne24243/e2959c9d00ae4d82bc1204c671f57257-receipt.json",
+      "bytes": 5593668,
+      "sha256": "7b47fe4cb20f88b01fa369fea54364ab5ecfe1786aaf545290b336fb7103bcc6"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-wh_8bbf0/3bde6e4820504edf9fa0e9c3cfafa74a-budget.bin",
+      "bytes": 49,
+      "sha256": "546d245c2fc8c1d30993f2a6dc3a02d756fbbced9b812d5db5c369bbcea52916"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-wh_8bbf0/3bde6e4820504edf9fa0e9c3cfafa74a-receipt.json",
+      "bytes": 1137,
+      "sha256": "82d4ffe15f9779c369fd4fff2fe456f32282310cbba6ca6bbe467f79f5bb49f9"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-yqwi4yu6/773c84129a85437294248d17b3aa04a8-budget.bin",
+      "bytes": 49,
+      "sha256": "8392bdda1be7e0dc6f37f37e753dd9333f46dd97a4ee54ff601ea95a3d78199e"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-yqwi4yu6/773c84129a85437294248d17b3aa04a8-receipt.json",
+      "bytes": 1138,
+      "sha256": "2db8790ddfee73143344781a53bf7ccd4dd52e6d02603aa4b6f70f7d2d7b1897"
+    },
+    {
+      "path": "task0-all-v1/gauntlet-owner-probe-yqwi4yu6/fa10892086ea4f49ae71da5d04e9c78b-receipt.json",
+      "bytes": 1149,
+      "sha256": "d07772c1c734a4112b83779422c204cf484199ce3ede30f10972cfb2f0bc30ff"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-_q2ui692/163417daeb344f5a9d4aa7c303619794-receipt.json",
+      "bytes": 2196,
+      "sha256": "84d2eea4b03b640900d72cb7371b9a9b45069153ad37f5395ec95ccde2c56251"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-_q2ui692/632198661d574cb289ff23d12b9cc45c-budget.bin",
+      "bytes": 49,
+      "sha256": "24e82e556a8950b853eeb6779abea1291f1cea455d2d1754fd670c87d8bd63be"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-_q2ui692/632198661d574cb289ff23d12b9cc45c-receipt.json",
+      "bytes": 1984,
+      "sha256": "04b1a2214a2018b6e568c15becefaff9122b159a7c4eeefa593dc3b8ee4b040f"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-1nzhenw6/98c0770b353b452d8e461fe19d61a328-budget.bin",
+      "bytes": 49,
+      "sha256": "421bac6ad299c0243b2404ce09b71878280e4afc6e0e13ff1439e18152791b5f"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-1nzhenw6/98c0770b353b452d8e461fe19d61a328-receipt.json",
+      "bytes": 1763,
+      "sha256": "57e39f3d6bc0451a01c0a93e1779a9c6949c549d55852371b34aae9ce09c90bb"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-1nzhenw6/f38bd4d458a74cffb4180680dedf2fe4-receipt.json",
+      "bytes": 2232,
+      "sha256": "0949ac90f3ef6ecdc8371f1618b4b495ed4a650ac8e972d8d15bf88b350c9b8f"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-49mn3h6t/899c25bf93164e2d99b0f8a9da5623b1-budget.bin",
+      "bytes": 49,
+      "sha256": "5c8b3391a81faef080ccf4491287152a15194ad2ae308912feb7be8081e677f1"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-49mn3h6t/899c25bf93164e2d99b0f8a9da5623b1-receipt.json",
+      "bytes": 1538,
+      "sha256": "37b29cd05e30afbeaaf5ea79418c64aa4ad3c8b24b1aaa3dde3dd680b6d73a9c"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-8i0ok2ef/cb78fe696d2a4012a0a7f9332fbf30cf-budget.bin",
+      "bytes": 49,
+      "sha256": "0a6157fc9685eb5c6e6501eea232188592e7b728b9cdae5b98734b3b4c8b3a14"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-8i0ok2ef/cb78fe696d2a4012a0a7f9332fbf30cf-receipt.json",
+      "bytes": 1554,
+      "sha256": "c00b7752dc3708500e6b4467ba7114ace328e77b8b6af72e8fc1706ffc97adde"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-9ft_f1g6/1e6e9c9ea2434d7697bc2fc6ab55a42f-budget.bin",
+      "bytes": 49,
+      "sha256": "244c0fc288929bd3bd2d0db8d9f66bc75f8506649baf2d77ba592124dca50326"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-9ft_f1g6/1e6e9c9ea2434d7697bc2fc6ab55a42f-receipt.json",
+      "bytes": 1608,
+      "sha256": "423ddefcee5a0909b01960aae97aded65f5d83e79f3b619f5ee966baf8b22ad9"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-9ijipa1l/6dc683028e3a4830aeaa34e56a9d24f8-receipt.json",
+      "bytes": 4195752,
+      "sha256": "9305cac6deed8510571377e250664cc64e751958fed8278d325440bb7ce17e4a"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-9ijipa1l/79a626ff805d49e1a12b037b58a4422a-receipt.json",
+      "bytes": 4195752,
+      "sha256": "305feb8de21db2c24f6826fcf5ddd46312dca1d07a998ab69477dd73531abac4"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-9ijipa1l/98ca4a3aa71a4d339fb9a3c5d014baa4-budget.bin",
+      "bytes": 49,
+      "sha256": "ac74089bd4cc6e67703871b709ca0d8cb1340206408c0562c8d9d628c16bbbd7"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-9ijipa1l/98ca4a3aa71a4d339fb9a3c5d014baa4-receipt.json",
+      "bytes": 1614,
+      "sha256": "9dabef90a01a43104f600048b6972bed42ec385bfcc555a0c8f7e9b0c43753ad"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-9ijipa1l/f37cc916034241c783e8134229910b00-receipt.json",
+      "bytes": 2797881,
+      "sha256": "c68c807a772b4bd7d7a6366e4b5d237463003d1f2c365577e582be60acf8f58a"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-ebovd9x4/eca66d2d99e44baab85cf2e70bd070ba-budget.bin",
+      "bytes": 49,
+      "sha256": "0b31fa389d63feaa9c1e318461366d8a2d3921dc7702a77df00aaeae2d7aa91f"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-ebovd9x4/eca66d2d99e44baab85cf2e70bd070ba-receipt.json",
+      "bytes": 1618,
+      "sha256": "cd8e676b93e9423765ed331946d877ba9b038124ccc92bdd2ca668a63b78a87a"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-iebe6650/252c15211cf94045a112fb980b0173f8-budget.bin",
+      "bytes": 49,
+      "sha256": "73cee9803309be63522f21af42776a94811d0df9fb1509ec65936dd14a04fbe1"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-iebe6650/252c15211cf94045a112fb980b0173f8-receipt.json",
+      "bytes": 5594148,
+      "sha256": "fb002ae75bd93205fb3a008cec1c7c06b87e49739f74c781d3648219d6310f82"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-igpna8si/a18a5f59fe5647fdae93b8a1c694bfb5-budget.bin",
+      "bytes": 49,
+      "sha256": "7b93913985946b3c7c5537bc390a5ff5702528da89c8d378d115a3b3668a7bf9"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-igpna8si/a18a5f59fe5647fdae93b8a1c694bfb5-receipt.json",
+      "bytes": 88987,
+      "sha256": "3f5b4df6d4b205d0e700e0e4e97c573be6014e6ec58ea43b07447548d15dc038"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-jfm6l62x/0d191237e126424584969d3428fd3896-budget.bin",
+      "bytes": 49,
+      "sha256": "6c2f0f7b421969ca4d24cdf6711bf59a675172b18b05cc54d6269e44dccc905b"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-jfm6l62x/0d191237e126424584969d3428fd3896-receipt.json",
+      "bytes": 1626,
+      "sha256": "7c6850ea9f65c17e9b432df397f66fadd69ba65dc4e26435ad12cc76b92f613c"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-jfm6l62x/4c1db81a05204f25900499baabbae2cb-receipt.json",
+      "bytes": 1608,
+      "sha256": "2f3fabdebad4f1468a8beb59bf51cce16f0510d436e4f28e5d43133247cfdfc4"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-jfm6l62x/8c61b07911de483f970a1a8bb0aac018-budget.bin",
+      "bytes": 49,
+      "sha256": "41e26b28d9e18c7c71dc706a2ce44e8695d4632538834bd9b6e16e47f6e62c3f"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-jfm6l62x/8c61b07911de483f970a1a8bb0aac018-receipt.json",
+      "bytes": 1621,
+      "sha256": "13fd65af7ac1d2dba66ad83a7d0e21a4407bf8b131f9fe6e040dc372c850f1f1"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-jfm6l62x/9ebb2d4a860b4466a79dce92f72f9e46-receipt.json",
+      "bytes": 1604,
+      "sha256": "7a296873b77cce12fe3d225598200e92cd628cf97349ee5831424f56df5c8e39"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-jz9vuc8k/9369e57397a74973986520692777baa6-budget.bin",
+      "bytes": 49,
+      "sha256": "5700e08373c0ad8eb72ebe6050c4518ec34987589b17018352217f0185cd78e0"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-jz9vuc8k/9369e57397a74973986520692777baa6-receipt.json",
+      "bytes": 1803,
+      "sha256": "d942332606629d7d2d18c4a5dc06f753799b73f2bbf282570c4776078e3018b8"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-kqwgnepo/42c1393189054f239ed8dfb004e74b69-budget.bin",
+      "bytes": 49,
+      "sha256": "e72aa1e289bb161093679c9d7cb00a5c86aafa3370c942a6845ff9f570989425"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-kqwgnepo/42c1393189054f239ed8dfb004e74b69-receipt.json",
+      "bytes": 1624,
+      "sha256": "f597ae4c6e2d1cef3f5e7c7b8bb7e4f324a7dc31850735d2e6daf2b2f3d1e3d9"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-kqwgnepo/8bd0d7f9df924cc9ab671f7b1d3145aa-receipt.json",
+      "bytes": 700638,
+      "sha256": "5c6640e14f123e12eee03b33424d7d1db795b1723a8246eb61e18f8eef4f877a"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-lm78yq2x/a20f0c764684429d94b9e5499e1eacda-budget.bin",
+      "bytes": 49,
+      "sha256": "ed3d3d027b0acb9e4a58a2aa18dddea8afeae2f4776c9900d93befcf6acd0685"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-lm78yq2x/a20f0c764684429d94b9e5499e1eacda-receipt.json",
+      "bytes": 1509,
+      "sha256": "5a6ed6ec8ef337a8ebc1613239735e513e6fce8c292f7807331ab2fa1037d473"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-lm9tycms/68e6029b57cd45d0931db848140bef39-budget.bin",
+      "bytes": 49,
+      "sha256": "327bdbe181d08cc79b8a4a7ab9ee2c4aec490a456b1cf375f2e699a4401f0231"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-lm9tycms/68e6029b57cd45d0931db848140bef39-receipt.json",
+      "bytes": 1639,
+      "sha256": "a84ae5a360490f09def87c5a5ded840fbedd9a8dd15af2dbaf62abbca2e9496d"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-ma4rdos1/f05f374257d04009b94e730f534fd0f8-budget.bin",
+      "bytes": 49,
+      "sha256": "737283d0957f5ff345cba435f34a8701dd1a201ef3836277c24902277442857f"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-ma4rdos1/f05f374257d04009b94e730f534fd0f8-receipt.json",
+      "bytes": 5594148,
+      "sha256": "e0f80c6ab4f5e7328ef8157436b58846385b9b7e64b8ddc1400dbb4ab1e1edf2"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-n3sa93gw/df1589c8ed194de8afa65a3eb10ef036-budget.bin",
+      "bytes": 49,
+      "sha256": "8f39063cf765b0da2b5efb91e62c8244803083d5c0f03a4ef37a5d569740f86a"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-n3sa93gw/df1589c8ed194de8afa65a3eb10ef036-receipt.json",
+      "bytes": 1635,
+      "sha256": "7c9da1cd209c00b41e733434bec3ece41659e23c5f12b6ab850812aa4fadc1ce"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-njp5b0ko/16b961665ba147a9ad1c5c373df74781-budget.bin",
+      "bytes": 49,
+      "sha256": "89d3b7f397e20acaf2894c217ba26583fb90912dbf2cbc64af75fd29f0216dd7"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-njp5b0ko/16b961665ba147a9ad1c5c373df74781-receipt.json",
+      "bytes": 1531,
+      "sha256": "aac3dc4a4c0755d526e9a943a777a4b500345c54e95bb1b0c42f2c29c124228e"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-njp5b0ko/e721efa12a9d44a5bb27306774332ecd-budget.bin",
+      "bytes": 49,
+      "sha256": "379164c5a8af368afa255209fb658aac296891a6cac43188de070ebb67ad2196"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-njp5b0ko/e721efa12a9d44a5bb27306774332ecd-receipt.json",
+      "bytes": 1621,
+      "sha256": "d3fa486dc6f2e8ae0e8a94380e2651cdbd06d1cbc6c4ee7bf0c563431f7176ae"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-nqryrbki/2c3783869b984fecb4966bd22187b0e2-budget.bin",
+      "bytes": 49,
+      "sha256": "b688f98102eafe64596f74d168f02cfd0752d0734ea09b62f27fabae4fbfbec9"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-nqryrbki/2c3783869b984fecb4966bd22187b0e2-receipt.json",
+      "bytes": 1635,
+      "sha256": "a727d9be93f5876cede233d42373f6928f1c3974c5417ba303c69c85ab315b39"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-powzx7uo/418eeb23d42d4bfb8f61e3e95cc580e5-receipt.json",
+      "bytes": 1521,
+      "sha256": "cfb0292f65d8a2c2e843e94e152e799ffb49917228a3ec05a0bd1c52acd123e6"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-powzx7uo/c52e6c25dfc2407ab82121073478dcd5-budget.bin",
+      "bytes": 49,
+      "sha256": "b0f6462055be67726e86f0bc8a48e2b952e71c94e99b0d0cbf03282014014d1b"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-powzx7uo/c52e6c25dfc2407ab82121073478dcd5-receipt.json",
+      "bytes": 1615,
+      "sha256": "4a597a12062afa045423f046674ba17d919a4a8d437e880826c87a187c0bc23b"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-r9tkk5kh/cfe706632b504fcf896175bcdc5da46c-budget.bin",
+      "bytes": 49,
+      "sha256": "00ea767e4e34ae1708863e373e4dd27a21711fdc6a990b20a3f22f56e2a490ea"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-r9tkk5kh/cfe706632b504fcf896175bcdc5da46c-receipt.json",
+      "bytes": 11181232,
+      "sha256": "a5b057e12fdc5c02e562804b76aa68a6ac0aa69abc9942c1093bd6b7d30805f1"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-udils8q0/b948bfddbcb841c79276f3ca6ae9f7ce-budget.bin",
+      "bytes": 49,
+      "sha256": "90d7344155dfddeec58b2e06a15d88c9379d74f79047bb4d51ac6f81b4ad29e3"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-udils8q0/b948bfddbcb841c79276f3ca6ae9f7ce-receipt.json",
+      "bytes": 1551,
+      "sha256": "623fbc0eb4dd882896b402c288fe9c3f5eb7e4a994a593473c9b92e736bb7987"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-zdjcgr5r/312c2062b8da4bf395905b258dda6462-budget.bin",
+      "bytes": 49,
+      "sha256": "52a73704f1bfce3d77502c1ad91ae0113fab65da45549991ccbee9000ba2f52e"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-zdjcgr5r/312c2062b8da4bf395905b258dda6462-receipt.json",
+      "bytes": 1701,
+      "sha256": "5020d21668071156a5b7ef28562d2a4c164d214587af806c267e2e7ccd40ae64"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-zdjcgr5r/8ad187d451f8434caafceaae6035363e-budget.bin",
+      "bytes": 49,
+      "sha256": "17144c14091daab98dba6d6321bdf495e56c8e8b2180683712d0b202514201af"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-zdjcgr5r/8ad187d451f8434caafceaae6035363e-receipt.json",
+      "bytes": 1702,
+      "sha256": "a951d049a75971e2b24e5d9a8a842b5b796cd322b5b7a56bc3e82c902ddf62a3"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-zdjcgr5r/9c8a11d7e5f4447db6349cf6053189d9-budget.bin",
+      "bytes": 49,
+      "sha256": "eb59a36b15cb0a9a9d509c6b3f8405b249848ad2efa3dd3f6cff8ddce4c0f256"
+    },
+    {
+      "path": "task0-all-v2/gauntlet-owner-probe-zdjcgr5r/9c8a11d7e5f4447db6349cf6053189d9-receipt.json",
+      "bytes": 1699,
+      "sha256": "382868c9d474f9a053fc483fccc707f06d7c263b79de09d288895a30beead406"
+    },
+    {
+      "path": "task0-diagnostic-v1/completion.json",
+      "bytes": 174,
+      "sha256": "31c094d059a8444fc9746263bc648e7f40b824d9821f2e2a0c867fe0bc939d14"
+    },
+    {
+      "path": "task0-diagnostic-v1/driver-source.ps1",
+      "bytes": 4520,
+      "sha256": "4bd23292922706ef9f1eec87bd74232b3ad84c9b2a221c9e991a0e48c0754ccc"
+    },
+    {
+      "path": "task0-diagnostic-v1/native-receipt.json",
+      "bytes": 2299,
+      "sha256": "cb449f4eb7e7303af687a221cbb8ac6f01ba79b1f02d4acd26e92bc3ff1fa6af"
+    },
+    {
+      "path": "task0-diagnostic-v1/source-after.json",
+      "bytes": 29952,
+      "sha256": "f171d81b3c99b8e0b7f6ed66f24ad1e02489714cdfcdf1f723f713579d5df635"
+    },
+    {
+      "path": "task0-diagnostic-v1/source-before.json",
+      "bytes": 29952,
+      "sha256": "9b8a83145c68ca66c3860fafd535ab2fdf2a43a1da3aa2bd71b61d9ebf210422"
+    },
+    {
+      "path": "task0-diagnostic-v1/start.json",
+      "bytes": 915,
+      "sha256": "e569bd7dd21349be68914fbb15940b8c05b0898c37913a0f35c9a741dbfdae34"
+    },
+    {
+      "path": "task0-diagnostic-v1/stderr.log",
+      "bytes": 1897,
+      "sha256": "50fed6a062118dd887855bf6d3575673bc5e7e07a13af27be045be633fa60c12"
+    },
+    {
+      "path": "task0-diagnostic-v1/stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "task0-diagnostic-v2/completion.json",
+      "bytes": 174,
+      "sha256": "927c4185f25f855ea9596f22692836ca17d6ae79d20ccf77075134c729e106c1"
+    },
+    {
+      "path": "task0-diagnostic-v2/driver-source.ps1",
+      "bytes": 4520,
+      "sha256": "4bd23292922706ef9f1eec87bd74232b3ad84c9b2a221c9e991a0e48c0754ccc"
+    },
+    {
+      "path": "task0-diagnostic-v2/native-receipt.json",
+      "bytes": 2377,
+      "sha256": "17d0bffa7949cef4cedbc9f52bd1284ef4ce884485e65518bf1309f7097c4e24"
+    },
+    {
+      "path": "task0-diagnostic-v2/source-after.json",
+      "bytes": 29952,
+      "sha256": "9015898ce52c04de2dacbfec919e679d2852c47be152afe6b9726cc9b77d27f8"
+    },
+    {
+      "path": "task0-diagnostic-v2/source-before.json",
+      "bytes": 29952,
+      "sha256": "7e11a91ff29d853ec9004e57ae1e01323f39c703d301e744feb399a81f668382"
+    },
+    {
+      "path": "task0-diagnostic-v2/start.json",
+      "bytes": 983,
+      "sha256": "19294b245a47424244875f1d4a159291c8f2ade66f2f1a0c8802c2c83c0c1c73"
+    },
+    {
+      "path": "task0-diagnostic-v2/stderr.log",
+      "bytes": 1963,
+      "sha256": "90a8e63de67a6f715cada0b48afcb8791ebcb1d82d7beeb4c7e06e1f417ecf7a"
+    },
+    {
+      "path": "task0-diagnostic-v2/stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-0b1aepjt/4375cfafe7e0469eb4ee9742dc47c955-budget.bin",
+      "bytes": 48,
+      "sha256": "ade7c89a4268aa7ea80049c6d52c256bd55f7cbdc9224ab04b1b81dbfb3ba89c"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-0b1aepjt/4375cfafe7e0469eb4ee9742dc47c955-receipt.json",
+      "bytes": 1265,
+      "sha256": "d37022af7949f9a631a51781f5ae12fa8cac36a5f1fee60512cccb55b90e1ac4"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-0b1aepjt/67df8215cf2d43ecbb33ffe66da75e78-receipt.json",
+      "bytes": 1761,
+      "sha256": "4d01da29b1293faa780401c2573a49d68f2ec474c1cffc4640758a592cde099f"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-0gufhk9e/35e9591e460e413fa85b7457e45b8fca-budget.bin",
+      "bytes": 48,
+      "sha256": "5738a668f1ff6a89db29fc89d3be1b0eba031b9f908fcd3e19669aa38d5061b6"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-0gufhk9e/35e9591e460e413fa85b7457e45b8fca-receipt.json",
+      "bytes": 11180731,
+      "sha256": "f369ad9cab6389270e565afe365f6f2b64c467248056efe8b67c64da4326c8f9"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-2vdwhnmw/a39041fc547e4b058af81bed89200ecb-budget.bin",
+      "bytes": 48,
+      "sha256": "a844fa1db632818885d8490f0557dc7f5aba8946ccf906591c6840b301b88f88"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-2vdwhnmw/a39041fc547e4b058af81bed89200ecb-receipt.json",
+      "bytes": 1166,
+      "sha256": "72846548f37c44235729eadabc9ceb211d1ee5d7e911e22e44c2215ab3a6fb6a"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-55g41h93/4575fec15343493594eb0a418b85322d-budget.bin",
+      "bytes": 48,
+      "sha256": "7173cbf12421740ff34a1aa43bf36ad8db645526a001a2d03093d94c346fc64f"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-55g41h93/4575fec15343493594eb0a418b85322d-receipt.json",
+      "bytes": 1239,
+      "sha256": "f9928f59c79ea730f5228b576a8e7ac8942d41abf55ec7bb6aa0d17f3d5bb996"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-83cifufv/33736da085924470a437891bd2cf5421-budget.bin",
+      "bytes": 48,
+      "sha256": "e40bb2a2ebb0995ca63146bbc57fdacd9d1f841959c9158cf124575f23af28c6"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-83cifufv/33736da085924470a437891bd2cf5421-receipt.json",
+      "bytes": 1021,
+      "sha256": "cc08ca82394c760f22d9d377351299b4a9f5f4280a7062aa41769a75c550d03e"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-8ygnqzd2/2e5f5abee5de4e88a95ae478699670cb-budget.bin",
+      "bytes": 48,
+      "sha256": "bf711b9d0a0e52bce30a8f71ffc4a569015430d0c9850de86991ce79f826eed7"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-8ygnqzd2/2e5f5abee5de4e88a95ae478699670cb-receipt.json",
+      "bytes": 1144,
+      "sha256": "37f1c96a411dc0412227dd4c8906d44d9c60cf649a014ed515520f441e3cc7c0"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-9dvvnbu5/64bbbb0ce6f241d2b922be56cd087854-budget.bin",
+      "bytes": 48,
+      "sha256": "668627f3e81424bd10e21301e276a13f24545bd5badda54009fabebd53c511ee"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-9dvvnbu5/64bbbb0ce6f241d2b922be56cd087854-receipt.json",
+      "bytes": 1238,
+      "sha256": "e6dea3d40e1ebc7521a68b972671076f212ded927667b18f3757550010870e08"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-cu5cevdo/15722fca58bf46f78bfe4599050f91c4-budget.bin",
+      "bytes": 48,
+      "sha256": "7a8b4b0ef469ddc3cbe66aa9ca0f50ed1fd0bca9cc48d6b7dcae84d2f814ef0a"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-cu5cevdo/15722fca58bf46f78bfe4599050f91c4-receipt.json",
+      "bytes": 1136,
+      "sha256": "3eaddb8001382e1b58898e51a45fa112877347a37d78e9a355818ed67ef96643"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-cu5cevdo/175057535b3e4ed2905d1c09e95b411e-budget.bin",
+      "bytes": 48,
+      "sha256": "41b41dc3551db9e34e93c26e77bcfd5c1c65eeab117449689ef320411853aabf"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-cu5cevdo/175057535b3e4ed2905d1c09e95b411e-receipt.json",
+      "bytes": 1136,
+      "sha256": "7ab36c94544b9f9e83f2232ef01d51deabeb01687ea59af5e602cf55c0ef466a"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-cu5cevdo/696cf4bf31fc4e28ba54d65a289b6128-budget.bin",
+      "bytes": 48,
+      "sha256": "7107df4eb9890dbde213e64486ab68852087d506fc280eb43b7198eae33d2eb7"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-cu5cevdo/696cf4bf31fc4e28ba54d65a289b6128-receipt.json",
+      "bytes": 1135,
+      "sha256": "49910ff56975422d9fb32e4a9ca8d99ca9c0dc08dcea92fb563c38a4963925cf"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-d4hjjqi3/94fe62512a1945a5958de785ea3edaa2-budget.bin",
+      "bytes": 48,
+      "sha256": "d1bb4f3ff7bb8f55912b97432fae102f2ea787c3d707d3d9aba4bc77cebc122c"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-d4hjjqi3/94fe62512a1945a5958de785ea3edaa2-receipt.json",
+      "bytes": 1129,
+      "sha256": "61e314c89ff8b91d478154cad837c87eb20ca6c77be84c21fd5cd2e3c13c02d2"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-djugcu69/55a77879c27a482ebaadb0c8266e0648-budget.bin",
+      "bytes": 48,
+      "sha256": "869d4cb72ee037c749df69ce71d52a3f6e6de6e3c96be4302f1701359b9b6741"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-djugcu69/55a77879c27a482ebaadb0c8266e0648-receipt.json",
+      "bytes": 1054,
+      "sha256": "95c74d8b6c891bc8dde54c0190a21d32fafe2a6c873607c9fca2d99a85ac953e"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-j8bk2n9m/3b190837595343c59f4ec865b57ed879-budget.bin",
+      "bytes": 48,
+      "sha256": "f9f2d5843ee2fa05a284a2a8e24b43968174cefa0f8c99c790a60a42150b7343"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-j8bk2n9m/3b190837595343c59f4ec865b57ed879-receipt.json",
+      "bytes": 1148,
+      "sha256": "686f10937fef626871067425f68cca9a2135e8a691e04140cfca1d888d5d738e"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-l_pcj3jy/378f5e36edab4a1cb400cae7a40057ce-budget.bin",
+      "bytes": 48,
+      "sha256": "094076591115fa97b4fec89e6828e8cae22ef9d25d21207b9d6175ddbf1916a0"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-l_pcj3jy/378f5e36edab4a1cb400cae7a40057ce-receipt.json",
+      "bytes": 1140,
+      "sha256": "2d39f9bad532622dc38dad2fe83ef0042c6a11f8eb16322c253f9bdf7aa65775"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-ni28yn9v/a745bfa424784cea82d9eeda3ba31a8b-budget.bin",
+      "bytes": 48,
+      "sha256": "67e1b9f95ccd7660c9ea5deb7921bcc75bc33fee5bcf01f54f57983142259273"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-ni28yn9v/a745bfa424784cea82d9eeda3ba31a8b-receipt.json",
+      "bytes": 9113,
+      "sha256": "aa995644a254e37faef32388e009bdb81bc966ed5ed973657a6c8b5b629a41e7"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-qcgs1rdh/841bd74540934605a9ef594d70a9b9ca-budget.bin",
+      "bytes": 48,
+      "sha256": "d583defb21fa5035d7f5ecd055b68af7a3a26ac1b2f4213fad2f7be807d1b9a7"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-qcgs1rdh/841bd74540934605a9ef594d70a9b9ca-receipt.json",
+      "bytes": 1315,
+      "sha256": "85fc09faac4bf92ce5c7b5cac73f0b9f9bd626f61653f3df923daa2f3f93bb76"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-urglvzvg/3d20a80032034b13b7a62775659eda8a-budget.bin",
+      "bytes": 48,
+      "sha256": "685fcc187f535d69f66ed92eb598ccddd7890db15d8329833c6592ce00520663"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-urglvzvg/3d20a80032034b13b7a62775659eda8a-receipt.json",
+      "bytes": 1237,
+      "sha256": "333e61164e942b02a2e8b9afe25289364068670b709a855171a83b6072712f5e"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-urglvzvg/7bc08798c5e549ba9c815cc42548b773-receipt.json",
+      "bytes": 1017,
+      "sha256": "327546ce470413f896811187c86c212debf95ac703306f883346255d95af5686"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-vn6th3a6/44b8ff00611643ffb805096f15d69ff6-budget.bin",
+      "bytes": 48,
+      "sha256": "572a57037d54c7231ad7e3108c9d1bb33e8c528e31418bb8bbfed12bd7cf13c7"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-vn6th3a6/44b8ff00611643ffb805096f15d69ff6-receipt.json",
+      "bytes": 5593649,
+      "sha256": "bbc2d129872b553299fae1fb2358e068f6bb1b8145bf66faa7a93f68171b6a7c"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-yz_0yj1z/03f0676a43c5431a86d78a4d6871372d-budget.bin",
+      "bytes": 48,
+      "sha256": "3d6e04cc33c3aa3a016d4c7a82e582606e49213cab938cc56a9e6f9528206753"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-yz_0yj1z/03f0676a43c5431a86d78a4d6871372d-receipt.json",
+      "bytes": 5593649,
+      "sha256": "dff04984ced6ce9e52e77e6b88299ef0174245e325dcd55ba30cb6556b7b25c7"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-ziq0o0sj/41fec79e06b745069428ade2b1f500a6-budget.bin",
+      "bytes": 48,
+      "sha256": "c6ce3439b4cf4692f3af89a7d45d82212036ceba6f795a398a94456878359502"
+    },
+    {
+      "path": "task0-green-v1-cases/gauntlet-owner-probe-ziq0o0sj/41fec79e06b745069428ade2b1f500a6-receipt.json",
+      "bytes": 1158,
+      "sha256": "724f500f0a67146b1baa99aff2ba85f661be224f93cf9954da7456fc1a148dc7"
+    },
+    {
+      "path": "task0-green-v1-env.json",
+      "bytes": 145,
+      "sha256": "e3ca92ea88cff664bae7e3c80c0ee500e42e4bc33903277067b34de94c422095"
+    },
+    {
+      "path": "task0-green-v1/completion.json",
+      "bytes": 175,
+      "sha256": "3aa678b44848cdffcb226daa7eab6427a3cfccf01c2fe6dce06da97e6faa8fce"
+    },
+    {
+      "path": "task0-green-v1/driver-source.ps1",
+      "bytes": 4520,
+      "sha256": "4bd23292922706ef9f1eec87bd74232b3ad84c9b2a221c9e991a0e48c0754ccc"
+    },
+    {
+      "path": "task0-green-v1/native-receipt.json",
+      "bytes": 4737,
+      "sha256": "f3a4a7daf36ff2d996d4f88b754350d4c9099a4f7976403f48e9d15936f338ff"
+    },
+    {
+      "path": "task0-green-v1/source-after.json",
+      "bytes": 29952,
+      "sha256": "37a424ad8c42baf5e86f280485746fd0e3535d18b4ebd9d6236b93b17f3c2cf7"
+    },
+    {
+      "path": "task0-green-v1/source-before.json",
+      "bytes": 29814,
+      "sha256": "39dbbe345adb7889da0c572b215e71330a241f4ecebfd265e3a68fe8053c92dc"
+    },
+    {
+      "path": "task0-green-v1/start.json",
+      "bytes": 765,
+      "sha256": "ac8caf0e3bfa4a162a0c334230217d6bce51a6caf14357fb730a9071b8a14493"
+    },
+    {
+      "path": "task0-green-v1/stderr.log",
+      "bytes": 4270,
+      "sha256": "77fc464ce3d9603cce00dbdf872c0c3a217c5160fefa0391a6a982c399a792f7"
+    },
+    {
+      "path": "task0-green-v1/stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-_umiwcp7/b15b99d737b64c1b9e4cf9a2c1cd171a-budget.bin",
+      "bytes": 49,
+      "sha256": "ba9deb8dbc1a658ffe471664cb445dfb2e562b3aa7245d8243855584542ed83b"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-_umiwcp7/b15b99d737b64c1b9e4cf9a2c1cd171a-receipt.json",
+      "bytes": 1144,
+      "sha256": "6682ede81bc44e687369f0314901ae9b1dbfd65ed780ede1d0cf718e9e9246f9"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-1b2jpvtd/8f8a247a5a1d4c68af4a6079b7ed80af-budget.bin",
+      "bytes": 49,
+      "sha256": "020f86177bb8b540db1b981cae5babfb460f5485c44c6dd7ae26ea2dc2c52f6b"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-1b2jpvtd/8f8a247a5a1d4c68af4a6079b7ed80af-receipt.json",
+      "bytes": 1266,
+      "sha256": "377850610fc6291a2a8219b0f08369afdbe6e281d241206b8c4cec3be368b1c7"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-20xk7u9i/541914ee26084be39bf2c4b22f777e26-budget.bin",
+      "bytes": 49,
+      "sha256": "0af23a31b4e292621053c7eb47b3d18e5a54471bb14b341d7c497c79b6f8bae1"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-20xk7u9i/541914ee26084be39bf2c4b22f777e26-receipt.json",
+      "bytes": 1019,
+      "sha256": "77fe46f970353954ecb597a7797bb47921259a0a069ae8545213c6c2ffabdb18"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-21cd_asl/7a8b28165bd74e4ab942bae89dcf2ab5-budget.bin",
+      "bytes": 49,
+      "sha256": "70a7916ef0ba9365822f3346dc77c800d9dea7d0e0358d968d6f0e4eb4f56afd"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-21cd_asl/7a8b28165bd74e4ab942bae89dcf2ab5-receipt.json",
+      "bytes": 1139,
+      "sha256": "c39d7f53ffbb0443907c46927bf8b2f1ce2fa3858f5526fca3309b65225523d7"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-4daf9snr/e147288052d244e9baad05516a5467ec-budget.bin",
+      "bytes": 49,
+      "sha256": "55f9a20984ae5fc3780ef975e816432ff6f4554a4bf975b09a1124d732d9ead6"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-4daf9snr/e147288052d244e9baad05516a5467ec-receipt.json",
+      "bytes": 5593649,
+      "sha256": "1c43c3a4d2add033b29edcdf66cf6fca701e5c60a3b823dac55e22b97407f561"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-5b06prsu/2f3a523090f14e7d8bc204e461383aec-budget.bin",
+      "bytes": 49,
+      "sha256": "72cb8e1fea1c3e5c4ae57936f7d3f5198c40487653ae1d9daa7f6c06bdab8cf4"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-5b06prsu/2f3a523090f14e7d8bc204e461383aec-receipt.json",
+      "bytes": 1238,
+      "sha256": "77ae4985177ccc67f681d4d3e867a17578ca080c9c3ffe2e7eef1e7fda6bb2f4"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-5b06prsu/93d3149895674cb7a3c587c31fe924f6-receipt.json",
+      "bytes": 1018,
+      "sha256": "4a1a24c0135ded262c52bcc8ed82e4a98822584c09aafafa836bb825b665f0a7"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-6b00duef/91577016d45c4caf878ffd338ffeb1b9-budget.bin",
+      "bytes": 49,
+      "sha256": "920f0cb169101915a6e18d9fbf70cefd87f7f3bd48cce47466e7679fefab90b7"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-6b00duef/91577016d45c4caf878ffd338ffeb1b9-receipt.json",
+      "bytes": 22772,
+      "sha256": "2656418d270f63339883563543911a97e76d85224da0be655bc9ed7439277e15"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-6d0i_pua/c14d4f2dee1446e6a177b36aec53cbff-budget.bin",
+      "bytes": 49,
+      "sha256": "1fce14f314911952e5667265772694061812eb9fb4fc9461267622f4f0bbc6e9"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-6d0i_pua/c14d4f2dee1446e6a177b36aec53cbff-receipt.json",
+      "bytes": 1205,
+      "sha256": "7e7336cf6e073e74dbadb712f6c94e1ffa48e0a10cba7fd45952443cae2f64cf"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-9_85yvet/833006b77df64f298aa777b883b97668-budget.bin",
+      "bytes": 49,
+      "sha256": "88e80daf8ade0b1a14ad6ebe8e35b37f391c2189dc7720b010a987cd8d1b3117"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-9_85yvet/833006b77df64f298aa777b883b97668-receipt.json",
+      "bytes": 1315,
+      "sha256": "3698ec0a72c02bc34bd509f695aa9e0f400b312d524522f72cc5d0faf5537c53"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-e7dabi8f/53139b41caaa4919933b64e9e3534bb8-budget.bin",
+      "bytes": 49,
+      "sha256": "d7755332e110b65792fe14e91b0a3634d4c3889d195951c412f9c506a44dd77c"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-e7dabi8f/53139b41caaa4919933b64e9e3534bb8-receipt.json",
+      "bytes": 1165,
+      "sha256": "e26df1fbab9b452f623ebbf6bf576266897029f073d5557ceb2acf14fac11588"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-f0cqnwe2/572f7e70fd034121bbe5a9389e830861-budget.bin",
+      "bytes": 49,
+      "sha256": "36fcd7ffb20498dbd2a2e15dcd9295a238750c3c626c3bb62fb75c29e19a6ca2"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-f0cqnwe2/572f7e70fd034121bbe5a9389e830861-receipt.json",
+      "bytes": 1135,
+      "sha256": "b7d4e2a96a99dd8ff9da846270af33b20c8bdd74474bd8c10673dc378893d153"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-f0cqnwe2/a9fc650cd57649e9b55a085a6c9c8140-budget.bin",
+      "bytes": 49,
+      "sha256": "751962234c7544b428395de0d4c20fed7131367ee429dc12364de1ad9d86c0a7"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-f0cqnwe2/a9fc650cd57649e9b55a085a6c9c8140-receipt.json",
+      "bytes": 1135,
+      "sha256": "a8f4dd30f9bf38c36c918e2459526ef5f37bd9c87f5d10cd05ce61a75457475d"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-f0cqnwe2/e16b6ad16e8f4901812c50366d727968-budget.bin",
+      "bytes": 49,
+      "sha256": "74dd3ff009ce85e91df8d1e9aaa9126173171bd3343bae9d7615c68f274ad7aa"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-f0cqnwe2/e16b6ad16e8f4901812c50366d727968-receipt.json",
+      "bytes": 1135,
+      "sha256": "44043cacf3a34804df24761649b5341663f6f73ea4b71290f6161e32ebee84f7"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-gyi16_v7/1603fdbfecd0421aa894016d5a0a4133-receipt.json",
+      "bytes": 1762,
+      "sha256": "5e0abcfd07c1f7613c8b38a291514b50a24a8c2af5470a38cba8adce732e1d27"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-gyi16_v7/70e180376f284db29c20acf67cad2cbd-budget.bin",
+      "bytes": 49,
+      "sha256": "f32e2b1022a0822a43a7fb9aee658b238871d860cb41b2c26525cd201dd2df79"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-gyi16_v7/70e180376f284db29c20acf67cad2cbd-receipt.json",
+      "bytes": 1384,
+      "sha256": "6cf735cd4398308a2a5f8ca096e693c58365f67172e739049de4bc0b451d675b"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-h8r8h8hi/7697a9391df244ba8465875d0599cf74-budget.bin",
+      "bytes": 49,
+      "sha256": "c9e30160285f74a62ca41dc441af396e27f96422832cda91f96647e2e7ff490f"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-h8r8h8hi/7697a9391df244ba8465875d0599cf74-receipt.json",
+      "bytes": 1054,
+      "sha256": "82e2d8f385d841d95daed5c7d51a00eb3e96c4796eace4e2f82f919fbec89931"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-laqy33aw/1b4117ba1783455ba3d366ed932dabfc-budget.bin",
+      "bytes": 49,
+      "sha256": "5cb1d4dd1058a63f418243c64ba1c7b7032b5684a7d17a540ed399e51d98353f"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-laqy33aw/1b4117ba1783455ba3d366ed932dabfc-receipt.json",
+      "bytes": 1239,
+      "sha256": "ae5ee0dec3f9cd1d7aa8a69f2fc5fef30d38e38dd08d511816777649f8a46e30"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-npor5suv/bbf76ac68ff54811bfeb5662655c1499-budget.bin",
+      "bytes": 49,
+      "sha256": "e97dea3409882b5cbf2f5b88bc5b6c2ed567f2d3fd2bc8b56f295ac05127a166"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-npor5suv/bbf76ac68ff54811bfeb5662655c1499-receipt.json",
+      "bytes": 1158,
+      "sha256": "d20c719fe4b0a56d6a34f62a61f68a68d8046510ad46bf2a247fdab0dabe6dff"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-oltkyq64/ce6f4c502c9f49c784dc3e616981a1cd-budget.bin",
+      "bytes": 49,
+      "sha256": "eed0d079e230d7d8a14ed00c31f544322d23296b4bdd96d5044577bd05fe3623"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-oltkyq64/ce6f4c502c9f49c784dc3e616981a1cd-receipt.json",
+      "bytes": 5593647,
+      "sha256": "929f806bb105e56d08c38b74a568d7300b270467bc9c14f58d1704ef32b5f450"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-oudefyig/156c12837aa346b695e1779fe7366e48-budget.bin",
+      "bytes": 49,
+      "sha256": "a7b4916e78a67a73009129ea93c8fbce5f161e159584d2cbf582ce0e96f99f46"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-oudefyig/156c12837aa346b695e1779fe7366e48-receipt.json",
+      "bytes": 1129,
+      "sha256": "fa88acf915bec4a48d1e6b58902080fc3a66d468aba845c363206d1d024252cb"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-qeess1to/c033ec0c4b4742ff999553233eacbfb1-budget.bin",
+      "bytes": 49,
+      "sha256": "22cfc9fb3765440eb7631fa21e8c3530524e9ad9ac5282b0a21df2209f9fcad4"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-qeess1to/c033ec0c4b4742ff999553233eacbfb1-receipt.json",
+      "bytes": 11180731,
+      "sha256": "3d6db524d2ec6083dad062ad192247beb5bc0412b51366017cf8cf985a0475b0"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-tbfx09sk/ae2dd6aca8384e408d88533fcff20a9d-budget.bin",
+      "bytes": 49,
+      "sha256": "84528d5448d84109f72a6e78e12228bf767d736b8c12baabd8a2cf1a40f7bc0a"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-tbfx09sk/ae2dd6aca8384e408d88533fcff20a9d-receipt.json",
+      "bytes": 88487,
+      "sha256": "9a562c6850bb6eac9fe217586ff029c183033ad142d6d56595ca54ffc72c36b3"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-ufxi9_qs/cfde2ba4beb44106bdb7f6c4ff5d0b88-budget.bin",
+      "bytes": 49,
+      "sha256": "c4ae4088ddde19f4e03c1e44c5c3716b582dfcca201d7808611a6ad68a3ab70b"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-ufxi9_qs/cfde2ba4beb44106bdb7f6c4ff5d0b88-receipt.json",
+      "bytes": 1269,
+      "sha256": "7a04a4795d7a0b3293c60bdf9fd17d2803052eb9e5bf82136ccc65e051a9cfee"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-zwys11lc/fd1e335c3a1940ecb03a57df63df007f-budget.bin",
+      "bytes": 49,
+      "sha256": "ca3024ce78bb873652e340888e209bb745fe52d925d96cf11feef94d9504d827"
+    },
+    {
+      "path": "task0-green-v2-cases/gauntlet-owner-probe-zwys11lc/fd1e335c3a1940ecb03a57df63df007f-receipt.json",
+      "bytes": 1239,
+      "sha256": "27f319f514e2f4561cfff3baa6e59b489b93b38d2b494f144d01e068b393fff5"
+    },
+    {
+      "path": "task0-green-v2-env.json",
+      "bytes": 145,
+      "sha256": "970dc19fd716ce90e0ab0f780ff5eef427b5ba13cc1bc47a8dab69b3e9f628a2"
+    },
+    {
+      "path": "task0-green-v2/completion.json",
+      "bytes": 175,
+      "sha256": "8dc11315bede7393f74bb68ecd01cf1d46d866ecb576734fbb16e8b778a2f104"
+    },
+    {
+      "path": "task0-green-v2/driver-source.ps1",
+      "bytes": 4520,
+      "sha256": "4bd23292922706ef9f1eec87bd74232b3ad84c9b2a221c9e991a0e48c0754ccc"
+    },
+    {
+      "path": "task0-green-v2/native-receipt.json",
+      "bytes": 6676,
+      "sha256": "ce805a3aeb9bd8b4941c3ec89f27b525b161cd10973c2cce458d814f1ca93b06"
+    },
+    {
+      "path": "task0-green-v2/source-after.json",
+      "bytes": 29952,
+      "sha256": "2e3fc7f19cf7a5b39eac68ec1f2ba4b6a6df8f3b84a7e67e8ab6ec75cbfd5758"
+    },
+    {
+      "path": "task0-green-v2/source-before.json",
+      "bytes": 29952,
+      "sha256": "8323289057238d6795a664ded663254016c7c0e76f726ad5f65b69f435c2f54e"
+    },
+    {
+      "path": "task0-green-v2/start.json",
+      "bytes": 840,
+      "sha256": "ed27292e41335f9a8cc3685fb97d23df62c74383d7b92e110c43aed7149ce027"
+    },
+    {
+      "path": "task0-green-v2/stderr.log",
+      "bytes": 6164,
+      "sha256": "8ae1adc3766047b9818faf0d931809055b5c4fe3f4d0789e680afe412aa91510"
+    },
+    {
+      "path": "task0-green-v2/stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-0ceun7m6/084ae389c93048ba9bcdd0e25cc1eb27-receipt.json",
+      "bytes": 1044,
+      "sha256": "165c9e86443fff39c69bd388790fca55d5069ef8884230145e6845abf549b7cd"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-0ceun7m6/de3a14e1656840afaed2427a0b163085-budget.bin",
+      "bytes": 49,
+      "sha256": "523447db5f763650ecc16b7894f239eeeb51a6d60cde9ca7b720ba668dfa8382"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-0ceun7m6/de3a14e1656840afaed2427a0b163085-receipt.json",
+      "bytes": 1145,
+      "sha256": "f76df1b6f3e891c80961210a5e52abc6f187ed718e7f31e52eb673038567ce73"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-49di6pc3/7a704411928a4c5fb9d88861545a2d75-budget.bin",
+      "bytes": 49,
+      "sha256": "88c58c5b1d8226c4702416edb2d4991a7881ce6b14c49041ce0eea3155176439"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-49di6pc3/7a704411928a4c5fb9d88861545a2d75-receipt.json",
+      "bytes": 1072,
+      "sha256": "9001f0e94d3f6634fe151ed294d7dca94306f2ab9716b85ac323d480e5faf816"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-9pwv__gn/0d88cdd3eda74f6ea4d07516959d7233-budget.bin",
+      "bytes": 49,
+      "sha256": "c82219c20e294470a298eae9e15dda1f1ab606024c884837580a5e7773284b5b"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-9pwv__gn/0d88cdd3eda74f6ea4d07516959d7233-receipt.json",
+      "bytes": 1042,
+      "sha256": "7e287bb677f90ab8e59faf26f2bd9b7dae4d41a4c562bfcef0474feadc324b92"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-9pwv__gn/bf638e0208a54b65885c20801535e2d2-budget.bin",
+      "bytes": 49,
+      "sha256": "0679422834a222e6cee9604e282c455ca1dbc2ba43775947175e8ece25441c1a"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-9pwv__gn/bf638e0208a54b65885c20801535e2d2-receipt.json",
+      "bytes": 1147,
+      "sha256": "d7371e6577a80aaa5fdc2f0645a6d15e868f7e4df8dc8f01d5278049a7262401"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-b0ehp9yy/0b5c2a9dd4284dc28f2705a36d6c3ba4-budget.bin",
+      "bytes": 49,
+      "sha256": "595d8e8a0b2960d95f17f7d66c4e50c0c1fda8751d21c8030427410f442e934c"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-b0ehp9yy/0b5c2a9dd4284dc28f2705a36d6c3ba4-receipt.json",
+      "bytes": 1146,
+      "sha256": "f3facb6f203a29185b5930b7b23195d4e766fce441ef8d050b53495da5382b88"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-e6wu534n/4e1f52988f64425fa905091d515d81fd-budget.bin",
+      "bytes": 49,
+      "sha256": "a5d1e61b4b3c69450153d3f3ee0a1bf2e0cac6291c92516a8d352d753e19735e"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-e6wu534n/4e1f52988f64425fa905091d515d81fd-receipt.json",
+      "bytes": 5593676,
+      "sha256": "7d9f728eebd398acc77301deed5cfd217561c0df63494ac70bf4890b1bcc5112"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-erwhvdg8/2214927172a84a8e88e9661e39040eb5-budget.bin",
+      "bytes": 49,
+      "sha256": "0fb3e4e773deeafb77f5559610c206563d8d45af976607d61a7d79ee27550c40"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-erwhvdg8/2214927172a84a8e88e9661e39040eb5-receipt.json",
+      "bytes": 1170,
+      "sha256": "fa73e479ae6358d289efa190d7ee8957e8483213bc25ebb92a54dfd37ce3c87d"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-ewv1dx17/f7bf8cdacea74bb1b40e7e405cbca8c5-budget.bin",
+      "bytes": 49,
+      "sha256": "4c4332bc290f67365a87ff4727f01424b98f7b3ce8c4d7b4b476d9d95d9518c2"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-ewv1dx17/f7bf8cdacea74bb1b40e7e405cbca8c5-receipt.json",
+      "bytes": 1184,
+      "sha256": "d0965d02f8ff3591e9833ef9f3691c5d40c95495582def2fe3acc0bd688ee063"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-f103w56r/3772d9166b5e4c13b41b39a444ebb8c0-budget.bin",
+      "bytes": 49,
+      "sha256": "367f8a9005708023ba69033b64436299e84a2b9e46f2c9241cef2b8de150ca71"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-f103w56r/3772d9166b5e4c13b41b39a444ebb8c0-receipt.json",
+      "bytes": 88513,
+      "sha256": "46caf458d8a16d43c74c1f5ba7860ebdc5157dfec1f5d7e58de194a6584e6825"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-heoxzk77/c2023b5808f040d78fdcf911f805e0ea-budget.bin",
+      "bytes": 49,
+      "sha256": "0a65e9918dd1674abd9e588fb960b0a4a0848998441356c8316491e2410f6f24"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-heoxzk77/c2023b5808f040d78fdcf911f805e0ea-receipt.json",
+      "bytes": 1167,
+      "sha256": "bc7bff3e7b98248682bba4d5ac97f78efa9276c0f4587f83e74798eb3b53fc87"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-l6_ex00i/099af8b2b044487a97ed8c1203d55681-budget.bin",
+      "bytes": 49,
+      "sha256": "097324421e52a3b10bb24b14e2e509a3d87a992d5713f1660a0ea5ba77f50b5c"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-l6_ex00i/099af8b2b044487a97ed8c1203d55681-receipt.json",
+      "bytes": 5593676,
+      "sha256": "c18c765d79874982acb222c66402320664d64f8a0405c84ffd05ac4996667d83"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-mdl_4ja5/05d1c3fee0604e7694b60641c1c79116-budget.bin",
+      "bytes": 49,
+      "sha256": "caef259acd302c52213a656e61d3f3fb3445aa267aa1fb0f7c602dddfc67d04a"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-mdl_4ja5/05d1c3fee0604e7694b60641c1c79116-receipt.json",
+      "bytes": 1155,
+      "sha256": "2b347ab4621e9475b55627991fe1482e14f1b1016ee81f9ba7d1b88b3e77b144"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-mny_74gi/32e30f1b66b445d29c3af0eb0d01cf36-budget.bin",
+      "bytes": 49,
+      "sha256": "81ae4c8a687dc0f6bf14095ff930bf6e98527358c65ca9ec4049673fac7226d9"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-mny_74gi/32e30f1b66b445d29c3af0eb0d01cf36-receipt.json",
+      "bytes": 1175,
+      "sha256": "7714f955ac2ef084f83e45ab986dc5f905c0d0b1c4cf184694c17cc8a913a5e4"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-peggcg_d/19a7a3d57a5d491f885c7d0a756fd6d0-budget.bin",
+      "bytes": 49,
+      "sha256": "6b15cf96f7f3e935c064ed16ef9df92f585733ffd5453ccbd2b357d0185d7189"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-peggcg_d/19a7a3d57a5d491f885c7d0a756fd6d0-receipt.json",
+      "bytes": 1299,
+      "sha256": "3c4c2ff561d2148e273dc43477c08f065056b3da82c093319764e6bba85eef32"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-peggcg_d/2f1db03b7cab48fb8792735fb4ae7e43-budget.bin",
+      "bytes": 49,
+      "sha256": "0695780ef95393d825d049c7c9580fa7967ea577510fe2ae2d168c37e74f5402"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-peggcg_d/2f1db03b7cab48fb8792735fb4ae7e43-receipt.json",
+      "bytes": 1299,
+      "sha256": "ca21be0fbfc61dbe1525ea52fb939e66d25b328a04b1e5de872858684115d26e"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-peggcg_d/beca0bd8115c453aaa42374174350486-budget.bin",
+      "bytes": 49,
+      "sha256": "c78b6c18f0e479b0a8fb0d285c30f0efc843521f904d489992e6a0dc22e3f435"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-peggcg_d/beca0bd8115c453aaa42374174350486-receipt.json",
+      "bytes": 1298,
+      "sha256": "8d2ebeac7dddf3069a95af9f4e7536ca98e1a4b0606c7d10f511f980e6edf987"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-qxps0_ac/982ebc56594c4ec7815b105420273e71-budget.bin",
+      "bytes": 49,
+      "sha256": "20eb36b5e58d9aedb23c8a50681785be98ce85f9c3d36cbc329a90ccbaaf2a4a"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-qxps0_ac/982ebc56594c4ec7815b105420273e71-receipt.json",
+      "bytes": 11180758,
+      "sha256": "42286810cdcc397ec557739d01936d1d7ae536af31517d9e55a387d40f0dfc25"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-rzusicpw/0e67fcd4f6d54260bbc6333a4be50c14-budget.bin",
+      "bytes": 49,
+      "sha256": "9606fe5281161237821c744cbe4d8b4391d9d0658368f66eecf9ba3a059597f0"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-rzusicpw/0e67fcd4f6d54260bbc6333a4be50c14-receipt.json",
+      "bytes": 1292,
+      "sha256": "0b6f98d48b37bf0fb328b4097a836fdedab3a97d4527a4ebc5967d57e7071fb2"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-rzusicpw/61b2a7f9d89448a3a9b9f18ed80c1308-receipt.json",
+      "bytes": 1788,
+      "sha256": "fb9944399dbf838d216c326983dcef9fd57e382416cdef4840347ece5a3d1b07"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-v9_2i8vh/fa898723aa4d4c4785a38d1161ef04a5-budget.bin",
+      "bytes": 49,
+      "sha256": "58f6b2c40b2c4f08c2cd25f06d1513e312ec4544cbae587b01046314080941ea"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-v9_2i8vh/fa898723aa4d4c4785a38d1161ef04a5-receipt.json",
+      "bytes": 1048,
+      "sha256": "4273cf85b0d6597e7b071491ef2af6f4e5cb2a8c8521a4722809d3d6d385eec3"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-za3d_dq1/5dbbef725bec4d81ad5bfce5716374d1-budget.bin",
+      "bytes": 49,
+      "sha256": "b65dc10b5de86dcaf8c2a7c3599a6ab029f9807804ef3f0f61b67eb7a57ccc8f"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-za3d_dq1/5dbbef725bec4d81ad5bfce5716374d1-receipt.json",
+      "bytes": 1342,
+      "sha256": "923f1711593e71235a7b9222b31813583b6466b4c3d05a5497486676ed798a9a"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-zpezyt5q/b448b6580b35440b8b36f6396a6b40bd-budget.bin",
+      "bytes": 49,
+      "sha256": "2f259247d702111c1a6a52abf94c926b5735c99071725c3420ea4b18f6560ad1"
+    },
+    {
+      "path": "task0-green-v3-cases/gauntlet-owner-probe-zpezyt5q/b448b6580b35440b8b36f6396a6b40bd-receipt.json",
+      "bytes": 1081,
+      "sha256": "5347ff6fbdcc81ff2ad13dff2431ffc876551218ec168f86fb6083508fd3c588"
+    },
+    {
+      "path": "task0-green-v3-env.json",
+      "bytes": 145,
+      "sha256": "c87d9bc542ec6666c9f2ac275273f74670e85ace1021c2eaf15061c829565ee3"
+    },
+    {
+      "path": "task0-green-v3/completion.json",
+      "bytes": 175,
+      "sha256": "50de1a6cb2895c89f55abee42ed0c41dafa77838c53aa6eea4833d14ca8c883f"
+    },
+    {
+      "path": "task0-green-v3/driver-source.ps1",
+      "bytes": 4520,
+      "sha256": "4bd23292922706ef9f1eec87bd74232b3ad84c9b2a221c9e991a0e48c0754ccc"
+    },
+    {
+      "path": "task0-green-v3/native-receipt.json",
+      "bytes": 490,
+      "sha256": "3f8b5a29101ae5f446d5a248063803ba1f34f4bb0b9028c89058b60d258682d4"
+    },
+    {
+      "path": "task0-green-v3/source-after.json",
+      "bytes": 29952,
+      "sha256": "3d63cfc9266003c7c27daa905f9f35ed4b72bfc184b275dc0a563857f2c0adbc"
+    },
+    {
+      "path": "task0-green-v3/source-before.json",
+      "bytes": 29952,
+      "sha256": "88eb1d42f3a30887a79ab4ec2d17b65620868170d68a3c1910063bc8f3e180ea"
+    },
+    {
+      "path": "task0-green-v3/start.json",
+      "bytes": 840,
+      "sha256": "edafb36ff8e214cc6f8ef51392460b931da59d40f5ccdbc7d8f8eefcfe922161"
+    },
+    {
+      "path": "task0-green-v3/stderr.log",
+      "bytes": 123,
+      "sha256": "4d4519f56738080b607d18e15f4b5542e22225dd96e651dec938410dd10f282a"
+    },
+    {
+      "path": "task0-green-v3/stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-_s333bku/983ed7352f95402db6b161a918e01a94-budget.bin",
+      "bytes": 49,
+      "sha256": "e60f51b6d09fda81cdb9a6390364e7d189cee346e46eeb341e980614e7cde6ee"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-_s333bku/983ed7352f95402db6b161a918e01a94-receipt.json",
+      "bytes": 1342,
+      "sha256": "5d6b9a615e56f986330a707ef0caee638936ed2e5ee9ca639640361c36bd0999"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-0y471m3i/0ab7ffa3128c4b26aa7b41aafb483f27-receipt.json",
+      "bytes": 1045,
+      "sha256": "47cd77ae99d2ae08cd191b83ab483c235315c2381503907e931e006f6842e920"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-0y471m3i/d77a6891418d45c69d337a2b47ecd027-budget.bin",
+      "bytes": 49,
+      "sha256": "e200a011c8e102f8e950a9cbfbc09da7291225ae031c7a8f59f070561dd617d3"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-0y471m3i/d77a6891418d45c69d337a2b47ecd027-receipt.json",
+      "bytes": 1145,
+      "sha256": "b32447d030d4129de485f3d869f2b421584da40dd80dff5825f507a00cdbf313"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-17r89tfh/92eac6d11f9645578574a6c54357e87c-budget.bin",
+      "bytes": 49,
+      "sha256": "bb9a1be789454045badd65bf272b9946479c4368efebea93c60f58fe168d1252"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-17r89tfh/92eac6d11f9645578574a6c54357e87c-receipt.json",
+      "bytes": 1299,
+      "sha256": "048b283a03dc68a4203f7a5db0e1736e1d252b0d15a04daee5b0b3265fc2f087"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-17r89tfh/bc4c7cba28ed4876a5e552b119cbaf23-budget.bin",
+      "bytes": 49,
+      "sha256": "d7d580f8348b86cced01bb7213809421a497c597fb675165ac5a7bae0a2499ea"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-17r89tfh/bc4c7cba28ed4876a5e552b119cbaf23-receipt.json",
+      "bytes": 1301,
+      "sha256": "f96a7385b2e362b53bc482a3c0abb466cbc51667db7af503eeec11fb814aee30"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-17r89tfh/dc5382f105bd44abbf79cf45c8671fed-budget.bin",
+      "bytes": 49,
+      "sha256": "cf98f948d0cca00cdf8a5c06730a59a6c18e69c5b8472e9b261fce93e3056a2f"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-17r89tfh/dc5382f105bd44abbf79cf45c8671fed-receipt.json",
+      "bytes": 1298,
+      "sha256": "cb309f8cc86799bba9c6b54e0aa7ed9abdbfba1d35275ca64cf72c0079260f48"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-4hl2qyqw/644a18079b1c412bbfaac9b89e58a090-budget.bin",
+      "bytes": 49,
+      "sha256": "13990c8d084b8825e867d40311a621d468193d919bf035abcd8c376f89c9876d"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-4hl2qyqw/644a18079b1c412bbfaac9b89e58a090-receipt.json",
+      "bytes": 5593676,
+      "sha256": "d2b73e11e5bc439e580c00302ff3c8f69d424e44d35f4f0681e24cddbe223910"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-6_2p1gfz/ae82c474ff78438b9b61cf39d454adb7-budget.bin",
+      "bytes": 49,
+      "sha256": "9a28728875dd7305e0acf70ff6c74aba1fded612bce5b42213b57ea26308b7c3"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-6_2p1gfz/ae82c474ff78438b9b61cf39d454adb7-receipt.json",
+      "bytes": 1047,
+      "sha256": "22fa4fc5ab9251151a5286ae3516e455b8bd147ff68c786143ebb0befe15c8f2"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-7hyjedsq/7898d32aa78647ea8f617a7ccea88894-budget.bin",
+      "bytes": 49,
+      "sha256": "cdef8a76a710bc67dbb373df8819d8f7bf0f9b96cdf68b4dde16965e22d3540f"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-7hyjedsq/7898d32aa78647ea8f617a7ccea88894-receipt.json",
+      "bytes": 1145,
+      "sha256": "80f1072923666576de607f6d4503c0ad00004b7c7eaa9cd07f36f3477fd6343a"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-8qz8s9yn/220866fc3e0344e5b14aa094ea9ccdc3-budget.bin",
+      "bytes": 49,
+      "sha256": "e11450ac2bb5500283bcbebb6f32193e1ff5ceedb2414815604c2457a750a44f"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-8qz8s9yn/220866fc3e0344e5b14aa094ea9ccdc3-receipt.json",
+      "bytes": 1080,
+      "sha256": "942d283fd13cceccf3c2f031b0f736be0776d2799babf7f4b0bc11c1c6577bd6"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-ajobkniv/e7dea465268f4724820cc148593ffe53-budget.bin",
+      "bytes": 49,
+      "sha256": "fe5db75c29e7b280321dc2f41dd950bf052032b4248f7f26757f94c53ecc8a07"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-ajobkniv/e7dea465268f4724820cc148593ffe53-receipt.json",
+      "bytes": 11180758,
+      "sha256": "439c267d0082193b6046d15076c5a769bde0a6587930aaf8396fcee2a47f98e2"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-bmqyhrxe/5a6dca011e0843938294d4b9e1b856c3-budget.bin",
+      "bytes": 49,
+      "sha256": "39da4d0866b7c75762a6b03b66d2eb52a034b1c4cf924c4b8aef3dcfea7f0684"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-bmqyhrxe/5a6dca011e0843938294d4b9e1b856c3-receipt.json",
+      "bytes": 1147,
+      "sha256": "9fcde76e9f1621fab683968eb90df3e62dcbffbdee76856d817115b8a8ff0a22"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-bmqyhrxe/d4eb2d71c1484828873e4c0e94773c7f-budget.bin",
+      "bytes": 49,
+      "sha256": "86b3c594d743ce44f51f9ff58adba0a54415e8aa0ccd4c8c6f192e59b1a5f0bb"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-bmqyhrxe/d4eb2d71c1484828873e4c0e94773c7f-receipt.json",
+      "bytes": 1042,
+      "sha256": "b280f46e2ab304fec659dbf9c91d1c661749d61bbb48938cf67a54ef3738fc76"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-fe_nxk_b/565ecdb9e72f452bb116adbebfff8e34-budget.bin",
+      "bytes": 49,
+      "sha256": "4c3c84d4424defd430ea5c97f682d6eeb5f5acbd238e5fb1a0956d4e00289e42"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-fe_nxk_b/565ecdb9e72f452bb116adbebfff8e34-receipt.json",
+      "bytes": 1167,
+      "sha256": "443730dea89aa37fb63162739a9b5b3838936cebe15e43513c6ec99a6115c3f1"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-g3oddq9w/37e30d8ba29e432e889453dd6949dade-budget.bin",
+      "bytes": 49,
+      "sha256": "4e907cacc7b0fa5778c12ba72403017e804aea8aa8f513a44b88594b2282105f"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-g3oddq9w/37e30d8ba29e432e889453dd6949dade-receipt.json",
+      "bytes": 1185,
+      "sha256": "27bc8abd85d1ab0f616b1a73574f60c09041b1515bf63a35540562f5cec49540"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-goaw9xyq/6ba72d7394b4497196935c075524a241-budget.bin",
+      "bytes": 49,
+      "sha256": "b26a1101f26d36db49a0b384604b0ed4b345dd3b14e88dfb0acc1d94d0b8f1a0"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-goaw9xyq/6ba72d7394b4497196935c075524a241-receipt.json",
+      "bytes": 1291,
+      "sha256": "b6db814a405926ff7c91f30fceaf4f93020dd45e8f06ab66853d4f11b6c075cf"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-goaw9xyq/f2ee0eaf948643a29d2f45f9042669f3-receipt.json",
+      "bytes": 1789,
+      "sha256": "14fec5a1f1ed3cd857af38e24e3331eee38c3aaf2198753c22745f0a0b0d3ec2"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-h9q3asvo/b4194214bbd444eb94af09b5718235e5-budget.bin",
+      "bytes": 49,
+      "sha256": "33a2a3d799e80c560b5e8a645655fe99fdaa42da637c7f0192da7a54b6756d98"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-h9q3asvo/b4194214bbd444eb94af09b5718235e5-receipt.json",
+      "bytes": 5593675,
+      "sha256": "facc1442525e786570e5d40a61aabb40b6f91082b106ff92dac2540220ff91d3"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-kjyzeati/dcc03ba5e9414e5599386b03fa81a266-budget.bin",
+      "bytes": 49,
+      "sha256": "e5f4283e755f4e0af527043f3ed2b82abb9a31a30dfdb0a3d113c4269d4d2299"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-kjyzeati/dcc03ba5e9414e5599386b03fa81a266-receipt.json",
+      "bytes": 1171,
+      "sha256": "ff1f3eab214530d5e61adce409284b3329cd8c829f7024a4dcd966dbf576fef6"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-re4hfrsb/a443eae7fd4b4860b5ec0578041fed48-budget.bin",
+      "bytes": 49,
+      "sha256": "0282a68660a968c1291fdc1800530106bd0ddbb8acb15f53c4a17ba18b4b18ed"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-re4hfrsb/a443eae7fd4b4860b5ec0578041fed48-receipt.json",
+      "bytes": 1074,
+      "sha256": "fae453d4db11823e312098a805ea20def2ab76e5bff11e150235d73d64e9c87a"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-w3vdls14/0a2b627b56ef40c8bcd3413e4c0e85cc-budget.bin",
+      "bytes": 49,
+      "sha256": "11381a6ed5e539c50c6b514ab3c95500665b327cd80fac99a87f01b4fc8c41a8"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-w3vdls14/0a2b627b56ef40c8bcd3413e4c0e85cc-receipt.json",
+      "bytes": 87646,
+      "sha256": "b3bf5f46c87576d3e170b50133bc1894ca4372b18915064235a508f0f8e56b6d"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-x6p81ccp/7034e26bc1154749945698fc28b92de0-budget.bin",
+      "bytes": 49,
+      "sha256": "8081cc311c1990bbb67d0d07141ce9d35d00ad3935ed9bda9dfb1e46e99b7b14"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-x6p81ccp/7034e26bc1154749945698fc28b92de0-receipt.json",
+      "bytes": 1156,
+      "sha256": "db124cf2b2fc56d9e478e9cde1f9d41b93f41cd4f7b714dea2c33ad4a86e080b"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-zd1fp4ga/ae14273e2b1844538c047862d94e7db9-budget.bin",
+      "bytes": 49,
+      "sha256": "1b7e8b171b306ab4ff4cc7dce46996198a590b37323d16e67502a87d6d436b8e"
+    },
+    {
+      "path": "task0-green-v4-cases/gauntlet-owner-probe-zd1fp4ga/ae14273e2b1844538c047862d94e7db9-receipt.json",
+      "bytes": 1175,
+      "sha256": "1076a84f527fd05d6b976e5bac886137badf935fba9a13a9e4dc2814ac843354"
+    },
+    {
+      "path": "task0-green-v4-env.json",
+      "bytes": 175,
+      "sha256": "a0231b3cf41ece2aea3d944f80bca228b88b43edf53cfa1c7b5c45617d3fbee2"
+    },
+    {
+      "path": "task0-green-v4/completion.json",
+      "bytes": 173,
+      "sha256": "2a1ec5e779b504e306ae904d738d98843daae39f7eedaf45128bdbba8b9a2ac4"
+    },
+    {
+      "path": "task0-green-v4/driver-source.ps1",
+      "bytes": 4520,
+      "sha256": "4bd23292922706ef9f1eec87bd74232b3ad84c9b2a221c9e991a0e48c0754ccc"
+    },
+    {
+      "path": "task0-green-v4/native-receipt.json",
+      "bytes": 490,
+      "sha256": "a3fae1cd6681990007cb764dbe642366625f0af9a17c94f4babdd315afdb7915"
+    },
+    {
+      "path": "task0-green-v4/source-after.json",
+      "bytes": 30065,
+      "sha256": "38db8b402d48301321525ab3681d647d6cbf2e31c0fd1eace96404d54db7bc51"
+    },
+    {
+      "path": "task0-green-v4/source-before.json",
+      "bytes": 30065,
+      "sha256": "38db8b402d48301321525ab3681d647d6cbf2e31c0fd1eace96404d54db7bc51"
+    },
+    {
+      "path": "task0-green-v4/start.json",
+      "bytes": 922,
+      "sha256": "97850fb02a7e4b3eb988fb4821b1daa76a3a576b09eaa9d24b4da54361e971b3"
+    },
+    {
+      "path": "task0-green-v4/stderr.log",
+      "bytes": 123,
+      "sha256": "6ee0afc49173040b1f4d0410272001614d402933fc5df6629c102cf3484935d7"
+    },
+    {
+      "path": "task0-green-v4/stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "task0-nested-green-v1/gauntlet-owner-probe-cl646e9g/21b118a9dcfe4c5cb9d2a007d9dc604a-receipt.json",
+      "bytes": 1045,
+      "sha256": "346c49bad79e11ecdd52f3e6163ca15999150bd8f338aa8e9df7820ada157be9"
+    },
+    {
+      "path": "task0-nested-green-v1/gauntlet-owner-probe-cl646e9g/8e721032f6274f99b2a6f0be72634c17-budget.bin",
+      "bytes": 49,
+      "sha256": "70fcb156caa18df40002393a49e02661c4c7679a5f8040b0585a8494bca2d843"
+    },
+    {
+      "path": "task0-nested-green-v1/gauntlet-owner-probe-cl646e9g/8e721032f6274f99b2a6f0be72634c17-receipt.json",
+      "bytes": 1146,
+      "sha256": "58d3da685c9bf172ad0f95a6c4f9e16a4322f7790fbc3fac313c73a4d135042c"
+    },
+    {
+      "path": "task0-nested-green-v1/gauntlet-owner-probe-fne804qx/0361a26690e54203806dc0c0edaacf81-budget.bin",
+      "bytes": 49,
+      "sha256": "179a1be5b2b0dbfb304ec620231f03f52da7ce67cf12f5effd360d4f5c0f6010"
+    },
+    {
+      "path": "task0-nested-green-v1/gauntlet-owner-probe-fne804qx/0361a26690e54203806dc0c0edaacf81-receipt.json",
+      "bytes": 1292,
+      "sha256": "ce82546c1f142e1f107ca737eff66681f9bdab2caff8c16aaaa2c86218440266"
+    },
+    {
+      "path": "task0-nested-green-v1/gauntlet-owner-probe-fne804qx/ac6718f0d49d4439ac3e47db6f8f573a-receipt.json",
+      "bytes": 1794,
+      "sha256": "11573103bece7b8e9b285e45bf22b1e45f3380b61cd3c5da1b22f9a35d486a0c"
+    },
+    {
+      "path": "task0-nested-green-v1/gauntlet-owner-probe-z2us74l1/1960083ce5f046cf945a5fa4821f2a7b-budget.bin",
+      "bytes": 49,
+      "sha256": "1a77a3d1f2d6dcfdb78e9f2b325a74ae5653cbc6296fd72e4f181439a01362c6"
+    },
+    {
+      "path": "task0-nested-green-v1/gauntlet-owner-probe-z2us74l1/1960083ce5f046cf945a5fa4821f2a7b-receipt.json",
+      "bytes": 1516,
+      "sha256": "0d7c5bf97aa26e2c2fa3408c427253b0b74f742ca164476194eba060c8b6ee31"
+    },
+    {
+      "path": "task0-nested-green-v1/gauntlet-owner-probe-z2us74l1/9d680a790762495fbac562a268b6e757-receipt.json",
+      "bytes": 1745,
+      "sha256": "72a0b0bb137ffa247f17ff50864d7841a900c3abcb3e3018362269b9dbded444"
+    },
+    {
+      "path": "task0-red-v1/completion.json",
+      "bytes": 173,
+      "sha256": "c9343af05679dc543b09433145db77bbac031a201b4c78a051c13c9d45f458c5"
+    },
+    {
+      "path": "task0-red-v1/driver-source.ps1",
+      "bytes": 4520,
+      "sha256": "4bd23292922706ef9f1eec87bd74232b3ad84c9b2a221c9e991a0e48c0754ccc"
+    },
+    {
+      "path": "task0-red-v1/native-receipt.json",
+      "bytes": 13685,
+      "sha256": "ad8b533ed13f0b680ab33f6a1802b87ed9aa3f445851efc271fc69a403be69c1"
+    },
+    {
+      "path": "task0-red-v1/source-after.json",
+      "bytes": 29586,
+      "sha256": "72c4add7b63161791aa0bef691b3ff2a23e4e4fe9ad6d5f4cb45e22023c20c57"
+    },
+    {
+      "path": "task0-red-v1/source-before.json",
+      "bytes": 29586,
+      "sha256": "72c4add7b63161791aa0bef691b3ff2a23e4e4fe9ad6d5f4cb45e22023c20c57"
+    },
+    {
+      "path": "task0-red-v1/start.json",
+      "bytes": 628,
+      "sha256": "6e2c391da491129543f411f532c129707322fe033f89214dcb1f1dd8b60a6bc2"
+    },
+    {
+      "path": "task0-red-v1/stderr.log",
+      "bytes": 12760,
+      "sha256": "d3614bc4c8e74ee560fbefa7f02feac3dad5156408a20a030e6c1811a4878563"
+    },
+    {
+      "path": "task0-red-v1/stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "task0-transport-green-v1/gauntlet-owner-probe-5ikoyojq/1c5c5f6389c84f6d878bc9eaf391f885-receipt.json",
+      "bytes": 1557,
+      "sha256": "9d21d6627d5f345e733646876d8b5161fe03e090e4c4e43816a341c1de4602c3"
+    },
+    {
+      "path": "task0-transport-green-v1/gauntlet-owner-probe-5ikoyojq/28b5dc155742431e9aea0608e807096e-budget.bin",
+      "bytes": 49,
+      "sha256": "6978854bcc57b0fa7f69d9388b9e61db8125c251e7d88484b8a7b510dccea2ee"
+    },
+    {
+      "path": "task0-transport-green-v1/gauntlet-owner-probe-5ikoyojq/28b5dc155742431e9aea0608e807096e-receipt.json",
+      "bytes": 1152,
+      "sha256": "430e1f2f1beab83f65cc82bd98562096a088479ac73594b30dd98ff1e502ab5d"
+    },
+    {
+      "path": "task0-transport-green-v1/gauntlet-owner-probe-y6maabl5/1e0d062f5b5c47829f7c08d8a5c7133e-receipt.json",
+      "bytes": 700245,
+      "sha256": "5e44ef247e62c11c7edadf19ccb688a41b6dd5e28efa384f0281fbbf2759f1a2"
+    },
+    {
+      "path": "task0-transport-green-v1/gauntlet-owner-probe-y6maabl5/2148aa3794864a5e96b458246144550d-budget.bin",
+      "bytes": 49,
+      "sha256": "122ff5b2bd8288fe3d58466f5763ccca7162f187985c73ecbefc07e4b824d652"
+    },
+    {
+      "path": "task0-transport-green-v1/gauntlet-owner-probe-y6maabl5/2148aa3794864a5e96b458246144550d-receipt.json",
+      "bytes": 1153,
+      "sha256": "213173d7f065c7a3a7fcd0c4ae0d0e722ed3114f96190dda26d6243731befebe"
+    },
+    {
+      "path": "task0-transport-green-v2/gauntlet-owner-probe-16mou5z6/229516dd37af47ca92d1aa6409411cfd-budget.bin",
+      "bytes": 49,
+      "sha256": "7a436d9b2ef7c8d2fe9cf7ebc68b0e94868ff432073199edebc9057d2b37cec7"
+    },
+    {
+      "path": "task0-transport-green-v2/gauntlet-owner-probe-16mou5z6/229516dd37af47ca92d1aa6409411cfd-receipt.json",
+      "bytes": 1519,
+      "sha256": "10935f69a4bd5b456cfe5eb617a9dcd566f7184c8e57c81e1265510b3b285b60"
+    },
+    {
+      "path": "task0-transport-green-v2/gauntlet-owner-probe-16mou5z6/c5b6beab228940049df981d8d61192ab-receipt.json",
+      "bytes": 1748,
+      "sha256": "426e4857fc0daf6b6aeb895a60c40d592a572fba3e581c6fa645656b6e6f8160"
+    },
+    {
+      "path": "task0-transport-green-v2/gauntlet-owner-probe-emv20nzq/1f0526bcede94f5ba6bde6e47be9ebf0-budget.bin",
+      "bytes": 49,
+      "sha256": "7b65fa1b3e357b9c152cf9ca8a7137eb85c0774c9ad06e41ca5a367c89e9f133"
+    },
+    {
+      "path": "task0-transport-green-v2/gauntlet-owner-probe-emv20nzq/1f0526bcede94f5ba6bde6e47be9ebf0-receipt.json",
+      "bytes": 1152,
+      "sha256": "125a5535e71718073e9e9f8dada58266386c9bbe1de8eff8658c626625152500"
+    },
+    {
+      "path": "task0-transport-green-v2/gauntlet-owner-probe-emv20nzq/aea9d4e43c27409983eac59a13f0c8e4-receipt.json",
+      "bytes": 700245,
+      "sha256": "319864e85e66d3d596ade3ece44d137180b23be0205a3350463a3a6a94d02e46"
+    },
+    {
+      "path": "task0-transport-red-v1/gauntlet-owner-probe-305fz20s/da9e951e938848ea8fda505ad00801dc-budget.bin",
+      "bytes": 49,
+      "sha256": "cb667cdd976f6a0d6a93c73a7ba4d893db5573dc819462f48a887d4d1d2787b0"
+    },
+    {
+      "path": "task0-transport-red-v1/gauntlet-owner-probe-305fz20s/da9e951e938848ea8fda505ad00801dc-receipt.json",
+      "bytes": 5593678,
+      "sha256": "541f9d28733c3abb5f252b6a9fafd32b2a4a9dd466b50c9f8e4f790de24db806"
+    },
+    {
+      "path": "task0-transport-red-v1/gauntlet-owner-probe-d4exb98o/0ed2787815f84329a98bcc3512ef217b-budget.bin",
+      "bytes": 49,
+      "sha256": "b02579bd3ec9f058cf81e11e90576c93ef33d055c20cd5d29725729ba59dddd7"
+    },
+    {
+      "path": "task0-transport-red-v1/gauntlet-owner-probe-d4exb98o/0ed2787815f84329a98bcc3512ef217b-receipt.json",
+      "bytes": 1791,
+      "sha256": "724bcf28051b68c5d0088f570c3ca0e7273963942f7c2f9c59a5cad04e2c44d5"
+    },
+    {
+      "path": "task0-transport-red-v2/gauntlet-owner-probe-0w1qxirb/2ecdcddc0c384423827cbec8543367aa-budget.bin",
+      "bytes": 49,
+      "sha256": "328b31f14c890518fee7bfda5cee39458aaf79935f7e0826f6a8cdfaf26168ba"
+    },
+    {
+      "path": "task0-transport-red-v2/gauntlet-owner-probe-0w1qxirb/2ecdcddc0c384423827cbec8543367aa-receipt.json",
+      "bytes": 1791,
+      "sha256": "58829122c7f82fbac20cab18c6cca11cadd15d740cb26a8ff53bced6861958a9"
+    },
+    {
+      "path": "task0-transport-red-v2/gauntlet-owner-probe-3nn5_246/4b9959faf43f4d9db4c91af55a5a6eb5-budget.bin",
+      "bytes": 49,
+      "sha256": "55c40100502dd292449c1d5ab80dd9bfb2b277e370554637f4bfd0cf04b3af90"
+    },
+    {
+      "path": "task0-transport-red-v2/gauntlet-owner-probe-3nn5_246/4b9959faf43f4d9db4c91af55a5a6eb5-receipt.json",
+      "bytes": 1792,
+      "sha256": "c715dcf1b1b977d73ea12042a89ee61698431ecb3707c19ab99402b6b3ada018"
+    },
+    {
+      "path": "venv-create-v1/87832e30e9e3444b80b019e722b45ca1-budget.bin",
+      "bytes": 49,
+      "sha256": "fa3abaff8748fc760642864aadfd09e2303275f2a151ab00e1fbf0f333de90e0"
+    },
+    {
+      "path": "venv-create-v1/87832e30e9e3444b80b019e722b45ca1-receipt.json",
+      "bytes": 1005,
+      "sha256": "12eac5b57b8af86c13d60ff36c0759ad02c3dcbff36d6891d0914f4237a5108a"
+    },
+    {
+      "path": "wheelhouse-v1-receipts/74d0e08cfbcf4ac5856d77f0654d1286-budget.bin",
+      "bytes": 49,
+      "sha256": "1907de82a9fdabae22bc9b0d3a025ca4b26589afb4bd77d958bdf393ff4ea826"
+    },
+    {
+      "path": "wheelhouse-v1-receipts/74d0e08cfbcf4ac5856d77f0654d1286-receipt.json",
+      "bytes": 2069,
+      "sha256": "a28cb707a6e20ffaaf91b41c39a4c0757a1f820272dbe36bb3b9956d91a4a8ab"
+    },
+    {
+      "path": "wheelhouse-v1/anyio-4.15.1-metadata.json",
+      "bytes": 6904,
+      "sha256": "e2ee22fad2fab3e66be503cba9b41945607d3076c9b7aa49b6e2f95ac323efab"
+    },
+    {
+      "path": "wheelhouse-v1/anyio-4.15.1-py3-none-any.whl",
+      "bytes": 132079,
+      "sha256": "6152fdbbf9a77fdec97731721bebf7c4c44f7c29b424b0065826173efc7ed101"
+    },
+    {
+      "path": "wheelhouse-v1/anyio-index-metadata.json",
+      "bytes": 117226,
+      "sha256": "1e4ec0390d86d4dd7f5c9cf7682ca142b0832b6b467505a0466fdf82ede554ed"
+    },
+    {
+      "path": "wheelhouse-v1/dulwich-1.2.17-cp314-cp314-win_amd64.whl",
+      "bytes": 1179111,
+      "sha256": "ff86a97bc158764e06d13dd1d70943e2631112aa486f0269c969a3675f55d0e8"
+    },
+    {
+      "path": "wheelhouse-v1/dulwich-1.2.17-metadata.json",
+      "bytes": 53685,
+      "sha256": "41808d178135726ba4378b3bae584a0fb594679e0f9c5f56111968595e89e68a"
+    },
+    {
+      "path": "wheelhouse-v1/dulwich-index-metadata.json",
+      "bytes": 2806334,
+      "sha256": "4049f1133d5c393eb766c6c366a7ce2f133c61e70926ec3d69140c6018f946b4"
+    },
+    {
+      "path": "wheelhouse-v1/httpx2-2.16.0-metadata.json",
+      "bytes": 11983,
+      "sha256": "95a397422b57e91a6e9ee2dc062b31229cbed63a2e863f2c1a58ec5ec2555cf0"
+    },
+    {
+      "path": "wheelhouse-v1/httpx2-2.16.0-py3-none-any.whl",
+      "bytes": 97880,
+      "sha256": "fd2c5d7909e8d86fe92d53020c310ca0e4e431b838c207c5754b9bbf0308d49a"
+    },
+    {
+      "path": "wheelhouse-v1/httpx2-index-metadata.json",
+      "bytes": 45777,
+      "sha256": "d1f047ea81b1a9f49203c85ee7ec335c9d9b148f129464e3408065cc70397f11"
+    },
+    {
+      "path": "wheelhouse-v1/jsonschema-4.26.0-metadata.json",
+      "bytes": 9468,
+      "sha256": "d0c9ccdfa30c3cdc57b048c2be21123dfb0c2f4d6bef2e8324dcb4eac985cfcf"
+    },
+    {
+      "path": "wheelhouse-v1/jsonschema-4.26.0-py3-none-any.whl",
+      "bytes": 90630,
+      "sha256": "d489f15263b8d200f8387e64b4c3a75f06629559fb73deb8fdfb525f2dab50ce"
+    },
+    {
+      "path": "wheelhouse-v1/jsonschema-index-metadata.json",
+      "bytes": 178092,
+      "sha256": "697a0d4384e479461a5c84357a5d0d495dd1aeec1f42ad13ae7209112faaaec9"
+    },
+    {
+      "path": "wheelhouse-v1/mcp-2.3.0-metadata.json",
+      "bytes": 8676,
+      "sha256": "d9348a2813cdf05df82f7852afb9f13d8a8035d62c3a5e07fb9657bc5382aad7"
+    },
+    {
+      "path": "wheelhouse-v1/mcp-2.3.0-py3-none-any.whl",
+      "bytes": 368664,
+      "sha256": "dd0c44c089d16453e8ae31a3877a0054d7a2314caaa81f5e0541b9b1734b2377"
+    },
+    {
+      "path": "wheelhouse-v1/mcp-index-metadata.json",
+      "bytes": 120104,
+      "sha256": "dbf6d84210b202e6bdeecd90e6c386c41c4727d4f4bbafe7807eccf464f5f204"
+    },
+    {
+      "path": "wheelhouse-v1/pydantic-2.14.1-metadata.json",
+      "bytes": 136442,
+      "sha256": "7413703dd60983a01d25e54730f9153c4d7a83fc788c77955b5237269cf9f071"
+    },
+    {
+      "path": "wheelhouse-v1/pydantic-2.14.1-py3-none-any.whl",
+      "bytes": 488106,
+      "sha256": "9195d967ec791692a04438115466764fb8b9a27b31f14a760437694f40d6b454"
+    },
+    {
+      "path": "wheelhouse-v1/pydantic-index-metadata.json",
+      "bytes": 1852382,
+      "sha256": "1a4aab1e7e64c5f341717f2d3f3e863dcd7cc53cfe704addd053b738368e6b34"
+    },
+    {
+      "path": "wheelhouse-v1/pytest-9.1.1-metadata.json",
+      "bytes": 9742,
+      "sha256": "8ed48304ba7fd0ae974a041f117487b499d553b40e5ce55a9ece677e946f68dd"
+    },
+    {
+      "path": "wheelhouse-v1/pytest-9.1.1-py3-none-any.whl",
+      "bytes": 386536,
+      "sha256": "37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c"
+    },
+    {
+      "path": "wheelhouse-v1/pytest-index-metadata.json",
+      "bytes": 282699,
+      "sha256": "203f15ce63523ec5dbbf3462328c7e26d9903240a5f7b1782d36b8f9f388bfac"
+    },
+    {
+      "path": "wheelhouse-v1/setuptools-84.2.1-metadata.json",
+      "bytes": 8162,
+      "sha256": "d75de8ba0d3304a3d74484fb9f340edb87ef02712da4fa02a2ed92e71b0572dd"
+    },
+    {
+      "path": "wheelhouse-v1/setuptools-84.2.1-py3-none-any.whl",
+      "bytes": 876263,
+      "sha256": "ca140b45d5325a9478f880e351484f62fef15f336462e449ca0c03c873d589c2"
+    },
+    {
+      "path": "wheelhouse-v1/setuptools-index-metadata.json",
+      "bytes": 1184297,
+      "sha256": "1b84d1a1e6d5469d9ac64f06e612b57d2d049b73df26f46e29771eaf34ed7006"
+    },
+    {
+      "path": "wheelhouse-v1/wheel-0.48.0-metadata.json",
+      "bytes": 4390,
+      "sha256": "03f655da3a6dd010d9ac41d4771d5d973109cb662a1e10eb9d967535ffd145f8"
+    },
+    {
+      "path": "wheelhouse-v1/wheel-0.48.0-py3-none-any.whl",
+      "bytes": 33320,
+      "sha256": "3217dcc807155e45db462d7ef2431f5ddda0d7273b700d05a67b271ceb1287ab"
+    },
+    {
+      "path": "wheelhouse-v1/wheel-index-metadata.json",
+      "bytes": 125190,
+      "sha256": "113f8abc907676e530c9dca238f3b2bd26e2b142747d16d7d4775810e1155980"
+    },
+    {
+      "path": "wheelhouse-v2-receipts/3aed7458830c45c8a34049a2cca9e11d-budget.bin",
+      "bytes": 49,
+      "sha256": "46d39d86b2347401004df2e42945442f3a8bcebfae297238135e405c3702c9bc"
+    },
+    {
+      "path": "wheelhouse-v2-receipts/3aed7458830c45c8a34049a2cca9e11d-receipt.json",
+      "bytes": 3575,
+      "sha256": "4c183566a04675d54977b5d61aa1647304d7f2423241f629a6c954caaae81ab1"
+    },
+    {
+      "path": "wheelhouse-v2/annotated_types-0.8.0-py3-none-any.whl",
+      "bytes": 13427,
+      "sha256": "f072f4d804ea359e4eaf198b1af7a8b0943881a87f31bb764f8bf219bb9419e0"
+    },
+    {
+      "path": "wheelhouse-v2/annotated-types-0.8.0-metadata.json",
+      "bytes": 17411,
+      "sha256": "a6e8e5b10c8fd2f596bba53e015cd37f6279fb5cec26ce0c5e9968625be4fefa"
+    },
+    {
+      "path": "wheelhouse-v2/annotated-types-index-metadata.json",
+      "bytes": 31556,
+      "sha256": "bbe701554fc03915c80b90d54d2af7b15fa716679967376e86f222ea7fc80181"
+    },
+    {
+      "path": "wheelhouse-v2/anyio-4.15.1-metadata.json",
+      "bytes": 6904,
+      "sha256": "e2ee22fad2fab3e66be503cba9b41945607d3076c9b7aa49b6e2f95ac323efab"
+    },
+    {
+      "path": "wheelhouse-v2/anyio-4.15.1-py3-none-any.whl",
+      "bytes": 132079,
+      "sha256": "6152fdbbf9a77fdec97731721bebf7c4c44f7c29b424b0065826173efc7ed101"
+    },
+    {
+      "path": "wheelhouse-v2/anyio-index-metadata.json",
+      "bytes": 117226,
+      "sha256": "1e4ec0390d86d4dd7f5c9cf7682ca142b0832b6b467505a0466fdf82ede554ed"
+    },
+    {
+      "path": "wheelhouse-v2/dulwich-1.2.17-cp314-cp314-win_amd64.whl",
+      "bytes": 1179111,
+      "sha256": "ff86a97bc158764e06d13dd1d70943e2631112aa486f0269c969a3675f55d0e8"
+    },
+    {
+      "path": "wheelhouse-v2/dulwich-1.2.17-metadata.json",
+      "bytes": 53685,
+      "sha256": "41808d178135726ba4378b3bae584a0fb594679e0f9c5f56111968595e89e68a"
+    },
+    {
+      "path": "wheelhouse-v2/dulwich-index-metadata.json",
+      "bytes": 2806334,
+      "sha256": "4049f1133d5c393eb766c6c366a7ce2f133c61e70926ec3d69140c6018f946b4"
+    },
+    {
+      "path": "wheelhouse-v2/httpx2-2.16.0-metadata.json",
+      "bytes": 11983,
+      "sha256": "95a397422b57e91a6e9ee2dc062b31229cbed63a2e863f2c1a58ec5ec2555cf0"
+    },
+    {
+      "path": "wheelhouse-v2/httpx2-2.16.0-py3-none-any.whl",
+      "bytes": 97880,
+      "sha256": "fd2c5d7909e8d86fe92d53020c310ca0e4e431b838c207c5754b9bbf0308d49a"
+    },
+    {
+      "path": "wheelhouse-v2/httpx2-index-metadata.json",
+      "bytes": 45777,
+      "sha256": "d1f047ea81b1a9f49203c85ee7ec335c9d9b148f129464e3408065cc70397f11"
+    },
+    {
+      "path": "wheelhouse-v2/jsonschema-4.26.0-metadata.json",
+      "bytes": 9468,
+      "sha256": "d0c9ccdfa30c3cdc57b048c2be21123dfb0c2f4d6bef2e8324dcb4eac985cfcf"
+    },
+    {
+      "path": "wheelhouse-v2/jsonschema-4.26.0-py3-none-any.whl",
+      "bytes": 90630,
+      "sha256": "d489f15263b8d200f8387e64b4c3a75f06629559fb73deb8fdfb525f2dab50ce"
+    },
+    {
+      "path": "wheelhouse-v2/jsonschema-index-metadata.json",
+      "bytes": 178092,
+      "sha256": "697a0d4384e479461a5c84357a5d0d495dd1aeec1f42ad13ae7209112faaaec9"
+    },
+    {
+      "path": "wheelhouse-v2/mcp_types-2.3.0-py3-none-any.whl",
+      "bytes": 69108,
+      "sha256": "968efdbdaedfab06adae40d378a34395f1090c5921d4be3c9cde283aaf76d91d"
+    },
+    {
+      "path": "wheelhouse-v2/mcp-2.3.0-metadata.json",
+      "bytes": 8676,
+      "sha256": "d9348a2813cdf05df82f7852afb9f13d8a8035d62c3a5e07fb9657bc5382aad7"
+    },
+    {
+      "path": "wheelhouse-v2/mcp-2.3.0-py3-none-any.whl",
+      "bytes": 368664,
+      "sha256": "dd0c44c089d16453e8ae31a3877a0054d7a2314caaa81f5e0541b9b1734b2377"
+    },
+    {
+      "path": "wheelhouse-v2/mcp-index-metadata.json",
+      "bytes": 120104,
+      "sha256": "dbf6d84210b202e6bdeecd90e6c386c41c4727d4f4bbafe7807eccf464f5f204"
+    },
+    {
+      "path": "wheelhouse-v2/mcp-types-2.3.0-metadata.json",
+      "bytes": 4042,
+      "sha256": "9df9fb5f5ca5d2ca3c74b2d9fc1b1e9d753e84ab22be14f177a1cbed5e94c419"
+    },
+    {
+      "path": "wheelhouse-v2/mcp-types-index-metadata.json",
+      "bytes": 22637,
+      "sha256": "e40365a615d93a83c1754e3a40deee6efb4f3b8dacc8e392e928fd16b28960a4"
+    },
+    {
+      "path": "wheelhouse-v2/opentelemetry_api-1.45.1-py3-none-any.whl",
+      "bytes": 60256,
+      "sha256": "b31553efa588ae44bc306f863c785c5333a9ecc091248c6ee68b4b6c87fdedfb"
+    },
+    {
+      "path": "wheelhouse-v2/opentelemetry-api-1.45.1-metadata.json",
+      "bytes": 3580,
+      "sha256": "da574eb54158846f06ac0a51034378feb22c47be67856f001da7337f3a116d2c"
+    },
+    {
+      "path": "wheelhouse-v2/opentelemetry-api-index-metadata.json",
+      "bytes": 135449,
+      "sha256": "52b4f4416b287013ea6b0937b1daffe28b58c310389aad5db618cb83a86fb684"
+    },
+    {
+      "path": "wheelhouse-v2/pydantic-2.14.1-metadata.json",
+      "bytes": 136442,
+      "sha256": "7413703dd60983a01d25e54730f9153c4d7a83fc788c77955b5237269cf9f071"
+    },
+    {
+      "path": "wheelhouse-v2/pydantic-2.14.1-py3-none-any.whl",
+      "bytes": 488106,
+      "sha256": "9195d967ec791692a04438115466764fb8b9a27b31f14a760437694f40d6b454"
+    },
+    {
+      "path": "wheelhouse-v2/pydantic-index-metadata.json",
+      "bytes": 1852382,
+      "sha256": "1a4aab1e7e64c5f341717f2d3f3e863dcd7cc53cfe704addd053b738368e6b34"
+    },
+    {
+      "path": "wheelhouse-v2/pyjwt-2.15.1-metadata.json",
+      "bytes": 5552,
+      "sha256": "f13089db8caff0efbdec85ab5c3fa281a3cc76d5b708c74fab427c98e1f29a0d"
+    },
+    {
+      "path": "wheelhouse-v2/pyjwt-2.15.1-py3-none-any.whl",
+      "bytes": 33860,
+      "sha256": "42d59d631f7768a1028a64c7ff581a9bf7519804daf91fc5b6c56e30eec5e193"
+    },
+    {
+      "path": "wheelhouse-v2/pyjwt-index-metadata.json",
+      "bytes": 112244,
+      "sha256": "f27b70fef1d687acbb556d995f87431a32e6c231b711d4325b7877314a7f3227"
+    },
+    {
+      "path": "wheelhouse-v2/pytest-9.1.1-metadata.json",
+      "bytes": 9742,
+      "sha256": "8ed48304ba7fd0ae974a041f117487b499d553b40e5ce55a9ece677e946f68dd"
+    },
+    {
+      "path": "wheelhouse-v2/pytest-9.1.1-py3-none-any.whl",
+      "bytes": 386536,
+      "sha256": "37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c"
+    },
+    {
+      "path": "wheelhouse-v2/pytest-index-metadata.json",
+      "bytes": 282699,
+      "sha256": "203f15ce63523ec5dbbf3462328c7e26d9903240a5f7b1782d36b8f9f388bfac"
+    },
+    {
+      "path": "wheelhouse-v2/python_multipart-0.0.32-py3-none-any.whl",
+      "bytes": 30042,
+      "sha256": "ff6d3f776f16878c894e52e107296ffc890e913c611b1a4ec6c44e2821fe2e23"
+    },
+    {
+      "path": "wheelhouse-v2/python-multipart-0.0.32-metadata.json",
+      "bytes": 4230,
+      "sha256": "f94ae178a5196b01730490f0b3b10b2ad32bf92aa2fba5c3f7ffd6b5235c9697"
+    },
+    {
+      "path": "wheelhouse-v2/python-multipart-index-metadata.json",
+      "bytes": 53014,
+      "sha256": "a7f6641b8d0853fae02fdced22f793760a68b030a26bd05b7574105cd02144af"
+    },
+    {
+      "path": "wheelhouse-v2/pywin32-312-cp314-cp314-win_amd64.whl",
+      "bytes": 7024157,
+      "sha256": "a4dd3a848290ef724347b19f301045831d8e802fa4464f491b98b1e0a081432e"
+    },
+    {
+      "path": "wheelhouse-v2/pywin32-312-metadata.json",
+      "bytes": 29292,
+      "sha256": "f142c39d2740c13a932c795fb7f47af150185dbf6713cefa93ee5bd1e030d31f"
+    },
+    {
+      "path": "wheelhouse-v2/pywin32-index-metadata.json",
+      "bytes": 245469,
+      "sha256": "64c570ae8818f0291836502978f044ed64ab27f85c16b00855dfc9ed1016d68e"
+    },
+    {
+      "path": "wheelhouse-v2/setuptools-84.2.1-metadata.json",
+      "bytes": 8162,
+      "sha256": "d75de8ba0d3304a3d74484fb9f340edb87ef02712da4fa02a2ed92e71b0572dd"
+    },
+    {
+      "path": "wheelhouse-v2/setuptools-84.2.1-py3-none-any.whl",
+      "bytes": 876263,
+      "sha256": "ca140b45d5325a9478f880e351484f62fef15f336462e449ca0c03c873d589c2"
+    },
+    {
+      "path": "wheelhouse-v2/setuptools-index-metadata.json",
+      "bytes": 1184297,
+      "sha256": "1b84d1a1e6d5469d9ac64f06e612b57d2d049b73df26f46e29771eaf34ed7006"
+    },
+    {
+      "path": "wheelhouse-v2/sse_starlette-3.5.0-py3-none-any.whl",
+      "bytes": 17407,
+      "sha256": "3e6e1070df3f0f5d9cea81496de92dbb72f6721871d99748ece67441dd8b7997"
+    },
+    {
+      "path": "wheelhouse-v2/sse-starlette-3.5.0-metadata.json",
+      "bytes": 18083,
+      "sha256": "d40c291ea5353d4175a52678d53dad2c82456b78fdb1015b9ca4b927ddd767ef"
+    },
+    {
+      "path": "wheelhouse-v2/sse-starlette-index-metadata.json",
+      "bytes": 131018,
+      "sha256": "3a29492fa6faa3ec0d9c96bbff9449386bf09da8a9cb2f0ce13f5d9c64586544"
+    },
+    {
+      "path": "wheelhouse-v2/starlette-1.9.0-metadata.json",
+      "bytes": 8692,
+      "sha256": "4b7a6ea8ec0da7dbb68545d685a3a74e923534ed09010d9a6028134634eafece"
+    },
+    {
+      "path": "wheelhouse-v2/starlette-1.9.0-py3-none-any.whl",
+      "bytes": 80335,
+      "sha256": "fd3f159936e882d06c1108f84688f7cda2cf85fc6a592a50edbd175e882c2ddc"
+    },
+    {
+      "path": "wheelhouse-v2/starlette-index-metadata.json",
+      "bytes": 243840,
+      "sha256": "76514645e5280aba65ea446d01d443d519d0389fa087acfd7e1bfbd767a9ad1e"
+    },
+    {
+      "path": "wheelhouse-v2/typing_extensions-4.16.0-py3-none-any.whl",
+      "bytes": 45571,
+      "sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8"
+    },
+    {
+      "path": "wheelhouse-v2/typing_inspection-0.4.4-py3-none-any.whl",
+      "bytes": 14750,
+      "sha256": "65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147"
+    },
+    {
+      "path": "wheelhouse-v2/typing-extensions-4.16.0-metadata.json",
+      "bytes": 5631,
+      "sha256": "2140da00d62dde967f52d0be0ae28444f1d6a3fe603f52c83c23988c32122d5a"
+    },
+    {
+      "path": "wheelhouse-v2/typing-extensions-index-metadata.json",
+      "bytes": 97612,
+      "sha256": "2e567d7ca1b1c70a8e8f23b7204a8bd51b0bacd39e2fe53b33b153cff255ac68"
+    },
+    {
+      "path": "wheelhouse-v2/typing-inspection-0.4.4-metadata.json",
+      "bytes": 4629,
+      "sha256": "0605416f2f37f2df04e45360cf5ce4ca5eeca6d414bb6ddb1ec5a9893c62ac30"
+    },
+    {
+      "path": "wheelhouse-v2/typing-inspection-index-metadata.json",
+      "bytes": 20393,
+      "sha256": "01f2c8a64e34ff03f674ac255b8bf5dd43d175d701059d9420cc9509c3c0edf0"
+    },
+    {
+      "path": "wheelhouse-v2/urllib3-2.8.0-metadata.json",
+      "bytes": 9510,
+      "sha256": "5315e7401db3cacccd0c2ce5daf81f752a9cc3614b18c37f2b79930b7159ce2f"
+    },
+    {
+      "path": "wheelhouse-v2/urllib3-2.8.0-py3-none-any.whl",
+      "bytes": 135717,
+      "sha256": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3"
+    },
+    {
+      "path": "wheelhouse-v2/urllib3-index-metadata.json",
+      "bytes": 160832,
+      "sha256": "fe033abdf4e116777f2062304b5442660092498d27f55f0ff6968f86d064bb5c"
+    },
+    {
+      "path": "wheelhouse-v2/uvicorn-0.54.0-metadata.json",
+      "bytes": 8728,
+      "sha256": "65378bebfff63d5a58ba9b6ff6ff1ae5047721da28e27802e2aafa19fece8444"
+    },
+    {
+      "path": "wheelhouse-v2/uvicorn-0.54.0-py3-none-any.whl",
+      "bytes": 87427,
+      "sha256": "505bdb0f318731d45f1f712071fc781a8981f6847a31c902c9f5e652d4f67faf"
+    },
+    {
+      "path": "wheelhouse-v2/uvicorn-index-metadata.json",
+      "bytes": 233469,
+      "sha256": "f42e1a8b18d6a39d33ba83271d8de49cdb9ecab9d6f3276dbddf20a12e4b9eb4"
+    },
+    {
+      "path": "wheelhouse-v2/wheel-0.48.0-metadata.json",
+      "bytes": 4390,
+      "sha256": "03f655da3a6dd010d9ac41d4771d5d973109cb662a1e10eb9d967535ffd145f8"
+    },
+    {
+      "path": "wheelhouse-v2/wheel-0.48.0-py3-none-any.whl",
+      "bytes": 33320,
+      "sha256": "3217dcc807155e45db462d7ef2431f5ddda0d7273b700d05a67b271ceb1287ab"
+    },
+    {
+      "path": "wheelhouse-v2/wheel-index-metadata.json",
+      "bytes": 125190,
+      "sha256": "113f8abc907676e530c9dca238f3b2bd26e2b142747d16d7d4775810e1155980"
+    },
+    {
+      "path": "wheelhouse-v3-receipts/fce737c62499423ea2009750a6c8f30a-budget.bin",
+      "bytes": 49,
+      "sha256": "38339a7bf27463c90c3f152b2cd5943236811dff57370eada511d87b7df64292"
+    },
+    {
+      "path": "wheelhouse-v3-receipts/fce737c62499423ea2009750a6c8f30a-receipt.json",
+      "bytes": 3767,
+      "sha256": "41b24b253d282fb39c3b20d18d7a89d414da243b418f148e36587a748662a62a"
+    },
+    {
+      "path": "wheelhouse-v3/annotated_types-0.8.0-py3-none-any.whl",
+      "bytes": 13427,
+      "sha256": "f072f4d804ea359e4eaf198b1af7a8b0943881a87f31bb764f8bf219bb9419e0"
+    },
+    {
+      "path": "wheelhouse-v3/annotated-types-0.8.0-metadata.json",
+      "bytes": 17411,
+      "sha256": "a6e8e5b10c8fd2f596bba53e015cd37f6279fb5cec26ce0c5e9968625be4fefa"
+    },
+    {
+      "path": "wheelhouse-v3/annotated-types-index-metadata.json",
+      "bytes": 31556,
+      "sha256": "bbe701554fc03915c80b90d54d2af7b15fa716679967376e86f222ea7fc80181"
+    },
+    {
+      "path": "wheelhouse-v3/anyio-4.15.1-metadata.json",
+      "bytes": 6904,
+      "sha256": "e2ee22fad2fab3e66be503cba9b41945607d3076c9b7aa49b6e2f95ac323efab"
+    },
+    {
+      "path": "wheelhouse-v3/anyio-4.15.1-py3-none-any.whl",
+      "bytes": 132079,
+      "sha256": "6152fdbbf9a77fdec97731721bebf7c4c44f7c29b424b0065826173efc7ed101"
+    },
+    {
+      "path": "wheelhouse-v3/anyio-index-metadata.json",
+      "bytes": 117226,
+      "sha256": "1e4ec0390d86d4dd7f5c9cf7682ca142b0832b6b467505a0466fdf82ede554ed"
+    },
+    {
+      "path": "wheelhouse-v3/attrs-26.1.0-metadata.json",
+      "bytes": 11038,
+      "sha256": "a882bf941fb4a0bb748d0194df544121cc130f5fb15a710ab6b804c17d2899b7"
+    },
+    {
+      "path": "wheelhouse-v3/attrs-26.1.0-py3-none-any.whl",
+      "bytes": 67548,
+      "sha256": "c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309"
+    },
+    {
+      "path": "wheelhouse-v3/attrs-index-metadata.json",
+      "bytes": 67163,
+      "sha256": "2e33bd22386702899e76471b04f3211f7e108ee96b288699e58fd4bc2f01c1d6"
+    },
+    {
+      "path": "wheelhouse-v3/cffi-2.1.1-cp314-cp314-win_amd64.whl",
+      "bytes": 187949,
+      "sha256": "3222ba5d678f80a030e6afbcc33dc1ae5cb45facabb61cee2c7016b8432fde48"
+    },
+    {
+      "path": "wheelhouse-v3/cffi-2.1.1-metadata.json",
+      "bytes": 89333,
+      "sha256": "2255e530e3f80593a354e3d84a29966924d0e10309d1e3a6d50f845ab7d8df66"
+    },
+    {
+      "path": "wheelhouse-v3/cffi-index-metadata.json",
+      "bytes": 1870503,
+      "sha256": "ea59a663b5779e4e6bca654cfa65fcbae449a08ecd5ed576b6cbbed0c77d90fc"
+    },
+    {
+      "path": "wheelhouse-v3/click-8.5.0-metadata.json",
+      "bytes": 4722,
+      "sha256": "4e36adc9b46f837e10ce801b7a478f9146fefdfb287292b7668fc64b1474e41d"
+    },
+    {
+      "path": "wheelhouse-v3/click-8.5.0-py3-none-any.whl",
+      "bytes": 125251,
+      "sha256": "255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360"
+    },
+    {
+      "path": "wheelhouse-v3/click-index-metadata.json",
+      "bytes": 102510,
+      "sha256": "b10ffc8a5a9025eefe4fd243cd90c54724f6c372d9eface5b4648577bc479039"
+    },
+    {
+      "path": "wheelhouse-v3/colorama-0.4.6-metadata.json",
+      "bytes": 19759,
+      "sha256": "43fb351344384a44c2b7d7fff1c63496b89ac830aea714301525c1f3718addd1"
+    },
+    {
+      "path": "wheelhouse-v3/colorama-0.4.6-py2.py3-none-any.whl",
+      "bytes": 25335,
+      "sha256": "4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6"
+    },
+    {
+      "path": "wheelhouse-v3/colorama-index-metadata.json",
+      "bytes": 87746,
+      "sha256": "91d65e313ddffe647e53485367394d6b784d5631b77a6e68836367ec14ff8cf7"
+    },
+    {
+      "path": "wheelhouse-v3/cryptography-50.0.2-cp311-abi3-win_amd64.whl",
+      "bytes": 3824692,
+      "sha256": "7afa5a6602a9f29af1f3a2965f831bae7c9d5d597b7cbb716d41ab3b7d89879c"
+    },
+    {
+      "path": "wheelhouse-v3/cryptography-50.0.2-metadata.json",
+      "bytes": 57201,
+      "sha256": "7423990cc0948676ef47a71ea62a476ece4c76245e6bebd1c3a71f03c4ffc0f4"
+    },
+    {
+      "path": "wheelhouse-v3/cryptography-index-metadata.json",
+      "bytes": 3283477,
+      "sha256": "32975256deff83cfe92bfcb93233debf77ddc6e8222b2227dec5f45094173d66"
+    },
+    {
+      "path": "wheelhouse-v3/dulwich-1.2.17-cp314-cp314-win_amd64.whl",
+      "bytes": 1179111,
+      "sha256": "ff86a97bc158764e06d13dd1d70943e2631112aa486f0269c969a3675f55d0e8"
+    },
+    {
+      "path": "wheelhouse-v3/dulwich-1.2.17-metadata.json",
+      "bytes": 53685,
+      "sha256": "41808d178135726ba4378b3bae584a0fb594679e0f9c5f56111968595e89e68a"
+    },
+    {
+      "path": "wheelhouse-v3/h11-0.16.0-metadata.json",
+      "bytes": 10603,
+      "sha256": "97f4efb9cc00826f0408076983adc1a1e48e8f2cabf403aaf250f724e081440d"
+    },
+    {
+      "path": "wheelhouse-v3/h11-0.16.0-py3-none-any.whl",
+      "bytes": 37515,
+      "sha256": "63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86"
+    },
+    {
+      "path": "wheelhouse-v3/h11-index-metadata.json",
+      "bytes": 30401,
+      "sha256": "82edaa88c2cda51615d444a45e725eeaa7693f6821ab1422de1f031753d9556c"
+    },
+    {
+      "path": "wheelhouse-v3/httpcore2-2.16.0-metadata.json",
+      "bytes": 30224,
+      "sha256": "194dc38b07c5836c3793de7ce6a56f998798304de165a4857c52f6525a6dd9ab"
+    },
+    {
+      "path": "wheelhouse-v3/httpcore2-2.16.0-py3-none-any.whl",
+      "bytes": 85070,
+      "sha256": "5c4358319f2602d984ad93182c9fee5160f22e9da7babdda870a5e7c4e2dc34f"
+    },
+    {
+      "path": "wheelhouse-v3/httpx2-2.16.0-metadata.json",
+      "bytes": 11983,
+      "sha256": "95a397422b57e91a6e9ee2dc062b31229cbed63a2e863f2c1a58ec5ec2555cf0"
+    },
+    {
+      "path": "wheelhouse-v3/httpx2-2.16.0-py3-none-any.whl",
+      "bytes": 97880,
+      "sha256": "fd2c5d7909e8d86fe92d53020c310ca0e4e431b838c207c5754b9bbf0308d49a"
+    },
+    {
+      "path": "wheelhouse-v3/httpx2-index-metadata.json",
+      "bytes": 45777,
+      "sha256": "d1f047ea81b1a9f49203c85ee7ec335c9d9b148f129464e3408065cc70397f11"
+    },
+    {
+      "path": "wheelhouse-v3/idna-3.20-metadata.json",
+      "bytes": 9180,
+      "sha256": "e7cbd26e23ce60f6cb3a151d2adf3b1b087bb8f10ac2d9d6db70fdccbf3bb041"
+    },
+    {
+      "path": "wheelhouse-v3/idna-3.20-py3-none-any.whl",
+      "bytes": 69583,
+      "sha256": "ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c"
+    },
+    {
+      "path": "wheelhouse-v3/idna-index-metadata.json",
+      "bytes": 65706,
+      "sha256": "724599748057193c3fa6f98e11c76d7acc14a7b0d005bc2a506fc8e2ec41c117"
+    },
+    {
+      "path": "wheelhouse-v3/iniconfig-2.3.1-metadata.json",
+      "bytes": 4981,
+      "sha256": "ab4d5df71d2a4f01a0eb418d7809bb22dca3293991a369309f068c07c1471557"
+    },
+    {
+      "path": "wheelhouse-v3/iniconfig-2.3.1-py3-none-any.whl",
+      "bytes": 7552,
+      "sha256": "9121e2c1fdb355232495be3194c8dfe87ccc2d5dee45947b78e68f499790d7a7"
+    },
+    {
+      "path": "wheelhouse-v3/iniconfig-index-metadata.json",
+      "bytes": 18682,
+      "sha256": "1591c5c139ff21feef7aa7bc0dfcec12faf5c1e5ee6107007af4ca500eeae50f"
+    },
+    {
+      "path": "wheelhouse-v3/jsonschema_specifications-2025.9.1-py3-none-any.whl",
+      "bytes": 18437,
+      "sha256": "98802fee3a11ee76ecaca44429fda8a41bff98b00a0f2838151b113f210cc6fe"
+    },
+    {
+      "path": "wheelhouse-v3/jsonschema-4.26.0-metadata.json",
+      "bytes": 9468,
+      "sha256": "d0c9ccdfa30c3cdc57b048c2be21123dfb0c2f4d6bef2e8324dcb4eac985cfcf"
+    },
+    {
+      "path": "wheelhouse-v3/jsonschema-4.26.0-py3-none-any.whl",
+      "bytes": 90630,
+      "sha256": "d489f15263b8d200f8387e64b4c3a75f06629559fb73deb8fdfb525f2dab50ce"
+    },
+    {
+      "path": "wheelhouse-v3/jsonschema-index-metadata.json",
+      "bytes": 178092,
+      "sha256": "697a0d4384e479461a5c84357a5d0d495dd1aeec1f42ad13ae7209112faaaec9"
+    },
+    {
+      "path": "wheelhouse-v3/jsonschema-specifications-2025.9.1-metadata.json",
+      "bytes": 5037,
+      "sha256": "91810d8f79384375ad0c0cf631e06903e2790b030d3fad2f1ad657b20ddd839e"
+    },
+    {
+      "path": "wheelhouse-v3/jsonschema-specifications-index-metadata.json",
+      "bytes": 45472,
+      "sha256": "325493907e2e79ab6279d22ea3526ff2dd615d6f35e1ac4040619d7d89e35019"
+    },
+    {
+      "path": "wheelhouse-v3/mcp_types-2.3.0-py3-none-any.whl",
+      "bytes": 69108,
+      "sha256": "968efdbdaedfab06adae40d378a34395f1090c5921d4be3c9cde283aaf76d91d"
+    },
+    {
+      "path": "wheelhouse-v3/mcp-2.3.0-metadata.json",
+      "bytes": 8676,
+      "sha256": "d9348a2813cdf05df82f7852afb9f13d8a8035d62c3a5e07fb9657bc5382aad7"
+    },
+    {
+      "path": "wheelhouse-v3/mcp-2.3.0-py3-none-any.whl",
+      "bytes": 368664,
+      "sha256": "dd0c44c089d16453e8ae31a3877a0054d7a2314caaa81f5e0541b9b1734b2377"
+    },
+    {
+      "path": "wheelhouse-v3/mcp-types-2.3.0-metadata.json",
+      "bytes": 4042,
+      "sha256": "9df9fb5f5ca5d2ca3c74b2d9fc1b1e9d753e84ab22be14f177a1cbed5e94c419"
+    },
+    {
+      "path": "wheelhouse-v3/opentelemetry_api-1.45.1-py3-none-any.whl",
+      "bytes": 60256,
+      "sha256": "b31553efa588ae44bc306f863c785c5333a9ecc091248c6ee68b4b6c87fdedfb"
+    },
+    {
+      "path": "wheelhouse-v3/opentelemetry-api-1.45.1-metadata.json",
+      "bytes": 3580,
+      "sha256": "da574eb54158846f06ac0a51034378feb22c47be67856f001da7337f3a116d2c"
+    },
+    {
+      "path": "wheelhouse-v3/opentelemetry-api-index-metadata.json",
+      "bytes": 135449,
+      "sha256": "52b4f4416b287013ea6b0937b1daffe28b58c310389aad5db618cb83a86fb684"
+    },
+    {
+      "path": "wheelhouse-v3/packaging-26.3-metadata.json",
+      "bytes": 5748,
+      "sha256": "4f190d2f0b312b3086058cee64ab4333bf3ce67fb78b4c2bdb43899049b29f4d"
+    },
+    {
+      "path": "wheelhouse-v3/packaging-26.3-py3-none-any.whl",
+      "bytes": 129956,
+      "sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c"
+    },
+    {
+      "path": "wheelhouse-v3/packaging-index-metadata.json",
+      "bytes": 90241,
+      "sha256": "9d7a2885e9e79296598f8c943e0a94c2468e21c800abd26ed13c633465a78835"
+    },
+    {
+      "path": "wheelhouse-v3/pluggy-1.7.0-metadata.json",
+      "bytes": 7233,
+      "sha256": "9e8f441bba8382eabf6febf386a5b9610cfe0c16b60b96e7b4b1831bd6d96361"
+    },
+    {
+      "path": "wheelhouse-v3/pluggy-1.7.0-py3-none-any.whl",
+      "bytes": 27082,
+      "sha256": "7dd7b0d8832ba3cb632c306926ded123429211b83641b35dc5c41ad2d34f9bec"
+    },
+    {
+      "path": "wheelhouse-v3/pluggy-index-metadata.json",
+      "bytes": 46575,
+      "sha256": "4aeb2a51e4be102e60682db7e4a56038889d7bf561a167f793f9514e2261f50d"
+    },
+    {
+      "path": "wheelhouse-v3/pycparser-3.11-metadata.json",
+      "bytes": 10560,
+      "sha256": "ad74b2f9994f58a0dd123a9df91e06c9ed66045bf566c4608136873cbf464fc3"
+    },
+    {
+      "path": "wheelhouse-v3/pycparser-3.11-py3-none-any.whl",
+      "bytes": 51178,
+      "sha256": "51d5a8ba2be0bbe440b99d2112604c95bbbc3c2748a64260186c541e1729cd80"
+    },
+    {
+      "path": "wheelhouse-v3/pycparser-index-metadata.json",
+      "bytes": 35124,
+      "sha256": "3b8753cb84fe61309ba716029cd555164704a64884994f197a99b673402947b4"
+    },
+    {
+      "path": "wheelhouse-v3/pydantic_core-2.50.1-cp314-cp314-win_amd64.whl",
+      "bytes": 2171586,
+      "sha256": "d32f3acc081cc3923386d88f422cde8892335e95f034e0104bb4cf9310d9915f"
+    },
+    {
+      "path": "wheelhouse-v3/pydantic-2.14.1-metadata.json",
+      "bytes": 136442,
+      "sha256": "7413703dd60983a01d25e54730f9153c4d7a83fc788c77955b5237269cf9f071"
+    },
+    {
+      "path": "wheelhouse-v3/pydantic-2.14.1-py3-none-any.whl",
+      "bytes": 488106,
+      "sha256": "9195d967ec791692a04438115466764fb8b9a27b31f14a760437694f40d6b454"
+    },
+    {
+      "path": "wheelhouse-v3/pydantic-core-2.50.1-metadata.json",
+      "bytes": 128266,
+      "sha256": "e93d77eaf72dda287409887550bda890a4067311ea072bf9b274df9ce6d96804"
+    },
+    {
+      "path": "wheelhouse-v3/pygments-2.21.0-metadata.json",
+      "bytes": 4500,
+      "sha256": "330104a10adc8a587e3f98f4e207557125ca0c1d489e129334da5acb2b813a03"
+    },
+    {
+      "path": "wheelhouse-v3/pygments-2.21.0-py3-none-any.whl",
+      "bytes": 1250147,
+      "sha256": "2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9"
+    },
+    {
+      "path": "wheelhouse-v3/pygments-index-metadata.json",
+      "bytes": 144965,
+      "sha256": "d48c0f74c08c450aeabfd5e90fc93b01ec127074c0f3e22cfe74a968c4299771"
+    },
+    {
+      "path": "wheelhouse-v3/pyjwt-2.15.1-metadata.json",
+      "bytes": 5552,
+      "sha256": "f13089db8caff0efbdec85ab5c3fa281a3cc76d5b708c74fab427c98e1f29a0d"
+    },
+    {
+      "path": "wheelhouse-v3/pyjwt-2.15.1-py3-none-any.whl",
+      "bytes": 33860,
+      "sha256": "42d59d631f7768a1028a64c7ff581a9bf7519804daf91fc5b6c56e30eec5e193"
+    },
+    {
+      "path": "wheelhouse-v3/pyjwt-index-metadata.json",
+      "bytes": 112244,
+      "sha256": "f27b70fef1d687acbb556d995f87431a32e6c231b711d4325b7877314a7f3227"
+    },
+    {
+      "path": "wheelhouse-v3/pytest-9.1.1-metadata.json",
+      "bytes": 9742,
+      "sha256": "8ed48304ba7fd0ae974a041f117487b499d553b40e5ce55a9ece677e946f68dd"
+    },
+    {
+      "path": "wheelhouse-v3/pytest-9.1.1-py3-none-any.whl",
+      "bytes": 386536,
+      "sha256": "37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c"
+    },
+    {
+      "path": "wheelhouse-v3/pytest-index-metadata.json",
+      "bytes": 282699,
+      "sha256": "203f15ce63523ec5dbbf3462328c7e26d9903240a5f7b1782d36b8f9f388bfac"
+    },
+    {
+      "path": "wheelhouse-v3/python_multipart-0.0.32-py3-none-any.whl",
+      "bytes": 30042,
+      "sha256": "ff6d3f776f16878c894e52e107296ffc890e913c611b1a4ec6c44e2821fe2e23"
+    },
+    {
+      "path": "wheelhouse-v3/python-multipart-0.0.32-metadata.json",
+      "bytes": 4230,
+      "sha256": "f94ae178a5196b01730490f0b3b10b2ad32bf92aa2fba5c3f7ffd6b5235c9697"
+    },
+    {
+      "path": "wheelhouse-v3/python-multipart-index-metadata.json",
+      "bytes": 53014,
+      "sha256": "a7f6641b8d0853fae02fdced22f793760a68b030a26bd05b7574105cd02144af"
+    },
+    {
+      "path": "wheelhouse-v3/pywin32-312-cp314-cp314-win_amd64.whl",
+      "bytes": 7024157,
+      "sha256": "a4dd3a848290ef724347b19f301045831d8e802fa4464f491b98b1e0a081432e"
+    },
+    {
+      "path": "wheelhouse-v3/pywin32-312-metadata.json",
+      "bytes": 29292,
+      "sha256": "f142c39d2740c13a932c795fb7f47af150185dbf6713cefa93ee5bd1e030d31f"
+    },
+    {
+      "path": "wheelhouse-v3/pywin32-index-metadata.json",
+      "bytes": 245469,
+      "sha256": "64c570ae8818f0291836502978f044ed64ab27f85c16b00855dfc9ed1016d68e"
+    },
+    {
+      "path": "wheelhouse-v3/referencing-0.37.0-metadata.json",
+      "bytes": 4842,
+      "sha256": "a67968d8e03aa45e650fc2ff0d07796676db1a7841ce8e810bf2dba5af689464"
+    },
+    {
+      "path": "wheelhouse-v3/referencing-0.37.0-py3-none-any.whl",
+      "bytes": 26766,
+      "sha256": "381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231"
+    },
+    {
+      "path": "wheelhouse-v3/referencing-index-metadata.json",
+      "bytes": 172466,
+      "sha256": "8cade92a4e786c196bbfad784526a6344d77f0d4ff54970e8ed448085c4556d6"
+    },
+    {
+      "path": "wheelhouse-v3/resolved.json",
+      "bytes": 884,
+      "sha256": "8f5e983e77c16e95561129fac0cfb430c03b1ed27a4597fd299c780f46f7ee51"
+    },
+    {
+      "path": "wheelhouse-v3/rpds_py-2026.9.1-cp314-cp314-win_amd64.whl",
+      "bytes": 222852,
+      "sha256": "837c6b305e26fe0f75b15c92cf3b2ba29e0ae19dc40b1c557b026cb426347d0c"
+    },
+    {
+      "path": "wheelhouse-v3/rpds-py-2026.9.1-metadata.json",
+      "bytes": 116828,
+      "sha256": "93808b9ff27aabe26d9a4f03b28422d1d05c3fb8716d88f3826e7ddf4b0b258b"
+    },
+    {
+      "path": "wheelhouse-v3/rpds-py-index-metadata.json",
+      "bytes": 5016883,
+      "sha256": "eb5234052812c626b47a935b584c51e3d8c95823fa5e71b2e908a8ede97633ec"
+    },
+    {
+      "path": "wheelhouse-v3/setuptools-84.2.1-metadata.json",
+      "bytes": 8162,
+      "sha256": "d75de8ba0d3304a3d74484fb9f340edb87ef02712da4fa02a2ed92e71b0572dd"
+    },
+    {
+      "path": "wheelhouse-v3/setuptools-84.2.1-py3-none-any.whl",
+      "bytes": 876263,
+      "sha256": "ca140b45d5325a9478f880e351484f62fef15f336462e449ca0c03c873d589c2"
+    },
+    {
+      "path": "wheelhouse-v3/setuptools-index-metadata.json",
+      "bytes": 1184297,
+      "sha256": "1b84d1a1e6d5469d9ac64f06e612b57d2d049b73df26f46e29771eaf34ed7006"
+    },
+    {
+      "path": "wheelhouse-v3/sse_starlette-3.5.0-py3-none-any.whl",
+      "bytes": 17407,
+      "sha256": "3e6e1070df3f0f5d9cea81496de92dbb72f6721871d99748ece67441dd8b7997"
+    },
+    {
+      "path": "wheelhouse-v3/sse-starlette-3.5.0-metadata.json",
+      "bytes": 18083,
+      "sha256": "d40c291ea5353d4175a52678d53dad2c82456b78fdb1015b9ca4b927ddd767ef"
+    },
+    {
+      "path": "wheelhouse-v3/sse-starlette-index-metadata.json",
+      "bytes": 131018,
+      "sha256": "3a29492fa6faa3ec0d9c96bbff9449386bf09da8a9cb2f0ce13f5d9c64586544"
+    },
+    {
+      "path": "wheelhouse-v3/starlette-1.9.0-metadata.json",
+      "bytes": 8692,
+      "sha256": "4b7a6ea8ec0da7dbb68545d685a3a74e923534ed09010d9a6028134634eafece"
+    },
+    {
+      "path": "wheelhouse-v3/starlette-1.9.0-py3-none-any.whl",
+      "bytes": 80335,
+      "sha256": "fd3f159936e882d06c1108f84688f7cda2cf85fc6a592a50edbd175e882c2ddc"
+    },
+    {
+      "path": "wheelhouse-v3/starlette-index-metadata.json",
+      "bytes": 243840,
+      "sha256": "76514645e5280aba65ea446d01d443d519d0389fa087acfd7e1bfbd767a9ad1e"
+    },
+    {
+      "path": "wheelhouse-v3/truststore-0.10.5-metadata.json",
+      "bytes": 6734,
+      "sha256": "3aa1222ab6468e1e01b751aeda8db44afca8117297c93cb497c8d27e8f37e17b"
+    },
+    {
+      "path": "wheelhouse-v3/truststore-0.10.5-py3-none-any.whl",
+      "bytes": 19017,
+      "sha256": "9aaaedaefaf06d8b206278cf8b5012bc897f485a874503501e12d776df78951c"
+    },
+    {
+      "path": "wheelhouse-v3/truststore-index-metadata.json",
+      "bytes": 33157,
+      "sha256": "83132cf2db141b3cd0916f0d59385e5c76a1404b08d196bf53c210cee997ff29"
+    },
+    {
+      "path": "wheelhouse-v3/typing_extensions-4.16.0-py3-none-any.whl",
+      "bytes": 45571,
+      "sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8"
+    },
+    {
+      "path": "wheelhouse-v3/typing_inspection-0.4.4-py3-none-any.whl",
+      "bytes": 14750,
+      "sha256": "65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147"
+    },
+    {
+      "path": "wheelhouse-v3/typing-extensions-4.16.0-metadata.json",
+      "bytes": 5631,
+      "sha256": "2140da00d62dde967f52d0be0ae28444f1d6a3fe603f52c83c23988c32122d5a"
+    },
+    {
+      "path": "wheelhouse-v3/typing-extensions-index-metadata.json",
+      "bytes": 97612,
+      "sha256": "2e567d7ca1b1c70a8e8f23b7204a8bd51b0bacd39e2fe53b33b153cff255ac68"
+    },
+    {
+      "path": "wheelhouse-v3/typing-inspection-0.4.4-metadata.json",
+      "bytes": 4629,
+      "sha256": "0605416f2f37f2df04e45360cf5ce4ca5eeca6d414bb6ddb1ec5a9893c62ac30"
+    },
+    {
+      "path": "wheelhouse-v3/typing-inspection-index-metadata.json",
+      "bytes": 20393,
+      "sha256": "01f2c8a64e34ff03f674ac255b8bf5dd43d175d701059d9420cc9509c3c0edf0"
+    },
+    {
+      "path": "wheelhouse-v3/urllib3-2.8.0-metadata.json",
+      "bytes": 9510,
+      "sha256": "5315e7401db3cacccd0c2ce5daf81f752a9cc3614b18c37f2b79930b7159ce2f"
+    },
+    {
+      "path": "wheelhouse-v3/urllib3-2.8.0-py3-none-any.whl",
+      "bytes": 135717,
+      "sha256": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3"
+    },
+    {
+      "path": "wheelhouse-v3/urllib3-index-metadata.json",
+      "bytes": 160832,
+      "sha256": "fe033abdf4e116777f2062304b5442660092498d27f55f0ff6968f86d064bb5c"
+    },
+    {
+      "path": "wheelhouse-v3/uvicorn-0.54.0-metadata.json",
+      "bytes": 8728,
+      "sha256": "65378bebfff63d5a58ba9b6ff6ff1ae5047721da28e27802e2aafa19fece8444"
+    },
+    {
+      "path": "wheelhouse-v3/uvicorn-0.54.0-py3-none-any.whl",
+      "bytes": 87427,
+      "sha256": "505bdb0f318731d45f1f712071fc781a8981f6847a31c902c9f5e652d4f67faf"
+    },
+    {
+      "path": "wheelhouse-v3/uvicorn-index-metadata.json",
+      "bytes": 233469,
+      "sha256": "f42e1a8b18d6a39d33ba83271d8de49cdb9ecab9d6f3276dbddf20a12e4b9eb4"
+    },
+    {
+      "path": "wheelhouse-v3/wheel-0.48.0-metadata.json",
+      "bytes": 4390,
+      "sha256": "03f655da3a6dd010d9ac41d4771d5d973109cb662a1e10eb9d967535ffd145f8"
+    },
+    {
+      "path": "wheelhouse-v3/wheel-0.48.0-py3-none-any.whl",
+      "bytes": 33320,
+      "sha256": "3217dcc807155e45db462d7ef2431f5ddda0d7273b700d05a67b271ceb1287ab"
+    },
+    {
+      "path": "wheelhouse-v3/wheel-index-metadata.json",
+      "bytes": 125190,
+      "sha256": "113f8abc907676e530c9dca238f3b2bd26e2b142747d16d7d4775810e1155980"
+    }
+  ]
+}
