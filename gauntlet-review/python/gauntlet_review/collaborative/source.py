@@ -294,19 +294,32 @@ class GitSource:
         return iter(rows)
 
     def source_entries(self, snapshot):
+        return iter(tuple(self.describe_entry(snapshot,entry) for entry in self.source_inventory(snapshot)))
+
+    def source_inventory(self,snapshot):
+        """Enumerate cheap pinned identities without reading unrelated blob bodies."""
         self._validate_snapshot(snapshot)
-        entries, ids = [], set()
+        entries,ids=[],set()
         with self._repository() as repo:
             head = self._object(repo, snapshot.header["source_oid"], Commit)
             inventory = self._inventory(repo, head.tree.decode("ascii"), self.policy)
             for path, (mode, oid) in sorted(inventory.items()):
-                identifier = digest = length = None
+                identifier = None
                 if mode != 0o160000:
-                    data = self._blob(repo, oid, self.policy)
-                    length, digest = len(data), hashlib.sha256(data).hexdigest()
                     identifier = self._artifact_id(snapshot, "head", _b64(path), oid)
                     if identifier in ids:
                         raise CoreError("DIGEST_MISMATCH", detail={"reason": "artifact_id_collision"})
                     ids.add(identifier)
-                entries.append(SourceEntry(_b64(path), mode, oid, length, digest, identifier))
-        return iter(entries)
+                entries.append(SourceEntry(_b64(path), mode, oid, None, None, identifier))
+        return tuple(entries)
+
+    def describe_entry(self,snapshot,entry):
+        self._validate_snapshot(snapshot)
+        if entry.mode==0o160000:
+            return entry
+        if entry.artifact_id!=self._artifact_id(snapshot,"head",entry.raw_path_b64,entry.oid):
+            raise CoreError("DIGEST_MISMATCH",detail={"reason":"source_entry_identity"})
+        with self._repository() as repo:
+            data=self._blob(repo,entry.oid,self.policy)
+            return SourceEntry(entry.raw_path_b64,entry.mode,entry.oid,len(data),
+                               hashlib.sha256(data).hexdigest(),entry.artifact_id)

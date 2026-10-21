@@ -221,3 +221,82 @@ def append_verdict(verdict_factory):
             return await reviewer.mutate(config.series_scope,config.participant,"submit_review",request.key,digest,
                                          request.expected_version,build,checkpoint)
     return append
+
+
+class Flow:
+    def __init__(self,config,writer,author,reviewer):
+        self.config,self.writer,self.author,self.reviewer=config,writer,author,reviewer
+
+    @staticmethod
+    def bound(response):
+        return {key:response[key] for key in ("review_id","revision_id","snapshot_digest")}
+
+    async def open(self,key="initial"):
+        status=await self.author.review_status({})
+        assert status["ok"],status
+        return await self.author.open_review({"key":key,"expected_version":status["store_version"]})
+
+    async def listing(self,response,view,*,limit=100):
+        items=[]
+        cursor=None
+        while True:
+            result=await self.reviewer.read_review({**self.bound(response),"view":view,"limit":limit,"cursor":cursor})
+            assert result["ok"],result
+            page=result["result"]
+            items.extend(page["items"])
+            if page["complete"]:
+                assert page["next_cursor"] is None
+                return items
+            assert page["items"] and page["next_cursor"]!=cursor
+            cursor=page["next_cursor"]
+
+    async def verdict_request(self,*,recommendations=None,disposition="addressed",**overrides):
+        status=await self.reviewer.review_status({})
+        assert status["ok"],status
+        rows=await self.listing(status,"manifest")
+        value={**self.bound(status),"key":f"round_{status['store_version']}",
+               "expected_version":status["store_version"],"verdict":"approve","summary":"reviewed pinned bytes",
+               "recommendations":recommendations or [],"coverage_digest":status["snapshot_digest"],
+               "coverage":[row["change"]["change_id"] for row in rows],
+               "carryover":[{"id":f["id"],"digest":f["digest"],"status":disposition,
+                             "reason":"checked against pinned source"} for f in status["result"]["finding_rollups"]]}
+        value.update(overrides)
+        return value
+
+    async def submit(self,**options):
+        return await self.reviewer.submit_review(await self.verdict_request(**options))
+
+    async def evidence_request(self,**overrides):
+        status=await self.author.review_status({})
+        assert status["ok"],status
+        value={**self.bound(status),"key":f"evidence_{status['store_version']}","expected_version":status["store_version"],
+               "origin":"agent_report","command":"pytest","runtime":"Python","exit_status":0,
+               "content":{"kind":"inline","data_b64":"cHJvb2Y="}}
+        value.update(overrides)
+        return value
+
+    async def commit_fix(self):
+        parent=self.author.store.read_series().snapshot.header["source_oid"]
+        head=self.writer.commit({b"file":(0o100644,b"fixed")},parents=[parent])
+        self.writer.set_ref(self.config.source_ref,head)
+        return await self.open("fixed_revision")
+
+
+@pytest.fixture
+def flow(cfg,git_fixture):
+    from contextlib import ExitStack
+    from dataclasses import replace
+    from gauntlet_review.collaborative.core import ReviewCore
+    from gauntlet_review.collaborative.contracts import Policy
+    from gauntlet_review.collaborative.source import GitSource
+    from gauntlet_review.collaborative.store import Store
+    git_fixture.pair({}, {b"file":(0o100644,b"one")})
+    with ExitStack() as resources:
+        cores=[]
+        for config in (cfg,replace(cfg,participant="peer",role="reviewer")):
+            source=resources.enter_context(GitSource(config))
+            store=resources.enter_context(Store.open(config,source.repo_binding))
+            core=ReviewCore(config,source,store,Policy())
+            resources.callback(core.close)
+            cores.append(core)
+        yield Flow(cfg,git_fixture,*cores)

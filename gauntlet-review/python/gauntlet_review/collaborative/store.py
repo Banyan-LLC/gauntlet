@@ -62,7 +62,13 @@ def _cursor(binding,offset):
     return base64.urlsafe_b64encode(encode(value)).decode("ascii")
 
 
-def paginate(items,*,binding,cursor,limit):
+def history_items(series):
+    return tuple({"id":event.id,"seq":event.seq,"kind":event.kind,"revision_id":event.revision_id,
+                  "snapshot_digest":decode_event(event).snapshot_digest,"length":len(event.body),
+                  "sha256":event.body_digest,"artifact_id":event.id} for event in series.events)
+
+
+def paginate(items,*,binding,cursor,limit,mapper=None):
     if type(limit) is not int or not 1<=limit<=100:
         raise CoreError("INVALID_ARGUMENT",detail={"reason":"page_limit"})
     offset=0
@@ -94,7 +100,8 @@ def paginate(items,*,binding,cursor,limit):
     if offset>len(items):
         raise CoreError("INVALID_ARGUMENT",detail={"reason":"cursor_offset"})
     rows=[]
-    for row in items[offset:offset+limit]:
+    for original in items[offset:offset+limit]:
+        row=original if mapper is None else mapper(original)
         candidate=rows+[row]
         # Reserve a bounded envelope/cursor allowance. Core also checks its
         # complete canonical envelope, including these exact rows, before return.
@@ -329,6 +336,14 @@ class Store:
         with self._connection(read=True) as connection:
             return self._read_view(connection)
 
+    def inspect(self,action):
+        """Render one response from one observed read transaction/version."""
+        with self._connection(read=True) as connection:
+            view=self._read_view(connection)
+            def artifact(review_id,revision_id,artifact_id,offset,length,*,evidence=False):
+                return self._read_artifact(connection,view,review_id,revision_id,artifact_id,offset,length,evidence=evidence)
+            return action(view,artifact)
+
     def _verify_receipt(self,row,event,current_version,scope,request_digest):
         raw=row["result_bytes"]
         if type(raw) is not bytes or hashlib.sha256(raw).hexdigest()!=row["result_sha256"]:
@@ -482,9 +497,7 @@ class Store:
             revisions={event.revision_id:decode_event(event).snapshot_digest for event in series.events if event.kind=="open_review"}
             if revision_id not in revisions or view!="history":
                 raise CoreError("NOT_FOUND",detail={"reason":"revision_or_view"})
-            items=tuple({"id":event.id,"seq":event.seq,"kind":event.kind,"revision_id":event.revision_id,
-                         "snapshot_digest":decode_event(event).snapshot_digest,"length":len(event.body),
-                         "sha256":event.body_digest,"artifact_id":event.id} for event in series.events)
+            items=history_items(series)
             return paginate(items,binding={"review_id":review_id,"revision_id":revision_id,
                 "snapshot_digest":revisions[revision_id],"view":view,"store_version":state.store_version},cursor=cursor,limit=limit)
 
@@ -493,20 +506,26 @@ class Store:
             raise CoreError("INVALID_ARGUMENT",detail={"reason":"artifact_page"})
         with self._connection(read=True) as connection:
             state=self._read_view(connection)
-            if state.series is None or state.series.id!=review_id:
-                raise CoreError("NOT_FOUND",detail={"reason":"review"})
-            if evidence:
-                row=connection.execute("SELECT bytes AS body,sha256 AS digest FROM evidence WHERE id=? AND series_id=? AND revision_id=?",
-                    (artifact_id,review_id,revision_id)).fetchone()
-            else:
-                row=connection.execute("SELECT body,body_sha256 AS digest FROM events WHERE id=? AND series_id=? AND revision_id=?",
-                    (artifact_id,review_id,revision_id)).fetchone()
-            if row is None:
-                raise CoreError("NOT_FOUND",detail={"reason":"artifact"})
-            data,digest=row["body"],row["digest"]
-            if hashlib.sha256(data).hexdigest()!=digest:
-                raise CoreError("DIGEST_MISMATCH",detail={"reason":"artifact_body"})
-            if offset>len(data):
-                raise CoreError("INVALID_ARGUMENT",detail={"reason":"offset_past_end"})
-            end=min(len(data),offset+length)
-            return BytePage(data[offset:end],offset,len(data),end==len(data),digest)
+            return self._read_artifact(connection,state,review_id,revision_id,artifact_id,offset,length,evidence=evidence)
+
+    @staticmethod
+    def _read_artifact(connection,state,review_id,revision_id,artifact_id,offset,length,*,evidence=False):
+        if type(offset) is not int or not 0<=offset<=2**53-1 or type(length) is not int or not 1<=length<=65536:
+            raise CoreError("INVALID_ARGUMENT",detail={"reason":"artifact_page"})
+        if state.series is None or state.series.id!=review_id:
+            raise CoreError("NOT_FOUND",detail={"reason":"review"})
+        if evidence:
+            row=connection.execute("SELECT bytes AS body,sha256 AS digest FROM evidence WHERE id=? AND series_id=? AND revision_id=?",
+                (artifact_id,review_id,revision_id)).fetchone()
+        else:
+            row=connection.execute("SELECT body,body_sha256 AS digest FROM events WHERE id=? AND series_id=? AND revision_id=?",
+                (artifact_id,review_id,revision_id)).fetchone()
+        if row is None:
+            raise CoreError("NOT_FOUND",detail={"reason":"artifact"})
+        data,digest=row["body"],row["digest"]
+        if hashlib.sha256(data).hexdigest()!=digest:
+            raise CoreError("DIGEST_MISMATCH",detail={"reason":"artifact_body"})
+        if offset>len(data):
+            raise CoreError("INVALID_ARGUMENT",detail={"reason":"offset_past_end"})
+        end=min(len(data),offset+length)
+        return BytePage(data[offset:end],offset,len(data),end==len(data),digest)
