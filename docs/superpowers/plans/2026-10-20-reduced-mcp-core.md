@@ -59,6 +59,9 @@ All product paths below are relative to `gauntlet-review/python/`.
 Repository-level additions: `docs/collaborative-mcp.md`, a short opt-in README link,
 `tests/run-collaborative-matrix.py`, `.github/workflows/collaborative-python.yml`,
 and `docs/build-log/2026-10-20-reduced-mcp-core.md` for measured results.
+Test-only additions: `tests/support/collaborative_process.py`,
+`tests/support/test_collaborative_process.py` and bounded worker/probe fixtures.
+They are outside the installed package and unavailable to the production MCP core.
 
 Metadata checked during planning from version-specific PyPI JSON, without installing
 or importing dependencies: MCP 2.3.0 and Dulwich 1.2.17 require Python >=3.10 and
@@ -184,6 +187,106 @@ through the same <=64 KiB artifact paging contract. Status returns counts and
 body-artifact link); prose stays in pageable history. List every nit/blocker in
 the rollups without silently omitting entries.
 
+## Task 0: Shared test-only process ownership and failure receipts
+
+**Files:** create repository-level `tests/support/collaborative_process.py`,
+`tests/support/test_collaborative_process.py`, and
+`tests/support/collaborative_worker.py`. This is a test dependency, not a new
+production runner. The legacy Python runner has best-effort Windows termination
+and swallowed drain errors; do not reuse it as proof of this stronger contract or
+change its production behavior in this feature.
+
+**Interfaces:** standard-library-only `run_case(argv: list[str], *, cwd: Path,
+environment: dict[str,str], deadline_seconds: float, expected: ExpectedExit)->CommandOutcome`
+and a worker-side `OwnedTransport` implementing the SDK transport async-context
+interface when the optional SDK is installed. `CommandFailure(outcome)` is typed
+and always retains the partial outcome. `ExpectedExit` records the exact deliberately
+injected child exit/checkpoint; default expectation is normal zero exit only.
+
+`CommandOutcome` is a structured record with `started, completed, exit_code` (null
+until actually observed), `timed_out, overflowed, cancelled`, per-channel observed/
+retained counts and exact captured prefixes, `stdin_delivered`, pipe/launch errors,
+termination requested/result, root reaped, tree retired, reader/writer settlement,
+cleanup errors, monotonic deadline/elapsed time and expectation match. Every error
+contains stage, exception type and bounded underlying detail. The capture prefix
+on failure is explicitly incomplete; it can never be consumed as a successful test
+result. Do not replace original exits with synthetic zero/nonzero values.
+Each `stdout/stderr/control` capture is a `Capture(observed_bytes, retained_bytes,
+prefix: bytes, incomplete: bool, error: StageError|None)`; `StageError` has stage,
+exception type, bounded detail and cause chain. Unsupported ownership is an explicit
+failed outcome, never a missing result or empty successful list.
+
+- [ ] Write isolated probe tests first: success, launch failure, intentional exit73,
+  timeout, each channel overflow, combined overflow, pipe-read/write fault,
+  cancellation, direct-parent exit with a descendant holding each of stdin/stdout/
+  stderr, and simulated failed retirement/cleanup. A representative assertion is:
+
+```python
+def test_inherited_pipe_is_not_success(probe_case):
+    outcome = probe_case("descendant-holds-stderr", deadline_seconds=5)
+    assert outcome.completed is False
+    assert outcome.termination_requested
+    assert outcome.root_reaped and outcome.tree_retired
+    assert outcome.stderr.retained_bytes <= 4*1024*1024
+```
+
+- [ ] Implement one monotonic absolute deadline for execution **and** all teardown.
+  Reserve the final 20 seconds of a normal 900-second case for cleanup (for shorter
+  probes use min(20 seconds, one quarter of the total)). Every wait/join/async close/
+  cancellation/fallback consumes remaining time; no fresh grace after timeout.
+  The fault checkpoint's 10-second subdeadline is clipped to execution time remaining.
+  Finally always attempts tree retirement and reader settlement, even after root
+  exit, transport exception, output overflow or cancellation. Never close buffered
+  streams under live workers; unresolved cleanup yields an incomplete outcome.
+- [ ] POSIX case workers start in a fresh session/process group; retain the original
+  root handle/group identity through cleanup. Windows creates the worker suspended,
+  assigns it to a private kill-on-close Job Object with breakaway disabled, then
+  resumes it; use standard-library ctypes Win32 bindings so dependency-install
+  commands are also supervised. Set `CREATE_NO_WINDOW`. Retain job/process handles
+  and query active membership until retired or the shared deadline; never rely on
+  PID-only taskkill after the parent exits. POSIX sends group kill and confirms
+  root wait plus group disappearance; inability to confirm is failure, not proof.
+- [ ] Each case has one isolated worker owning the test scenario, its two MCP hosts
+  and any fault child. New scenario subprocesses inherit that worker's group/job;
+  they cannot request breakaway or create another session. On any inner fatal error,
+  the external owner terminates the whole case, including driver and peers. Existing
+  nested ownership used by legacy verification commands must be explicitly inventoried
+  and remain controllable by the outer owner; an unregistered/escaping descendant or
+  unconfirmable retirement makes the command incomplete. Never infer containment
+  from the direct parent's exit or a CI job finishing.
+- [ ] Use bounded fixed-size nonblocking pipe reads/writes. Retain at most 4 MiB
+  each for stdout/stderr and 64 KiB checkpoint/control data, with an 8 MiB combined
+  capture budget per owner/worker layer and 16 MiB total across both layers. Reserve
+  combined capacity before appending. Crossing any per-channel/aggregate cap stops
+  the case immediately; do not wait for its deadline or accept a captured prefix.
+  Stdin delivery has a 1 MiB limit; control frames <=1 KiB. Reader errors trigger
+  the same stop path and preserve their causes. No unbounded queues or log files.
+- [ ] For real MCP children use `Client(OwnedTransport(...))`, not the SDK's implicit
+  subprocess launcher: that launcher starts new POSIX sessions and has its own
+  teardown policy. The test-only transport owns raw pipes, forwards SDK SessionMessage
+  streams with bounded backpressure, caps each JSON-RPC frame at 512 KiB before
+  parsing, accounts retained buffers with the worker budget, and consumes the
+  enclosing case deadline. It does not alter production messages or server code.
+  Protocol/buffer/close failures stop the case and remain structured evidence.
+- [ ] Apply this same contract to base-only venv/pip commands, CLI startup/malformed
+  protocol probes, both stdio peers, crash helpers, Python matrix commands and captured
+  final verification commands. No direct unowned `subprocess.run`, SDK launcher or
+  uncapped communicate/kill/wait remains in those new test paths. Passively running
+  deterministic in-process tests need no child owner. Production host/model sessions
+  remain owned by native hosts under their own policies, not by this test helper.
+- [ ] Persist completed **and partial** receipts/captures create-only at each case
+  boundary, including before propagating `CommandFailure`. A matrix driver keeps
+  earlier outcomes if a later command fails and exits nonzero for any unexpected
+  exit, startup/pipe/timeout/overflow/cancellation error or incomplete cleanup.
+  An injected crash is a passed probe only when its predeclared checkpoint/exit,
+  bounded capture and complete retirement all match and database recovery assertions
+  pass. A normal zero exit with incomplete capture/cleanup still fails.
+- [ ] Run these supervision probes on Windows/Linux/macOS before relying on any
+  spawned acceptance test. Record native outcomes and capability failures. If a
+  platform cannot establish the contract, stop that verification path and report
+  incomplete acceptance rather than downgrade it. Commit
+  `test: bound collaborative test process ownership and outcomes`.
+
 ## Task 1: Strict contracts, optional packaging and quota arithmetic
 
 **Files:** create `collaborative/{__init__,contracts}.py`,
@@ -198,6 +301,13 @@ repository_id: str, source_ref: bytes, target_ref: bytes, participant: str, role
 `encode(value: object)->bytes` wrapping existing JCS with typed error translation,
 `validate_request(operation: str, payload: dict)->BaseModel`, and
 `verdict_capacity(prior_count: int)->int` returning the pessimistic envelope bytes.
+Export `validate_operator_config(config)->OperatorConfig`; before normalization or
+resource opening it rejects a non-absolute native `repo_path` **or** `state_dir`.
+CLI, GitSource, Store and direct ReviewCore construction all use that shared check.
+On Windows reject drive-relative `C:repo` and root-relative `\repo`; on POSIX reject
+`repo`, `./repo` and `../repo`. Unsupported network roots also fail configuration.
+Use `CONFIGURATION_ERROR` for these invalid settings; never silently resolve them
+against a host's current directory.
 Envelope keys: `ok, assurance, review_id, revision_id, snapshot_digest,
 store_version, freshness, result, error`. Freshness is `match|stale` plus checked
 UTC/OIDs, `not_checked` without a new observation, or `unknown` on check failure.
@@ -209,6 +319,8 @@ independently by neighboring tasks:
 | --- | --- |
 | `RefObservation` | source_oid, target_oid, checked_at |
 | `Change` | change_id, old_path_b64/new_path_b64, old_mode/new_mode, old_oid/new_oid, old_length/new_length, old_digest/new_digest; absent sides null |
+| `ArtifactHandle` | artifact_id, kind (blob/event/evidence), side (base/head or null), byte_length, sha256, mode and oid where applicable |
+| `ManifestRow` | change (immutable Change), old_artifact/new_artifact (nullable ArtifactHandle); lookup handles excluded from source identity |
 | `Snapshot` | header, changes (tuple of Change), digest |
 | `SourceEntry` | raw_path_b64, mode, oid, length, digest, artifact_id |
 | `BytePage` | data (bytes), offset, total, eof, digest |
@@ -266,6 +378,11 @@ def test_bool_is_not_store_version(valid_open_payload):
   failure due to absent contracts, then implement the models/validators/constants
   and rerun to pass. Add parameter fixtures with quotes/backslashes, TAB/CR/LF,
   U+0001 refusal, and valid four-byte Unicode; measure actual canonical bytes.
+  Add shared configuration tests for POSIX relative, Windows drive-relative and
+  Windows root-relative repositories/state paths. Assert `CONFIGURATION_ERROR`
+  before opening resources through CLI and direct GitSource/Store/Core entry paths.
+  Execute all spawned commands below through Task 0; displayed commands specify
+  inner argv, not permission to bypass the test supervisor.
 - [ ] Base-only test uses a separate clean venv: install `.[dev]`, import
   `gauntlet_review` and legacy modules, assert `mcp,dulwich,pydantic` were not
   imported, and ensure new optional tests skip. The console entry point must fail
@@ -287,7 +404,7 @@ extend the shared fixture with `GitFixture.commit(files, parents=None)->str` and
 `check_snapshot(snapshot: Snapshot)->RefObservation` validates required changed
 objects/types/lengths/digests and rereads configured refs;
 `capture(policy: Policy)->Snapshot` with full manifest/digest;
-`read_blob(oid: str, offset: int, length: int)->BytePage`;
+`read_blob(oid: str, offset: int, length: int, expected_sha256: str)->BytePage`;
 `source_entries(snapshot: Snapshot)->Iterator[SourceEntry]` for additional pinned
 head-tree paths. `Snapshot` records repository/ref/OID/policy identity; `Change`
 records raw old/new paths as base64, modes, object IDs, lengths and digests.
@@ -308,7 +425,8 @@ def test_pinned_bytes_ignore_worktree(git_fixture, cfg):
     with GitSource(cfg) as source:
         snap = source.capture(Policy())
         git_fixture.write_worktree_file("file", b"different")
-        assert source.read_blob(snap.changes[0].new_oid, 0, 64).data == b"new\x00"
+        change = snap.changes[0]
+        assert source.read_blob(change.new_oid, 0, 64, change.new_digest).data == b"new\x00"
 ```
 
 - [ ] Run `python -m pytest tests/collaborative/test_source.py -q` and see the
@@ -334,6 +452,15 @@ def test_pinned_bytes_ignore_worktree(git_fixture, cfg):
   labels and opaque lookup metadata from source identity. Compute artifact IDs from
   snapshot identity, side, raw path and object OID with the same collision check.
   They are deterministic across restarts/platforms and never allocate state on read.
+  Manifest API pages expose `ManifestRow` with nullable **both-side** artifact
+  handles: modified files have base and head handles, deletions base only, additions
+  head only, symlink blobs ordinary byte handles, and gitlinks explicit pointer
+  metadata without a blob handle. Handles are lookup metadata, not additions to
+  immutable Change identity. Test actual MCP discovery/read-to-EOF of every side,
+  including deleted paths absent from the head-tree inventory.
+  Every source page verifies the complete object's Git identity, stored byte length
+  and expected SHA-256 before returning requested bytes; a page hash is insufficient.
+  A prior transaction's successful check cannot bypass current-byte validation.
   Additional file reads obey the same blob cap and snapshot identity. Missing
   garbage-collected objects fail with `MISSING_OBJECT`; never substitute worktree
   bytes. The service neither writes retention refs nor claims GC-proof availability.
@@ -386,9 +513,9 @@ async def test_exact_retry_precedes_stale_version(store, append_event):
   access. Trusted operator ownership protects the documented non-atomic path check.
 - [ ] Schema v1: `meta(schema_version,store_version,payload_bytes)`,
   `series(id,repo_id,repo_binding,source_ref,target_ref,policy_digest,payload_bytes)` with unique
-  repo/ref tuple; `events(id,series_id,seq,revision_id,kind,body,body_sha256)`;
+  repo/ref tuple; `events(id,series_id,seq,store_version,revision_id,kind,body,body_sha256)`;
   `evidence(id,series_id,revision_id,bytes,sha256)`; `retries(series_scope,participant,operation,key,
-  request_sha256,event_id,result_bytes)` with composite unique key.
+  request_sha256,event_id,result_store_version,result_bytes,result_sha256)` with composite unique key.
   Store refs as bytes; use SQL parameters exclusively. IDs are generated UUID4 hex
   and persisted, never regenerated on retry. Reject an existing series bound to a
   different resolved common Git directory or policy with `CONFIGURATION_MISMATCH`;
@@ -402,6 +529,11 @@ async def test_exact_retry_precedes_stale_version(store, append_event):
   version increment and COMMIT. New-file initialization also runs under the write
   lock and schema uniqueness, so two initial hosts cannot overwrite metadata.
   Read pages/status use a single read transaction and return its observed version.
+  Each event additionally records its committing global store version. Before any
+  replay, verify result bytes against `result_sha256`, strict decoded receipt shape,
+  referenced event digest/kind, scope/revision/snapshot, request digest and exact
+  committing version; it must not exceed current store version. A structurally valid
+  SQLite row is insufficient. Replay checks the original receipt, not current refs.
 - [ ] Logical accounting charges serialized event/result/retry bodies plus retained
   evidence bytes; deduplication cannot skip ownership/quota checks. Each admission
   checks both per-series 64 MiB and store 1 GiB inside the same transaction, plus
@@ -412,6 +544,12 @@ async def test_exact_retry_precedes_stale_version(store, append_event):
   Before deriving policy or mutating, verify the relevant series' canonical event
   digests, strict sequence, finding references and evidence digests. Refuse corruption
   or unknown schema; do not treat it as missing history or initialize over it.
+  Every event-body/evidence page verifies its entire stored body's digest and bound
+  series/revision/event before slicing. Every replay path, including early/core
+  shortcuts, verifies the persisted receipt and event/version bindings. Add separate
+  valid-JSON/raw-byte corruption tests for source, event bodies, evidence and retry
+  receipts, plus wrong event/version references. Return `DIGEST_MISMATCH` or
+  `CORRUPT_STATE`, never a successful payload or silently repaired history.
 - [ ] Cancellation checkpoint before lock acquisition, after event construction and
   immediately before COMMIT rolls back on observed cancellation. There is no await
   between the final cancellation check and synchronous COMMIT. COMMIT is the
@@ -526,7 +664,7 @@ async def test_new_revision_drops_approval_not_findings(flow):
   Error codes: `INVALID_ARGUMENT, FORBIDDEN, NOT_FOUND, NEEDS_SYNC, STALE,
   MISSING_OBJECT, UNSUPPORTED_REPOSITORY, DIGEST_MISMATCH, CONFLICT,
   LIMIT_EXCEEDED, STORAGE_ERROR, LOCK_TIMEOUT, UNSUPPORTED_SCHEMA, CORRUPT_STATE,
-  INTERNAL_ERROR, CONFIGURATION_MISMATCH`.
+  INTERNAL_ERROR, CONFIGURATION_MISMATCH, CONFIGURATION_ERROR`.
   Only lock timeout, version conflict and retryable transient I/O are marked
   retryable; retries still follow exact-key semantics.
 - [ ] Run `python -m pytest tests/collaborative/test_core.py -q`, then the complete
@@ -591,20 +729,24 @@ async def test_reviewer_tools_exclude_open(cfg):
 create repository-level `tests/run-collaborative-matrix.py` and
 `.github/workflows/collaborative-python.yml`.
 
-- [ ] Start with a real two-client test. Import SDK `Client` and
-  `StdioServerParameters`; each points to the exact test interpreter and
+- [ ] Start with a real two-client scenario in Task 0's isolated case worker.
+  Import SDK `Client` and use `OwnedTransport`; each uses the exact interpreter and
   `-m gauntlet_review.collaborative` with author/reviewer config arguments.
   A test helper `server_args(cfg,role)->list[str]` emits only those declared flags.
-  SDK clients own the children; no product runner is added.
+  Task 0 owns raw pipes/groups/deadlines; SDK Client owns protocol operations, not
+  an implicit subprocess. The parent pytest test calls `run_case` for this scenario
+  and requires completed exit0, expectation match and full retirement. The scenario
+  below runs in that supervised worker; `owned_transport` constructs Task 0's SDK
+  transport using the enclosing deadline and shared capture budget.
 
 ```python
 @pytest.mark.anyio
-async def test_two_stdio_hosts_share_history(cfg, server_args):
-    from mcp import Client, StdioServerParameters
-    async with Client(StdioServerParameters(command=sys.executable,
-            args=server_args(cfg, "author"))) as author, Client(
-            StdioServerParameters(command=sys.executable,
-            args=server_args(cfg, "reviewer"))) as reviewer:
+async def scenario_two_stdio_hosts_share_history(cfg, server_args, owned_transport):
+    from mcp import Client
+    async with Client(owned_transport(sys.executable,
+            server_args(cfg, "author"))) as author, Client(
+            owned_transport(sys.executable,
+            server_args(cfg, "reviewer"))) as reviewer:
         initial = await reviewer.call_tool("review_status", {"request": {}})
         assert initial.structured_content["result"]["series"] is None
         opened = await author.call_tool("open_review", {"request": {
@@ -616,12 +758,13 @@ async def test_two_stdio_hosts_share_history(cfg, server_args):
   revision, full ledger closure, peer completion, then head/target drift and stale
   status. Assert native host PID differs, all original finding/evidence bytes remain
   readable after restart, and uncommitted work is never included. End all owned
-  clients and confirm closure; host test supervisor has an outer deadline and
-  preserves original exits. This is test infrastructure, not a production supervisor.
+  clients under Task 0's single deadline and confirm every child/tree retirement.
+  Preserve original exit/capture/cleanup outcomes; unknown or partial outcomes fail.
 - [ ] Fault helper runs a Store mutation in a test child, signals each checkpoint
   through a pipe and can call `os._exit(73)` immediately before or after COMMIT.
-  Parent waits for that explicit checkpoint with a 10s timeout, closes/kills only
-  its owned child on timeout and reopens the database. Before-commit expects no
+  Parent's 10s checkpoint wait consumes Task 0's execution budget; timeout stops
+  the entire owned case and reaps its tree, not merely the immediate fault child.
+  Preserve the structured partial outcome. Before-commit expects no
   event; after-commit exact-key retry expects one event and the original result.
   Repeat with task cancellation at precommit checkpoint and lost response after
   commit. No production `--test-crash` or fault environment switch exists.
@@ -635,8 +778,11 @@ async def test_two_stdio_hosts_share_history(cfg, server_args):
   plus a separate base-only job. No model/API secrets, CI evidence promotion or
   production setup. The Python matrix script runs these exact local suite commands,
   records interpreter/platform/dependencies and original exit codes, and provides
-  per-command timeouts via standard test-owned subprocess APIs (900s/new suite,
-  900s/legacy); its scope is Python checks only. Existing PowerShell CI stays intact.
+  Task 0 `run_case` deadlines (900s/new suite, 900s/legacy, including all cleanup).
+  Persist each completed/partial CommandOutcome before advancing; fail the matrix
+  on unexpected exit, launch/pipe/overflow/timeout/cancellation failure or incomplete
+  capture/retirement. Keep earlier outcomes after later failure. Its scope is Python
+  checks only. Existing PowerShell CI stays intact.
 - [ ] Run focused recovery/stdio on the current runtime, then all nine remote matrix
   jobs on publication. Locally test every installed supported interpreter available
   without inventing coverage for unavailable platforms. Commit
