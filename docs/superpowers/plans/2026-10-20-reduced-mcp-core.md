@@ -1,0 +1,635 @@
+# Reduced MCP Core Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Ship an opt-in local collaborative review service that preserves pinned source, findings and evidence while native hosts own agent conversations.
+
+**Architecture:** A Python stdio MCP adapter calls a transport-independent review core backed by SQLite and a read-only Git-object adapter. Review history and policy are separate from host/model lifecycle; the existing hermetic route remains available with its original assurance boundary.
+
+**Tech Stack:** Python 3.11+, SQLite from the standard library, MCP SDK 2.3.0, Dulwich 1.2.17, Pydantic 2.14.1, existing JSON canonicalization and finding-ID functions, pytest.
+
+**Spec:** `docs/superpowers/specs/2026-10-20-reduced-mcp-core-design.md`, exact approved blob at commit `5c93d6b29d507ace5e7ad901e75a188924204ba2`. Human approval is recorded in `docs/superpowers/reviews/2026-10-20-reduced-mcp-core/spec-approval.json`. Do not edit the approved spec as an implementation shortcut.
+
+## Global Constraints
+
+- Assurance profile is `collaborative-v1`. Peer completion is neither CI success, legacy hermetic certification, human approval nor merge authorization.
+- Support Python 3.11+ on Windows, Linux and macOS with equivalent observable semantics.
+- Version one covers committed local branch reviews; document workflows remain on the existing route.
+- One configured repository, source ref, target ref and participant/role per process; clients cannot override them.
+- Target must be an ancestor of source; configured local refs determine observed freshness. Hosts own fetch/live PR checks.
+- Git paths preserve raw bytes through base64; sort by unsigned bytes. Never materialize tree paths as OS paths.
+- One persisted series per repository ID/source ref/target ref. Policy changes, restarts and limit refusals never reset its history.
+- Only the current revision accepts new evidence/verdicts. A new revision requires a new verdict and preserves all findings.
+- No shell, Git/model subprocess, hooks, filters, network listener, scheduler, CI executor, publication, approval or merge in production code.
+- Preserve existing entry points, defaults, certificates and history. Do not activate dormant native/generic helpers or waive the deferred PowerShell 7.2 defects.
+- Fixed limits: 1,000 changed paths; 4 MiB/source blob; 64 MiB total changed old/new bytes; 64 KiB artifact pages; 256 KiB stored evidence/call; 16 MiB stored evidence/review; 256 KiB verdict payload; 200 findings/review; 20 new findings/verdict; 10 accepted verdicts; 20 revisions/review; 256 UTF-8 bytes/carry-over reason; 64 MiB event/evidence payload/review; 1 GiB/store.
+- Quotas are logical payload bounds, not physical SDK/parser, Git decompression, SQLite-file or OS-I/O certification. No silent truncation, pruning or limit escalation.
+- State is an operator-created, private, local directory outside the checkout and legacy state. Cooperative trusted local hosts/repository/ownership are the security boundary.
+- Start from a clean isolated worktree; preserve every existing change. Use `feat/`, `fix/` or `chore/` branches. GitHub commits and publication use `geoffroth <geoffroth@gmail.com>`; no attribution trailers.
+- Coordinate heavy test/compiler/live-review windows, retain original process closure evidence, batch pushes, target `main`, and never approve or merge from this chat.
+
+## Review Focus
+
+1. A lost response followed by retry after head drift must return the original committed result with `not_checked`, never a fresh completion claim (Task 3/5).
+2. Git names that collide under case folding or Unicode normalization must remain distinct even on Windows; test Git objects rather than creating those host filenames (Task 2).
+3. A second host must reopen the same regular database, while a symlink/junction or malicious sidecar is rejected without deletion (Task 3/7).
+4. A valid near-limit finding set must permit a later all-addressed ledger even when text contains quotes/backslashes and four-byte Unicode (Task 1/4).
+5. Cancellation or a crash around COMMIT must yield either no accepted event or one recoverable event, never a duplicate or false rollback acknowledgement (Task 3/6/7).
+
+## File map and dependency verification
+
+All product paths below are relative to `gauntlet-review/python/`.
+
+| File | Responsibility |
+| --- | --- |
+| `gauntlet_review/collaborative/__init__.py` | Empty optional-subsystem namespace; no startup/import side effects. |
+| `gauntlet_review/collaborative/contracts.py` | Strict request models, policy constants, typed domain error and response envelopes. |
+| `gauntlet_review/collaborative/source.py` | Read-only Git commits/refs/manifests and exact object-byte pages. |
+| `gauntlet_review/collaborative/store.py` | Checked local state path, SQLite schema, transactions, idempotency and durable history. |
+| `gauntlet_review/collaborative/policy.py` | Finding identities, normalized verdicts, coverage, carry-over and status reduction. |
+| `gauntlet_review/collaborative/core.py` | Role-aware operations combining source, store and policy. |
+| `gauntlet_review/collaborative/server.py` | Five named MCP tools, strict startup configuration, stdio and safe errors. |
+| `gauntlet_review/collaborative/__main__.py` | Delegate `python -m gauntlet_review.collaborative` to `server.main`. |
+| `tests/collaborative/conftest.py` | Shared repository/store fixtures, request builders and cancellation/fault checkpoints. |
+| `tests/collaborative/test_{contracts,source,store,policy,core,server,recovery}.py` | Focused acceptance and adversarial cases. |
+| `tests/collaborative/test_stdio.py` | Real independent SDK stdio clients and process restart tests. |
+| `tests/test_optional_install.py` | Base-only installation/import behavior; no optional import at collection. |
+| `pyproject.toml` | Exact optional pins, console entry point, package discovery remains unchanged. |
+
+Repository-level additions: `docs/collaborative-mcp.md`, a short opt-in README link,
+`tests/run-collaborative-matrix.py`, `.github/workflows/collaborative-python.yml`,
+and `docs/build-log/2026-10-20-reduced-mcp-core.md` for measured results.
+
+Metadata checked during planning from version-specific PyPI JSON, without installing
+or importing dependencies: MCP 2.3.0 and Dulwich 1.2.17 require Python >=3.10 and
+publish pure-Python universal wheels. The MCP wheel SHA-256 is
+`dd0c44c089d16453e8ae31a3877a0054d7a2314caaa81f5e0541b9b1734b2377`;
+the Dulwich universal wheel is
+`82555d6ea6d728ed722fdfcde6658e3d2b1774ad916260fdfd90a2e7af64291a`.
+Both hashes were verified while inspecting their wheel source. Pydantic 2.14.1
+metadata also declares Python >=3.10. These are metadata/source checks, not claims
+that the dependency combination has already passed runtime compatibility tests.
+
+Use this optional dependency block; do not add extras to the base installation:
+
+```toml
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+mcp = ["mcp==2.3.0", "dulwich==1.2.17", "pydantic==2.14.1"]
+
+[project.scripts]
+gauntlet-mcp = "gauntlet_review.collaborative.server:main"
+```
+
+Recheck version-specific release metadata and wheel hashes before installing. Record
+resolved transitive versions for each test runtime; do not claim the three direct
+pins lock the entire environment. Pin changes require documented compatibility
+evidence and plan review if they alter the interfaces/boundaries below.
+
+## Wire contracts and payload proof
+
+All requests are `{"request": <strict model>}` in MCP tool arguments. Reject unknown
+properties, booleans as integers, floats, non-finite values and invalid Unicode.
+Models use `ConfigDict(strict=True, extra="forbid")`; core validation runs even
+when called outside MCP. String budgets count strict UTF-8 bytes. Text rejects C0
+controls except TAB/CR/LF, and rejects lone surrogates. Thus canonical JSON string
+escaping costs at most twice its original UTF-8 bytes; raw Git paths use base64.
+
+Identifiers: review/revision/artifact/change/evidence IDs are exactly 32 lowercase
+hex digits; SHA-256 digests are exactly 64. Local finding IDs have format
+`r[1-9][0-9]?-<32 lowercase hex>` with accepted round <=10, and are namespaced by
+review ID. Validate using full matches. Idempotency keys are 1..64 ASCII characters
+from `[A-Za-z0-9_-]`. Versions/offsets/lengths are strict integers 0..2^53-1.
+Repository/participant IDs use the same ASCII alphabet and 1..64 bytes; configured
+refs are full `refs/heads/...` or target `refs/remotes/...`, <=1,024 UTF-8 bytes,
+validated by Git ref rules and resolved only from operator configuration.
+
+Mutation request fields: `key`, `expected_version`, plus `review_id`, `revision_id`,
+`snapshot_digest` after creation. `open_review` has no client-supplied review ID and
+finds the unique series by configured repository/ref tuple. At opening it accepts
+`key` and `expected_version`; zero is valid for a new empty store. `review_status`
+without a review ID returns the configured series (or an explicit null series) and
+store version, allowing either role to obtain the first version.
+
+`SubmitReview` adds `verdict`, `summary`, `recommendations`, `coverage_digest`,
+`coverage` (unique change IDs acknowledging both old/new surfaces), and `carryover`.
+Each finding has `severity,location,issue,suggestion`; byte maxima are respectively
+the fixed enum, 150, 500, 500. Summary <=800 bytes. Each carry-over entry is
+`{id,digest,status,reason}`; reason is present, at most 256 bytes and nonempty for
+non-addressed entries. No original finding text is accepted in carry-over input.
+
+Proof: the following standalone standard-library check deliberately overestimates
+the maximum reachable verdict by allowing 200 prior AND 20 new findings together.
+Backslashes maximize escaping under the text rule. It includes maximum-width
+identities, integers, summary, reasons, coverage and MCP argument wrapping.
+The verifier in Task 1 must additionally use the actual request model and existing
+`jcs.canonical_bytes`; this arithmetic is a planning check, not a substitute.
+
+```python
+import json
+request = dict(
+    key="k"*64, expected_version=2**53-1, review_id="a"*32,
+    revision_id="b"*32, snapshot_digest="c"*64, verdict="request_changes",
+    summary="\\"*800, coverage_digest="d"*64,
+    coverage=[f"{i:032x}" for i in range(1000)],
+    recommendations=[dict(severity="important", location="\\"*150,
+        issue="\\"*500, suggestion="\\"*500) for _ in range(20)],
+    carryover=[dict(id="r10-"+f"{i:032x}", digest="e"*64,
+        status="outstanding", reason="\\"*256) for i in range(200)])
+encoded = json.dumps({"request": request}, ensure_ascii=False,
+                     separators=(",", ":")).encode("utf-8")
+assert len(encoded) < 256*1024, len(encoded)
+print(len(encoded), 256*1024-len(encoded))
+```
+
+Before accepting new findings, policy checks `existing + new <=200`, all new-field
+bounds, and the pessimistic future-ledger/maximum-coverage projection above with
+the candidate history. This makes later closure representable within the verdict
+payload cap. All request/response/event bytes use canonical UTF-8 for quota accounting;
+binary evidence additionally charges decoded bytes once in the evidence quota and
+its stored bytes once in the event/evidence total, without duplicate body copies.
+
+Remaining metadata limits: evidence command <=2,048 bytes, runtime <=256, claimed
+exit status null or signed 32-bit integer, producer fixed from configuration,
+origin enum `agent_report|ci_receipt|legacy_certificate`, external URI/path <=4,096
+bytes and declared length 0..2^53-1. External descriptors are never dereferenced
+and always `verified=false`. Stored evidence carries computed SHA-256 and
+`bytes_verified=true` but producer claims remain unverified. Inline evidence uses
+strict canonical base64, maximum decoded 256 KiB; reject malformed/overlong forms.
+Git path maximum is 4,096 raw bytes per path; unsupported larger paths refuse with
+`LIMIT_EXCEEDED`, never normalize/truncate. Artifact pages return base64 for all
+source/evidence bytes; optional UTF-8 display must not replace exact bytes.
+Read pages: at most 100 manifest/history rows AND 120 KiB canonical envelope;
+the MCP result, including text/structured representations, must remain <=256 KiB.
+stop at the first bound and return a continuation marker. Per-blob byte page is
+<=64 KiB, including additional source-tree blobs. Never classify an empty partial
+page as complete. Error detail <=1,024 bytes; never include raw bodies or secrets.
+
+## Task 1: Strict contracts, optional packaging and quota arithmetic
+
+**Files:** create `collaborative/{__init__,contracts}.py`,
+`tests/collaborative/{conftest,test_contracts}.py`, `tests/test_optional_install.py`;
+modify `pyproject.toml`. All paths use the file-map prefix.
+
+**Interfaces:** export frozen `OperatorConfig(repo_path: Path, state_dir: Path,
+repository_id: str, source_ref: bytes, target_ref: bytes, participant: str, role: str)`,
+`Policy` with the approved constants, strict Pydantic request models named
+`OpenRequest, ReadRequest, EvidenceRequest, VerdictRequest, StatusRequest`, and
+`CoreError(code: str, retryable: bool, detail: dict)`. Export
+`encode(value: object)->bytes` wrapping existing JCS with typed error translation,
+`validate_request(operation: str, payload: dict)->BaseModel`, and
+`verdict_capacity(prior_count: int)->int` returning the pessimistic envelope bytes.
+Envelope keys: `ok, assurance, review_id, revision_id, snapshot_digest,
+store_version, freshness, result, error`. Freshness is `match|stale` plus checked
+UTC/OIDs, `not_checked` without a new observation, or `unknown` on check failure.
+Errors use the same envelope, nullable identity/version when unavailable.
+
+- [ ] Create a dedicated environment only after this plan is approved. Capture a
+  baseline legacy Python run before edits; record inherited failures separately.
+  Install `python -m pip install -e '.[mcp,dev]'` from the package directory and
+  record interpreter, platform, `pip freeze`, SQLite version and wheel provenance.
+- [ ] Write these tests and the per-field/enum/unknown-key/bool/surrogate/C0/max+1
+  parameter matrix. `tests/collaborative/conftest.py` begins with optional-dependency
+  collection guards so a base-only environment skips this directory without import
+  failure. Define the shared `cfg` fixture using a regular temporary local state
+  directory and a temporary Git repository created through Dulwich.
+
+```python
+def test_capacity_reserves_future_closure():
+    from gauntlet_review.collaborative.contracts import verdict_capacity
+    assert verdict_capacity(200) < 256*1024
+
+def test_bool_is_not_store_version(valid_open_payload):
+    import pytest
+    from gauntlet_review.collaborative.contracts import validate_request, CoreError
+    with pytest.raises(CoreError) as err:
+        validate_request("open_review", {**valid_open_payload, "expected_version": True})
+    assert err.value.code == "INVALID_ARGUMENT"
+```
+
+- [ ] Run `python -m pytest tests/collaborative/test_contracts.py -q`; first confirm
+  failure due to absent contracts, then implement the models/validators/constants
+  and rerun to pass. Add parameter fixtures with quotes/backslashes, TAB/CR/LF,
+  U+0001 refusal, and valid four-byte Unicode; measure actual canonical bytes.
+- [ ] Base-only test uses a separate clean venv: install `.[dev]`, import
+  `gauntlet_review` and legacy modules, assert `mcp,dulwich,pydantic` were not
+  imported, and ensure new optional tests skip. The console entry point must fail
+  with a short missing-extra diagnostic, not start a listener or import the model
+  runtime. Add that entry point when its implementation arrives in Task 6.
+- [ ] Commit the passing unit and installation contract as
+  `feat: define optional collaborative review contracts`.
+
+## Task 2: Read-only Git identity, manifests and immutable pages
+
+**Files:** create `collaborative/source.py`, `tests/collaborative/test_source.py`;
+extend the shared fixture with `GitFixture.commit(files, parents=None)->str` and
+`set_ref(ref: bytes, oid: str)->None`, both test-only Dulwich object writers.
+
+**Interfaces:** `GitSource(config: OperatorConfig)` is a closing context manager;
+`observe()->RefObservation(source_oid,target_oid,checked_at)`;
+`capture(policy: Policy)->Snapshot` with full manifest/digest;
+`read_blob(oid: str, offset: int, length: int)->BytePage`;
+`source_entries(snapshot: Snapshot)->Iterator[SourceEntry]` for additional pinned
+head-tree paths. `Snapshot` records repository/ref/OID/policy identity; `Change`
+records raw old/new paths as base64, modes, object IDs, lengths and digests.
+
+- [ ] Write object-level fixtures with empty files, binary/NUL, 4-byte UTF-8,
+  non-UTF-8 paths, `A/a`, normalization variants, executable-bit changes,
+  deletions, symlink target blobs and gitlinks. Do not create these paths in the
+  host filesystem. Test normal and linked-worktree `Repo(path).commondir()` access.
+
+```python
+def test_pinned_bytes_ignore_worktree(git_fixture, cfg):
+    from gauntlet_review.collaborative.source import GitSource
+    from gauntlet_review.collaborative.contracts import Policy
+    old = git_fixture.commit({b"file": (0o100644, b"old\x00")})
+    new = git_fixture.commit({b"file": (0o100755, b"new\x00")}, parents=[old])
+    git_fixture.set_ref(cfg.target_ref, old)
+    git_fixture.set_ref(cfg.source_ref, new)
+    with GitSource(cfg) as source:
+        snap = source.capture(Policy())
+        git_fixture.write_worktree_file("file", b"different")
+        assert source.read_blob(snap.changes[0].new_oid, 0, 64).data == b"new\x00"
+```
+
+- [ ] Run `python -m pytest tests/collaborative/test_source.py -q` and see the
+  missing-adapter failure. Implement with `dulwich.repo.Repo`, direct object store
+  access and `dulwich.diff_tree.tree_changes(..., rename_detector=None)`; never use
+  porcelain, attribute normalizers, filters, shell or fetch. Close Repo on every
+  path, including failed startup and exceptions.
+- [ ] Validate SHA-1 repositories only in v1; reject unsupported formats/extensions,
+  shallow/promisor repositories or missing required objects with typed errors.
+  Traverse actual commit parents, not replace/graft interpretations. Refuse
+  non-commit refs and target-not-ancestor with `NEEDS_SYNC`. Limit traversal to
+  1,000,000 commits and tree inventory to 100,000 files, refusing larger work rather
+  than falsely declaring complete enumeration. Include these limits in policy hash.
+- [ ] Enforce source quotas before retaining the next item; count both old/new
+  changed bytes even if a blob repeats, matching the declared manifest workload.
+  Give deletion sides no fake empty blob. Gitlinks use their OID/mode and no blob
+  byte access. Compare both refs again after capture and before its acceptance.
+- [ ] Tests cover ref movement during capture, same-tree/new-commit drift, objects
+  disappearing, oversized raw paths/blobs/aggregate, exhausted graph traversal,
+  wrong-type objects, explicit partial pages and reader closure after exceptions.
+  Compute change IDs from the canonical snapshot header and complete change record
+  (SHA-256 truncated to 32 hex, with collision refusal); exclude presentation-only
+  labels and opaque lookup metadata from source identity. Compute artifact IDs from
+  snapshot identity, side, raw path and object OID with the same collision check.
+  They are deterministic across restarts/platforms and never allocate state on read.
+  Additional file reads obey the same blob cap and snapshot identity. Missing
+  garbage-collected objects fail with `MISSING_OBJECT`; never substitute worktree
+  bytes. The service neither writes retention refs nor claims GC-proof availability.
+- [ ] Rerun focused tests and commit `feat: read pinned collaborative Git snapshots`.
+
+## Task 3: Transactional store, immutable history and exact retries
+
+**Files:** create `collaborative/store.py`, `tests/collaborative/test_store.py` and
+initial `test_recovery.py`; shared fixtures add transaction fault checkpoints.
+
+**Interfaces:** `Store.open(config)->Store` (context manager),
+`read_series()->SeriesView|None`, `version()->int`,
+`lookup_retry(participant: str, operation: str, key: str, request_digest: str)->StoredResult|None`,
+`async mutate(participant,operation,key,request_digest,expected_version,
+build: Callable[[StoreView],Awaitable[Mutation]], checkpoint: Callable[[],Awaitable[None]])->StoredResult`,
+and `read_page(review_id,revision_id,view,cursor,limit)->Page`.
+`Mutation` contains a canonical event, evidence body bytes if any, and canonical
+operation result; it is produced inside the transaction from verified state.
+
+- [ ] Write failing transaction/reopen tests before storage code.
+
+```python
+@pytest.mark.anyio
+async def test_exact_retry_precedes_stale_version(store, append_event):
+    first = await append_event(store, key="once", expected_version=0)
+    again = await append_event(store, key="once", expected_version=0)
+    assert again.event_id == first.event_id
+    assert store.version() == 1
+    assert len(store.read_series().events) == 1
+```
+
+- [ ] `append_event` is a test fixture calling `Store.mutate` with a bounded
+  canonical test event and an async no-op checkpoint. Test same-key/different-
+  payload conflict, participant/operation scoping, restart lookup and two independent
+  connections submitting from the same expected version (exactly one wins).
+- [ ] Implement strict checked startup: absolute existing state directory, no
+  symlink/reparse component (`lstat`, `stat.S_ISLNK`, Windows
+  `st_file_attributes & FILE_ATTRIBUTE_REPARSE_POINT`), reject redirected DB and
+  `-journal/-wal/-shm` sidecars, nonregular DB, wrong permissions/access errors.
+  Existing regular SQLite files are permitted. Reject state within the configured
+  checkout or resolved common Git directory/legacy history; do not create parent
+  directories or delete existing files. Check missing paths distinctly from denied
+  access. Trusted operator ownership protects the documented non-atomic path check.
+- [ ] Schema v1: `meta(schema_version,store_version,payload_bytes)`,
+  `series(id,repo_id,source_ref,target_ref,policy_digest,payload_bytes)` with unique
+  repo/ref tuple; `events(id,series_id,seq,revision_id,kind,body,body_sha256)`;
+  `evidence(id,series_id,revision_id,bytes,sha256)`; `retries(participant,operation,key,
+  request_sha256,event_id,result_bytes)` with composite unique key.
+  Store refs as bytes; use SQL parameters exclusively. IDs are generated UUID4 hex
+  and persisted, never regenerated on retry. Finding records are canonical event
+  content; projections are rebuilt from events rather than accepted as authority.
+- [ ] Use SQLite foreign keys, rollback journal `DELETE`, `synchronous=FULL`, busy
+  timeout 2,000 ms, `isolation_level=None`, `BEGIN IMMEDIATE`, then retry lookup,
+  CAS version, state validation, quota reservation, event/evidence/retry insert,
+  version increment and COMMIT. New-file initialization also runs under the write
+  lock and schema uniqueness, so two initial hosts cannot overwrite metadata.
+  Read pages/status use a single read transaction and return its observed version.
+- [ ] Logical accounting charges serialized event/result/retry bodies plus retained
+  evidence bytes; deduplication cannot skip ownership/quota checks. Each admission
+  checks both per-series 64 MiB and store 1 GiB inside the same transaction, plus
+  the independent 16 MiB evidence quota. IDs/digests/row bookkeeping use bounded
+  schema fields; the bound is not physical SQLite size. Failed reservations roll
+  back every insertion and version change.
+- [ ] Startup performs schema validation and SQLite integrity/foreign-key checks.
+  Before deriving policy or mutating, verify the relevant series' canonical event
+  digests, strict sequence, finding references and evidence digests. Refuse corruption
+  or unknown schema; do not treat it as missing history or initialize over it.
+- [ ] Cancellation checkpoint before lock acquisition, after event construction and
+  immediately before COMMIT rolls back on observed cancellation. There is no await
+  between the final cancellation check and synchronous COMMIT. COMMIT is the
+  linearization boundary; a lost response or cancellation after it is recovered by
+  exact-key lookup. Ambiguous storage/transport failure never asserts rollback or
+  successful completion. Closing cursors/connections uses `finally`, no reaper or
+  recursive cleanup. Test injected exceptions before/after each insertion/commit.
+- [ ] Run `python -m pytest tests/collaborative/test_store.py tests/collaborative/test_recovery.py -q`;
+  confirm red then green and commit `feat: persist collaborative review history atomically`.
+
+## Task 4: Validated findings, complete coverage and status policy
+
+**Files:** create `collaborative/policy.py`, `tests/collaborative/test_policy.py`.
+
+**Interfaces:** `prepare_verdict(history: SeriesView, request: VerdictRequest,
+snapshot: Snapshot)->AcceptedVerdict`, `reduce_series(events: Sequence[Event])->SeriesView`,
+`derive_status(history: SeriesView, observation: RefObservation)->Status`.
+Reuse `gauntlet_review.verdict.recommendation_id` and JCS unchanged. Do not import
+legacy `state.py`, broker, runtime or filesystem helpers. The new reference-ledger
+contract differs from legacy text carry-over, so normalize/validate it here rather
+than alter the old schema or filesystem API.
+
+- [ ] Start with a test that an approval cannot close a disputed prior blocker.
+
+```python
+def test_disputed_blocker_remains_changes_requested(series_with_blocker, verdict_factory):
+    from gauntlet_review.collaborative.policy import prepare_verdict
+    req = verdict_factory(series_with_blocker, verdict="approve", disposition="disputed")
+    accepted = prepare_verdict(series_with_blocker, req, series_with_blocker.snapshot)
+    assert accepted.status == "changes_requested"
+    assert accepted.carryover[0].reason
+```
+
+- [ ] Run the focused file to see failure, then implement exact coverage set equality
+  against change IDs and complete manifest digest. For each prior finding require
+  exactly one ID/digest/status/reason record, including previously addressed and nit
+  findings. Reject omitted/unknown/duplicate IDs, wrong review/revision/digest,
+  replacement text and invalid Unicode. Preserve original text verbatim in stored
+  events and derive IDs from accepted verdict number/index/content, not revision
+  count or client input. Digest the complete immutable finding record.
+- [ ] Normalize approve-with-new-non-nits to request_changes. `peer_complete` is only
+  a freshly observed status result with latest approval, exact coverage/carry-over
+  and no unresolved non-nit. Findings marked outstanding/disputed stay open; later
+  review can reopen a formerly addressed finding. Request-changes with no findings
+  still requests changes. New revision removes current approval, not findings.
+- [ ] Check the candidate-history projection and payload proof before accepting new
+  recommendations. Include all-addressed maximum-ledger, maximal reasons, repeated
+  findings, 200/201 histories, verdict 10/11, revisions 20/21, and every old/new
+  blob/mode/deletion/symlink/gitlink coverage case in the tests. Avoid model mocks
+  that merely echo expected policy; construct actual persisted event sequences.
+- [ ] Rerun `python -m pytest tests/collaborative/test_policy.py -q` and commit
+  `feat: validate collaborative findings and peer completion`.
+
+## Task 5: Core operations and paginated audit access
+
+**Files:** create `collaborative/core.py`, `tests/collaborative/test_core.py`;
+extend shared request builders to create complete valid requests from stored IDs.
+
+**Interfaces:** `ReviewCore(config,source,store,policy)` exposes async
+`open_review(OpenRequest)`, `read_review(ReadRequest)`,
+`record_evidence(EvidenceRequest)`, `submit_review(VerdictRequest)`,
+`review_status(StatusRequest)`, all returning the standard envelope. It also exposes
+`close()` for owned handles. Role comes only from `OperatorConfig`.
+
+- [ ] Add a full in-process author/reviewer flow and run it red before core code.
+
+```python
+@pytest.mark.anyio
+async def test_new_revision_drops_approval_not_findings(flow):
+    first = await flow.open_and_submit_blocker()
+    await flow.commit_fix_and_open_revision()
+    status = await flow.reviewer.review_status(flow.status_request())
+    assert status["result"]["status"] == "awaiting_review"
+    assert status["result"]["findings"][0]["id"] == first.finding_id
+```
+
+- [ ] `flow` fixture owns two independently configured cores/connections with shared
+  storage, and a test Git writer. Builders obtain observed versions from status;
+  they do not bypass core validation. Implement role checks on every operation,
+  plus role-specific server registration later. New keys revalidate fresh refs and
+  current revision inside admission; exact retries return stored results without
+  pretending to recheck refs. Source capture/ref reread occurs before acceptance;
+  status includes actual observation time/OIDs, not a promise against later movement.
+- [ ] Define `ReadRequest.view` enum `history|manifest|source_tree|artifact|evidence`.
+  It includes bound review/revision IDs; IDs select persisted records only. For
+  artifact/evidence mode include offset/length, no path. `source_tree` enumerates
+  additional pinned head entries and returns deterministic opaque IDs. Resolve them
+  against that pinned bounded inventory; reads never mutate storage or mint rows.
+  History/manifests sort by sequence/raw path. Cursors are opaque base64 encoded
+  canonical `{review_id,revision_id,snapshot_digest,view,store_version,offset}` plus
+  its digest; validate every binding and integer. Digest is integrity formatting,
+  not secret authentication. Reject changed-version cursor with `CONFLICT`, not
+  silent page mixing; return next cursor and `complete` only at actual exhaustion.
+- [ ] Evidence bytes and digest are committed in the same transaction as metadata;
+  external descriptors stay unopened/unverified. Return `freshness.not_checked`
+  for reads/replays and `unknown` on failed ref checks. Only status emits current
+  `peer_complete`; mutation replies report receipt/verdict normalization, never
+  current completion. On status, stale refs take precedence over approval/awaiting.
+- [ ] Cover null first status, author submit refusal, reviewer open refusal,
+  changed target/source refs, same-tree new commit, evidence on an old revision,
+  oversized/replaced content, idempotency after drift, denied object read, quota
+  refusal/reopening the same series, and source failure after stored approval.
+  Error codes: `INVALID_ARGUMENT, FORBIDDEN, NOT_FOUND, NEEDS_SYNC, STALE,
+  MISSING_OBJECT, UNSUPPORTED_REPOSITORY, DIGEST_MISMATCH, CONFLICT,
+  LIMIT_EXCEEDED, STORAGE_ERROR, LOCK_TIMEOUT, UNSUPPORTED_SCHEMA, CORRUPT_STATE,
+  INTERNAL_ERROR`.
+  Only lock timeout, version conflict and retryable transient I/O are marked
+  retryable; retries still follow exact-key semantics.
+- [ ] Run `python -m pytest tests/collaborative/test_core.py -q`, then the complete
+  new directory; commit `feat: expose collaborative review core operations`.
+
+## Task 6: Thin stdio MCP adapter and safe startup
+
+**Files:** create `collaborative/{server,__main__}.py`,
+`tests/collaborative/test_server.py`; add console script to `pyproject.toml`.
+
+**Interfaces:** `create_server(config: OperatorConfig)->Server` from
+`mcp.server.lowlevel`,
+`main(argv: list[str]|None=None)->int`. CLI requires `--repo`, `--state-dir`,
+`--repository-id`, `--source-ref`, `--target-ref`, `--participant`, `--role`.
+There are no config/env overrides for roles, quotas or arbitrary commands. Transport
+is hard-coded stdio; unknown arguments fail before opening the store.
+
+- [ ] Use the SDK's own in-memory client to test registration and structured output.
+
+```python
+@pytest.mark.anyio
+async def test_reviewer_tools_exclude_open(cfg):
+    from mcp import Client
+    from gauntlet_review.collaborative.server import create_server
+    async with Client(create_server(replace(cfg, role="reviewer")), raise_exceptions=True) as client:
+        tools = await client.list_tools()
+        assert {t.name for t in tools.tools} == {
+            "read_review", "record_evidence", "submit_review", "review_status"}
+```
+
+- [ ] Run red, then use SDK 2.3.0 `Server(on_list_tools=..., on_call_tool=...)`
+  callbacks. Advertise each input schema as a strict outer object with required
+  `request` containing the corresponding Pydantic schema. The call callback receives
+  raw arguments and validates outer/inner models itself, so malformed tool arguments
+  get the same structured domain envelope as direct core calls. Author gets
+  open/read/evidence/status; reviewer gets read/evidence/submit/status. A captured
+  core enforces role even if an unregistered tool is called directly. Advertised
+  input schemas must match the shared strict models; snapshot tests check fields,
+  enums, additionalProperties and absence of identity/path override arguments.
+- [ ] SDK imports stay inside optional modules/startup. Convert expected `CoreError`
+  to safe structured envelope; unexpected exceptions return `INTERNAL_ERROR` with
+  `freshness.unknown` and a correlation ID, never traceback/source/credentials on
+  stdout or stderr. Return a standard `CallToolResult` with `isError=true` for
+  domain errors and canonical text plus structuredContent for compatibility;
+  validate its complete serialized size against the response bound. Malformed
+  JSON-RPC/unrecognized protocol methods remain standard SDK protocol errors,
+  never a fabricated successful core envelope.
+  Log only code/operation/correlation to stderr. Never catch
+  cancellation as successful result. Startup errors use stderr and exit2; success
+  runs the SDK's `stdio_server()` streams and `await server.run(...)` with resource
+  lifetime bound to connection
+  shutdown. No remote transport is exposed even though SDK supports it.
+- [ ] Test malformed startup flags, missing extra, nested extra keys, role overrides,
+  raw malformed JSON/protocol failure through SDK, error parity outside MCP,
+  cancellation checkpoints, context shutdown and no body leakage. Rerun
+  `python -m pytest tests/collaborative/test_server.py tests/test_optional_install.py -q`.
+- [ ] Commit `feat: serve collaborative review tools over local MCP`.
+
+## Task 7: Real dual-host stdio, crash recovery and platform matrix
+
+**Files:** create `tests/collaborative/test_stdio.py`, finish `test_recovery.py`,
+create repository-level `tests/run-collaborative-matrix.py` and
+`.github/workflows/collaborative-python.yml`.
+
+- [ ] Start with a real two-client test. Import SDK `Client` and
+  `StdioServerParameters`; each points to the exact test interpreter and
+  `-m gauntlet_review.collaborative` with author/reviewer config arguments.
+  A test helper `server_args(cfg,role)->list[str]` emits only those declared flags.
+  SDK clients own the children; no product runner is added.
+
+```python
+@pytest.mark.anyio
+async def test_two_stdio_hosts_share_history(cfg, server_args):
+    from mcp import Client, StdioServerParameters
+    async with Client(StdioServerParameters(command=sys.executable,
+            args=server_args(cfg, "author"))) as author, Client(
+            StdioServerParameters(command=sys.executable,
+            args=server_args(cfg, "reviewer"))) as reviewer:
+        initial = await reviewer.call_tool("review_status", {"request": {}})
+        assert initial.structured_content["result"]["series"] is None
+        opened = await author.call_tool("open_review", {"request": {
+            "key": "initial", "expected_version": 0}})
+        assert opened.structured_content["ok"] is True
+```
+
+- [ ] Extend that test with stored evidence, real blocker, a Git commit fix, new
+  revision, full ledger closure, peer completion, then head/target drift and stale
+  status. Assert native host PID differs, all original finding/evidence bytes remain
+  readable after restart, and uncommitted work is never included. End all owned
+  clients and confirm closure; host test supervisor has an outer deadline and
+  preserves original exits. This is test infrastructure, not a production supervisor.
+- [ ] Fault helper runs a Store mutation in a test child, signals each checkpoint
+  through a pipe and can call `os._exit(73)` immediately before or after COMMIT.
+  Parent waits for that explicit checkpoint with a 10s timeout, closes/kills only
+  its owned child on timeout and reopens the database. Before-commit expects no
+  event; after-commit exact-key retry expects one event and the original result.
+  Repeat with task cancellation at precommit checkpoint and lost response after
+  commit. No production `--test-crash` or fault environment switch exists.
+- [ ] Test state ancestor/final-file symlinks on POSIX and Windows reparse/junction
+  fixtures, regular DB reopening, redirected sidecars and permission errors. If a
+  platform cannot create symlinks under current privileges, record an explicit
+  unsupported fixture outcome and retain a required junction/reparse test on a
+  capable Windows runner; do not call skipped security coverage verified.
+- [ ] Matrix workflow: GitHub-hosted `ubuntu-latest, windows-latest, macos-latest`
+  × Python `3.11,3.14`; install `.[mcp,dev]`, run new suite and legacy Python suite,
+  plus a separate base-only job. No model/API secrets, CI evidence promotion or
+  production setup. The Python matrix script runs these exact local suite commands,
+  records interpreter/platform/dependencies and original exit codes, and provides
+  per-command timeouts via standard test-owned subprocess APIs (900s/new suite,
+  900s/legacy); its scope is Python checks only. Existing PowerShell CI stays intact.
+- [ ] Run focused recovery/stdio on the current runtime, then all six remote matrix
+  jobs on publication. Locally test every installed supported interpreter available
+  without inventing coverage for unavailable platforms. Commit
+  `test: cover collaborative MCP recovery and platform parity`.
+
+## Task 8: Host walkthrough, configuration and final verification
+
+**Files:** create `docs/collaborative-mcp.md` and build log, add opt-in README link.
+
+- [ ] Document exact installation commands and a user-owned absolute Python path;
+  both hosts use the same private state directory/repository/ref tuple but different
+  participant IDs/roles. Include full CLI configuration examples and how to create
+  the directory safely on Windows/POSIX. No new environment variable, secret,
+  migration or production activation is required. An optional MCP host config is
+  required only to use the feature; changing it requires host restart/reload and
+  fails closed for bad paths/configuration. Never rewrite user configs automatically.
+- [ ] Claude host config registers `gauntlet-author` stdio plus the official Codex
+  MCP server. The Codex native host config registers `gauntlet-reviewer` with reviewer
+  role. Show opening review, recording evidence, sending peer the IDs/manifest
+  scope, native `codex`/`codex-reply` conversation, and reviewer submission. The
+  walkthrough reads complete paginated source/history, treats all material as data,
+  and explicitly reports coverage as reviewer attestation. Conversation transport
+  success alone cannot produce peer completion.
+- [ ] Verify the actual installed Codex/Claude native interface versions against
+  official docs before the live walkthrough. Let those hosts own model permissions,
+  auth, timeouts, session IDs and cancellation; do not add their lifecycle code to
+  Gauntlet. Use temporary operator-owned host configs without copying credentials.
+  Record a separately labelled live integration run on a disposable repository:
+  real author/reviewer connections, one real finding/fix/closure, exact OIDs,
+  tool receipts, canonical records and actual process closures. It is collaborative
+  integration evidence, never legacy hermetic certification. Deterministic tests
+  remain model-free and do not need API keys. Do not fake a live pass if native
+  host access/credentials are unavailable; report the remaining acceptance item.
+- [ ] From clean exact source, run current-runtime `pwsh -NoProfile -File tests/run-tests.ps1`,
+  the legacy Python suite `python -m pytest gauntlet-review/python/tests -q`, and
+  `python -m pytest gauntlet-review/python/tests/collaborative -q` with the package
+  installed in the selected environment. Run the base-only install fixture and
+  the six remote Python jobs. Serialize owned heavy tests/reviewer calls; retain
+  source hashes, original stdout/stderr/exits and closure receipts. Existing floor
+  baseline failures remain scoped to unchanged dormant helpers; new active Python
+  behavior must pass on its stated floor, and no dormant helper is activated.
+- [ ] Add a spec-to-test acceptance table in the build log mapping each of the six
+  approved acceptance paragraphs to tests/live evidence. Include quotas and the
+  actual payload-proof byte result, configuration requirements, available runtime
+  results, explicit skips/limitations, import isolation and `peer_complete` boundary.
+  Confirm the diff has no legacy history/certificate/source integration changes.
+- [ ] Commit `docs: explain collaborative MCP setup and assurance`.
+- [ ] At implementation review transition, offer the human local-first or PR-per-round
+  review as required by gauntlet-dev. Preserve all findings through the chosen route;
+  the approved spec is the only trusted controlling document. Complete review fixes,
+  verification and the required authoritative PR round, then publish the ready PR
+  against `main` as geoffroth. Describe optional dependencies/host configuration,
+  reload behavior, local-ref freshness and all remaining limitations prominently.
+  Do not approve or merge from this chat.
+
+## Planning verification and execution handoff
+
+Before implementation: commit this plan, run all six required pre-review lenses
+against the approved spec, fix by class, then run the formal plan document gate with
+the approved spec as its only trusted context. Preserve canonical findings, ledgers,
+attempts and native receipts. Human plan approval and an execution-method choice
+remain required; approval of the spec did not approve this new plan.
+
+Recommended execution: **Native**, because source/store/policy contracts are tightly
+coupled and one implementer can keep their transaction semantics consistent while
+focused tests and fresh final reviews check the integrated branch. Subagent-driven
+execution remains available if the human prefers per-task independent reviews.
+
+Planning references (interface evidence, not application guarantees):
+[MCP 2.3.0 release metadata](https://pypi.org/pypi/mcp/2.3.0/json),
+[Dulwich 1.2.17 release metadata](https://pypi.org/pypi/dulwich/1.2.17/json),
+[Pydantic 2.14.1 release metadata](https://pypi.org/pypi/pydantic/2.14.1/json),
+[SDK in-process testing](https://py.sdk.modelcontextprotocol.io/get-started/testing/),
+[Dulwich Repo API](https://www.dulwich.io/api/dulwich.repo.Repo.html),
+[Codex MCP host example](https://developers.openai.com/cookbook/examples/codex/codex_mcp_agents_sdk/building_consistent_workflows_codex_cli_agents_sdk).
