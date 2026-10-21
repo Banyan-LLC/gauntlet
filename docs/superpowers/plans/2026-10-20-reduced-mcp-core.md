@@ -14,7 +14,7 @@ first, then one authoritative PR round. No earlier review exception is inherited
 
 **Tech Stack:** Python 3.11+, SQLite from the standard library, MCP SDK 2.3.0, Dulwich 1.2.17, Pydantic 2.14.1, existing JSON canonicalization and finding-ID functions, pytest.
 
-**Spec:** `docs/superpowers/specs/2026-10-20-reduced-mcp-core-design.md`, exact approved blob at commit `5c93d6b29d507ace5e7ad901e75a188924204ba2`. Human approval is recorded in `docs/superpowers/reviews/2026-10-20-reduced-mcp-core/spec-approval.json`. Do not edit the approved spec as an implementation shortcut.
+**Spec:** `docs/superpowers/specs/2026-10-20-reduced-mcp-core-design.md`, approved amended blob `f9b94a453e2c6248dd80c3f6d31be8178c7237e4` at commit `efdf3589c26941372e1c8c6a8a450f1ccc82f9e4`. Human approval and the three assurance exceptions are recorded in `docs/superpowers/reviews/2026-10-20-reduced-mcp-core/app-server-approval.json`. Original approval at `5c93d6b29d507ace5e7ad901e75a188924204ba2` and its `spec-approval.json` remain historical evidence. Do not edit the approved spec as an implementation shortcut.
 
 ## Global Constraints
 
@@ -197,7 +197,10 @@ the rollups without silently omitting entries.
 
 **Files:** create repository-level `tests/support/collaborative_process.py`,
 `tests/support/test_collaborative_process.py`, and
-`tests/support/collaborative_worker.py`. This is a test dependency, not a new
+`tests/support/collaborative_worker.py`, and the external command controller
+`tests/support/collaborative_command.py`, which calls the same `run_case` owner,
+preserves its complete/partial outcome and fails every incomplete command.
+This is a test dependency, not a new
 production runner. The legacy Python runner has best-effort Windows termination
 and swallowed drain errors; do not reuse it as proof of this stronger contract or
 change its production behavior in this feature.
@@ -589,7 +592,12 @@ async def test_exact_retry_precedes_stale_version(store, append_event):
 **Interfaces:** `prepare_verdict(history: SeriesView, request: VerdictRequest,
 snapshot: Snapshot)->AcceptedVerdict`, `reduce_series(events: Sequence[Event])->SeriesView`,
 `derive_status(history: SeriesView, observation: RefObservation)->Status`.
-Reuse `gauntlet_review.verdict.recommendation_id` and JCS unchanged. Do not import
+Reuse `gauntlet_review.verdict.recommendation_id` and JCS unchanged. Finding identity
+is the pair `(review_id, finding_id)`: the immutable record and its digest bind the
+review ID, and every lookup/carry-over is scoped to that review. Equal local IDs
+in different reviews are allowed; cross-review records/digests must be rejected.
+Test identical recommendations in two review series and cross-review carry-over.
+Do not import
 legacy `state.py`, broker, runtime or filesystem helpers. The new reference-ledger
 contract differs from legacy text carry-over, so normalize/validate it here rather
 than alter the old schema or filesystem API.
@@ -882,8 +890,11 @@ timeout_seconds: int=600)`; `PeerReply(thread_id: str, turn_id: str, text: str)`
 `SdkConversation` implements Conversation using public Python SDK APIs. Only
 the separate adapter imports the SDK. The core's five operations remain intact.
 
-Each Bridge generates an instance ID. `codex_status` exposes it without native
-work; every review request must echo it before any cache lookup/backend call.
+Each Bridge generates an instance ID. `codex_status` returns that ID, the owned
+thread ID (nullable) and state `ready`, `busy` or `poisoned` without native work;
+test each state transition. Every review request must echo the instance ID before
+any cache lookup/backend call. Cache only prompt SHA-256, never prompt bodies;
+count keys, digests, response bytes and metadata in total logical cache usage.
 The five-tool core's existing budgets remain unchanged. New errors use typed
 BridgeError cause chaining and the amended spec's tagged safe failure schema.
 
@@ -920,6 +931,11 @@ BridgeError cause chaining and the amended spec's tagged safe failure schema.
   reserve stays within the original application deadline. Error/uncertain paths
   poison the conversation; exact failed replay is safe, new turns refuse. No
   automatic retry, filesystem cleanup or model/config selection by clients.
+  Only failures after native work may have started poison the conversation;
+  invalid input, instance/thread mismatch, conflict, BUSY and pre-admission quota
+  refusal leave it usable. Test an explicitly fresh call after ADAPTER_RESTARTED.
+  Cancellation attempts interruption and close within the remaining original
+  deadline, then propagates; test propagation and bounded cleanup independently.
 - [ ] Add `codex` extra with the existing three exact optional pins plus
   `openai-codex==0.163.0`, and `gauntlet-codex` console entry point. Verify wheel
   hash and runtime dependency against the preserved PyPI/source metadata before
@@ -928,7 +944,11 @@ BridgeError cause chaining and the amended spec's tagged safe failure schema.
   reviewer MCP configuration, explicit `ApprovalMode.deny_all` and read-only
   sandbox, one `thread_start`, subsequent `thread.turn` on that object. Consume
   notifications incrementally; count decoded bytes, retain only bounded final
-  message and matching terminal status. Fail on partial/failed/interrupted turn.
+  message and matching terminal status. Require an item-completed agent message
+  belonging to the exact owned thread and active turn; delta/started/partial items
+  cannot supply final text. Test wrong-thread, wrong-turn and partial-message
+  cases, including a matching successful terminal without valid final text.
+  Fail on partial/failed/interrupted turn.
   Interruption/close use the SDK; no custom subprocess/JSON-RPC implementation.
 - [ ] Test real SDK-shaped notifications and intercepted public SDK calls; assert
   configured tuple/role/permissions cannot be overridden, two turns share one
