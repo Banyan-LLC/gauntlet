@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-10-21T14:03:16.6073984Z",
+  "archive_root": "C:/Users/geoff/Documents/Projects/Banyan/gauntlet/.git/info/reduced-mcp-core/20261021-execution",
+  "prior_manifests": [
+    "execution-evidence-task0.json",
+    "execution-evidence-task1.json",
+    "execution-evidence-task2.json",
+    "execution-evidence-task3.json",
+    "execution-evidence-task4.json",
+    "execution-evidence-task5.json"
+  ],
+  "files": [
+    {
+      "path": "index-evidence-v1.ps1",
+      "bytes": 1680,
+      "sha256": "9daaa2f2a9a80c0095255bce230c44d7f5b296394f5543bfeac3284b5da8dfa3"
+    },
+    {
+      "path": "task5-task-done-v1.log",
+      "bytes": 291,
+      "sha256": "ad707344ca8b5a6de835d2ed52a2e745eacc13800e2275556a5de6ad651ef1de"
+    },
+    {
+      "path": "task5-task-done-v1/12cefa5560bc44bdbb986777ae6ddeef-budget.bin",
+      "bytes": 49,
+      "sha256": "8246099cc1fe3553507055c6eb5714d835ad60670cc51d77d14e3b2d15f461b4"
+    },
+    {
+      "path": "task5-task-done-v1/12cefa5560bc44bdbb986777ae6ddeef-receipt.json",
+      "bytes": 1534,
+      "sha256": "272bf2aa075f666f94c1798d335e7e548919aa0ea23897d5e187716e95dcc23c"
+    },
+    {
+      "path": "task6-base-reinstall-v1/acc982951f45455a982eee018a4016b1-budget.bin",
+      "bytes": 49,
+      "sha256": "70d806fd399754d0aefe337f95057bba24b6b4c2a628cff457f847bf45f0df7c"
+    },
+    {
+      "path": "task6-base-reinstall-v1/acc982951f45455a982eee018a4016b1-receipt.json",
+      "bytes": 1542,
+      "sha256": "96f500746afebea67ab1d6660c00c289facfb3b2b9c6d95bf574ad42dd9466c5"
+    },
+    {
+      "path": "task6-base-suite-v1/39203a0f091c472e8c47938d93a20d89-budget.bin",
+      "bytes": 49,
+      "sha256": "9644ab1a11c2c78940600962cca166d7ad727584c9a8a792753c339686c45fd6"
+    },
+    {
+      "path": "task6-base-suite-v1/39203a0f091c472e8c47938d93a20d89-receipt.json",
+      "bytes": 1733,
+      "sha256": "1c8fe5fccb164bd14832c11a2a50ad328c14e89eda17db2e035b8ae7d9641d83"
+    },
+    {
+      "path": "task6-console-help-v1/c00898b6213d4c3db0c8d75e4fcbd017-budget.bin",
+      "bytes": 49,
+      "sha256": "50525f43353951ea7ffc5267de80148d2189e8c285f613ddaf1d4f3a6264c3f3"
+    },
+    {
+      "path": "task6-console-help-v1/c00898b6213d4c3db0c8d75e4fcbd017-receipt.json",
+      "bytes": 2116,
+      "sha256": "d1b63ca2ceb5f9ebee11c7d30745aecb585c6c16752403757021c85fcf40c187"
+    },
+    {
+      "path": "task6-extra-reinstall-v1/1001259d74d344e5a16d72ff6aaa8c41-budget.bin",
+      "bytes": 49,
+      "sha256": "df006dd30b6a877dfc74eeb296872d381f3c7c7e90be41b62d84525eca190049"
+    },
+    {
+      "path": "task6-extra-reinstall-v1/1001259d74d344e5a16d72ff6aaa8c41-receipt.json",
+      "bytes": 1547,
+      "sha256": "e256ef61cd035eb1bdccfb3aade874ab95bd094758a34e52a0e89921f670aa48"
+    },
+    {
+      "path": "task6-full-suite-v1/cd24a7dddfd441249b3a1b098727b84c-budget.bin",
+      "bytes": 49,
+      "sha256": "e016187a66daa0d3c090f33f72f56d711f692bb55666fd9cdba487a5bdba577c"
+    },
+    {
+      "path": "task6-full-suite-v1/cd24a7dddfd441249b3a1b098727b84c-receipt.json",
+      "bytes": 44983,
+      "sha256": "8ee6e9b658a47c6d0f4966685522361048b01e6cd3b7ce4c77f9664ed53ce4dd"
+    },
+    {
+      "path": "task6-green-v1/0d78ef602bed46daa2da35cab33af54a-budget.bin",
+      "bytes": 49,
+      "sha256": "4ff7081301f2c60404ce9c7173d67107f4dd02f252fe0af24ffddcd3d0d0a007"
+    },
+    {
+      "path": "task6-green-v1/0d78ef602bed46daa2da35cab33af54a-receipt.json",
+      "bytes": 1578,
+      "sha256": "570e6275afb85093248601af180decc209ac1afe927749386c387280f28909c3"
+    },
+    {
+      "path": "task6-green-v2/3ba9084c223941e78c0ca9344fe226b5-budget.bin",
+      "bytes": 49,
+      "sha256": "7ce80d70855564298a235673c239cab45cb02959bbc6f87373f8ee31c3defb83"
+    },
+    {
+      "path": "task6-green-v2/3ba9084c223941e78c0ca9344fe226b5-receipt.json",
+      "bytes": 1580,
+      "sha256": "25255395d78aeae75a87f3a16170729aeb87fbb086b486ad21bee4aee33ebf80"
+    },
+    {
+      "path": "task6-red-v1/7de1d59f148e4f3a9233a4e468946a60-budget.bin",
+      "bytes": 49,
+      "sha256": "d1c0f3875a317cddc818d916ebc3cc6b7f304a5f713fb487dac80c40b423742b"
+    },
+    {
+      "path": "task6-red-v1/7de1d59f148e4f3a9233a4e468946a60-receipt.json",
+      "bytes": 2411,
+      "sha256": "21fedaf6934b118a1e634bf2904abb492989317d835c20e02d84752ef49bb8f3"
+    },
+    {
+      "path": "task6-startup-red-v1/3c623cd6a87142a791e30f077ee37198-budget.bin",
+      "bytes": 49,
+      "sha256": "11e06635bfbcd514f746111f72291f6904628ad60cc5d8f1e1227af4f1f9a66e"
+    },
+    {
+      "path": "task6-startup-red-v1/3c623cd6a87142a791e30f077ee37198-receipt.json",
+      "bytes": 2893,
+      "sha256": "06d78c0ff292e1ef54b0a999119b6ddd5bdb06a139be8f833ae548091ba2ad24"
+    }
+  ]
+}

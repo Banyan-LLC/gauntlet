@@ -12,6 +12,9 @@ dependencies = ["jsonschema>=4.0"]
 dev = ["pytest>=7.0"]
 mcp = ["mcp==2.3.0", "dulwich==1.2.17", "pydantic==2.14.1"]
 
+[project.scripts]
+gauntlet-mcp = "gauntlet_review.collaborative.server:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["gauntlet_review*"]

@@ -18,3 +18,15 @@ def test_legacy_import_has_no_optional_startup_side_effects():
 @pytest.mark.skipif(os.environ.get("GAUNTLET_EXPECT_BASE_ONLY") != "1", reason="separate base-only environment")
 def test_base_installation_does_not_resolve_optional_dependencies():
     assert all(importlib.util.find_spec(name) is None for name in ("mcp", "dulwich", "pydantic"))
+
+
+@pytest.mark.skipif(os.environ.get("GAUNTLET_EXPECT_BASE_ONLY") != "1", reason="separate base-only environment")
+def test_missing_extra_startup_is_short_and_has_no_optional_import_side_effects(tmp_path,capsys):
+    from gauntlet_review.collaborative.server import main
+    flags=["--repo",str(tmp_path/"repo"),"--state-dir",str(tmp_path/"state"),"--repository-id","fixture",
+           "--source-ref","refs/heads/topic","--target-ref","refs/heads/main","--participant","author","--role","author"]
+    assert main(flags) == 2
+    captured=capsys.readouterr()
+    assert captured.out == "" and "[mcp]" in captured.err and "Traceback" not in captured.err
+    assert not (tmp_path/"state").exists()
+    assert not any(name in sys.modules for name in ("mcp","dulwich","pydantic"))
