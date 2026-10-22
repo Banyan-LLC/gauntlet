@@ -42,9 +42,11 @@ class SdkConversation:
         self.active=None
         self.thread_id=None
         self.turn_id=None
+        self._stream_close_failure=None
 
     async def run(self,prompt):
         stream=None
+        primary=None
         try:
             if self.client is None:
                 self.client=AsyncCodex(CodexConfig(cwd=str(self.config.operator.repo_path)))
@@ -87,48 +89,73 @@ class SdkConversation:
                         raise BridgeError("INVALID_FINAL_MESSAGE",cause="missing_final")
                     return PeerReply(self.thread_id,self.turn_id,final)
             raise BridgeError("MISSING_TERMINAL",cause="unterminated_stream")
-        except BridgeError as error:
+        except BaseException as original:
+            if isinstance(original,BridgeError):
+                error=original
+            elif isinstance(original,JsonRpcError):
+                error=BridgeError("SDK_FAILURE",cause="rpc")
+            elif isinstance(original,TransportClosedError):
+                error=BridgeError("SDK_FAILURE",cause="transport")
+            elif isinstance(original,UnicodeError):
+                error=BridgeError("INVALID_FINAL_MESSAGE",cause="invalid_final")
+            elif isinstance(original,Exception):
+                error=BridgeError("SDK_FAILURE",cause="sdk")
+            else:
+                # Cancellation and process interrupts remain primary even if
+                # closing the stream also fails.
+                primary=original
+                raise
+            primary=error
             error.thread_id=self.thread_id
             error.turn_id=self.turn_id
-            raise
-        except JsonRpcError as error:
-            raise BridgeError("SDK_FAILURE",cause="rpc",thread_id=self.thread_id,turn_id=self.turn_id) from error
-        except TransportClosedError as error:
-            raise BridgeError("SDK_FAILURE",cause="transport",thread_id=self.thread_id,turn_id=self.turn_id) from error
-        except UnicodeError as error:
-            raise BridgeError("INVALID_FINAL_MESSAGE",cause="invalid_final",thread_id=self.thread_id,turn_id=self.turn_id) from error
-        except Exception as error:
-            raise BridgeError("SDK_FAILURE",cause="sdk",thread_id=self.thread_id,turn_id=self.turn_id) from error
+            if error is original:
+                raise
+            raise error from original
         finally:
             if stream is not None:
-                await stream.aclose()
+                try:
+                    await stream.aclose()
+                except (Exception,asyncio.CancelledError) as cleanup:
+                    failure=BridgeError("CLEANUP_FAILURE",cause="stream_close_failure",
+                        thread_id=self.thread_id,turn_id=self.turn_id)
+                    failure.__cause__=cleanup
+                    self._stream_close_failure=failure
+                    if primary is not None:
+                        if primary.__cause__ is not None:
+                            raise primary from BaseExceptionGroup("SDK turn and stream cleanup failures",
+                                [primary.__cause__,cleanup])
+                        raise primary from cleanup
+                    if isinstance(cleanup,asyncio.CancelledError):
+                        raise
+                    raise failure from cleanup
 
     async def close(self):
         # Interruption has its own short share of the caller's remaining budget;
         # a failed interrupt cannot prevent attempting SDK close. SDK-owned
         # workers may outlive these waits; no process-retirement claim is made.
-        failure=None
+        failures=[] if self._stream_close_failure is None else [self._stream_close_failure]
         if self.active is not None:
             task=asyncio.create_task(self.active.interrupt())
             done,_=await asyncio.wait({task},timeout=1)
             if not done:
                 task.cancel(); task.add_done_callback(_consume)
-                failure=BridgeError("CLEANUP_FAILURE",cause="interrupt_deadline")
+                failures.append(BridgeError("CLEANUP_FAILURE",cause="interrupt_deadline"))
             else:
                 try:
                     task.result()
                 except (Exception,asyncio.CancelledError) as error:
                     failure=BridgeError("CLEANUP_FAILURE",cause="interrupt_failure")
                     failure.__cause__=error
+                    failures.append(failure)
         try:
             if self.client is not None:
                 await self.client.close()
-        except Exception as error:
-            if failure is not None:
-                close_failure=BridgeError("CLEANUP_FAILURE",cause="close_failure")
-                close_failure.__cause__=error
-                raise BridgeError("CLEANUP_FAILURE",cause="close_failure") from ExceptionGroup(
-                    "SDK cleanup failures",[failure,close_failure])
-            raise BridgeError("CLEANUP_FAILURE",cause="close_failure") from error
-        if failure is not None:
-            raise failure
+        except (Exception,asyncio.CancelledError) as error:
+            failure=BridgeError("CLEANUP_FAILURE",cause="close_failure")
+            failure.__cause__=error
+            failures.append(failure)
+        if len(failures)==1:
+            raise failures[0]
+        if failures:
+            raise BridgeError("CLEANUP_FAILURE",cause=failures[-1].cause) from ExceptionGroup(
+                "SDK cleanup failures",failures)

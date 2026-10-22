@@ -409,6 +409,30 @@ Amendment interface references:
 [removed conversation MCP endpoint](https://learn.chatgpt.com/docs/mcp-server),
 [Claude Code programmatic CLI](https://code.claude.com/docs/en/headless).
 
+## 2026-10-22 Human-approved binding clarification
+
+The Human retained the existing bindings after the PR peer disputed their
+interpretation. The complete change-manifest digest in the coverage attestation
+is the snapshot digest defined under Pinned source: its canonical input includes
+the full ordered manifest and the repository/ref/OID/versioned-policy header.
+`open_review` returns that same value as `manifest_digest` and `snapshot_digest`.
+`coverage_digest` must equal that returned value; a separate hash of only the
+manifest rows is not the attestation. Every changed-artifact acknowledgement
+remains required, and this does not strengthen the inspection claim.
+
+Finding identity is the pair `(review_id, local finding_id)`. The local ID retains
+the existing deterministic round/index/content scheme and format. The immutable
+finding record and its digest bind the review ID; every lookup and carry-over is
+scoped to that review. Equal local IDs in separate reviews are allowed. Foreign
+records or digests must be rejected. A review-ID prefix inside the local ID is
+not required. Existing finding IDs, original records, verdicts and dispositions
+remain unchanged; only a later genuine peer disposition can close a finding.
+
+This clarification changes neither runtime bindings nor persisted history and
+adds no assurance exception. The original approved spec blob and both disputed
+peer findings remain preserved. The authorization is recorded in
+`docs/superpowers/reviews/2026-10-20-reduced-mcp-core/binding-clarification-approval.json`.
+
 ## Original interface references (historical)
 
 - [Official Python MCP SDK](https://py.sdk.modelcontextprotocol.io/)

@@ -420,3 +420,61 @@ refused a normal MCP startup timeout before suites began; its zero-output failur
 same-budget passing controls and all later results remain preserved. No timeout or
 policy bound was increased. Exact-head native CI and a later canonical peer verdict
 remain required; all four original finding IDs/digests are retained.
+
+PR peer round 2 produced a genuine canonical request-changes verdict on 1d77a9b:
+the storage and native-custody findings were addressed, both binding disputes
+remained open, and SDK stream cleanup received one new important finding. The
+post-retirement independent verifier refused the round because one required
+`sandbox.py` artifact lacked a read receipt. This is not a passed gate. The full
+seven-turn SDK/vendor originals, actual exit-zero native retirement, five original
+finding records, dispositions, state snapshot, missing-range audit and hashes stay
+preserved. A later review must satisfy the complete reading requirement.
+
+The Human then explicitly approved clarifying the spec to retain the existing
+full-manifest/header digest and scoped local finding IDs. The dated clarification
+and original response are appended without replacing the original approved blob
+or peer findings. The next peer owns their dispositions under that contract.
+
+SDK stream cleanup reproduced 12 failing regressions. An initial test import
+error and an incorrectly declared RED-owner checkpoint are separately retained;
+the corrected predeclared checkpoint confirms all 12 actual failures, original
+exit 1 and native retirement. The fix retains typed primary errors/cancellation,
+preserves underlying causes, and reports stream-close failure through the existing
+structured cleanup result while still attempting interruption and client close.
+All 12 regressions and 19 existing SDK tests pass locally. Full verification,
+exact-head CI and the next canonical peer gate remain pending.
+
+Final local SDK-fix qualification uses 78 unchanged source-file hashes across
+254 core, 98 adapter and 145 legacy tests: 497 pass, with seven unchanged inherited
+or environment legacy skips. The legacy qualification explicitly enables session
+ownership instrumentation. Custody passes 32 probes with three POSIX-only skips;
+the 31 SDK checks also pass on Python 3.13. All qualifying commands preserve their
+original exit-zero and observed native retirement receipts.
+
+The first combined run's adapter suite stalled and was explicitly stopped after
+verifying its owned process identity. Its original owner recorded the nonzero
+result and retired the remaining job under its unchanged deadline; that run did
+not pass. A fresh full adapter run with durable test-name/30-second traceback
+observation passed all 98 tests in 85.36 seconds, without changing source or
+increasing the owner deadline. The stall was not reproduced; no cause is asserted.
+The earlier core/custody passes remain independently qualified rather than being
+rerun to replace history. Ancillary uninstrumented legacy output is also retained.
+
+All six review lenses have no remaining findings. Two lenses initially proposed
+a suspended-finalizer race, then withdrew it after inspecting pinned SDK 0.163.0:
+its stream finalizer closes the subscription synchronously. Both original reports,
+regrades, exact dependency source hash and unused candidate remain preserved.
+No unsupported coordination code or race-test success is claimed.
+
+The new operator checks actual completed public-SDK read receipts after each source
+batch, before a verdict. An omitted distinct artifact ID requires a genuine further
+inspection turn; missing/invalid reads still refuse. The final complete-read
+verifier is unchanged. A future review is admitted with an original 4,200-second
+owner window for the growing retained history and added receipt observations;
+no admitted deadline, native per-turn bound or test bound is extended.
+
+The SDK evidence seal was corrected after its first index included its still-open
+output log. That index/log/draft proof and exact mismatch audit are retained as
+superseded. The second index excludes only its current output log and verifies
+every indexed closed file. The final verification record identifies the current
+index; exact-head CI and a qualified canonical peer gate remain required.

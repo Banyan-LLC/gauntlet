@@ -1097,6 +1097,16 @@ under the existing review history.
 **Files:** preserve/append migration reviews, canonical findings, carry-over,
 ledger and SHA-256 evidence indexes under the existing review history.
 
+**2026-10-22 Human-approved contract clarification:** Retain the complete
+manifest/header snapshot hash and `(review_id, local finding_id)` namespace as
+explicitly clarified in the spec. Preserve both original disputed findings and
+the original approved documents. The subsequent peer must account for all
+original IDs/digests under that clarified contract. Reproduce and fix the separate
+SDK stream-cleanup defect by class, rerun affected/full verification and exact-head
+CI, and validate actual required read receipts before the next canonical verdict.
+The prior round's missing artifact is a retained gate refusal, not an accepted
+review gate. No receipt or inspection requirement is waived.
+
 - [ ] Preserve original approved spec/plan blobs and all reviews. Review the
   amendment against the authorized SDK direction, then the plan against the amended
   spec using all six lenses before formal document gates. Keep original finding
