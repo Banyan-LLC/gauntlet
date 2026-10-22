@@ -86,3 +86,12 @@ def test_committed_correct_fix_produces_original_passing_test_evidence(tmp_path)
     assert report["head_oid"]==fixed.decode() and report["exit_status"]==0
     assert b"Ran 2 tests" in base64.b64decode(report["data_b64"])
     assert b"OK" in base64.b64decode(report["data_b64"])
+
+
+@pytest.mark.anyio
+async def test_incomplete_native_workflow_has_a_typed_missing_evidence_refusal(tmp_path):
+    from collaborative_acceptance import AcceptanceError
+    module=load()
+    with pytest.raises(AcceptanceError) as error:
+        await module.verify_archive(tmp_path,{"completed":True,"tree_retired":True,"root_reaped":True,"exit_code":0})
+    assert error.value.code=="MISSING_WORKFLOW_EVIDENCE"

@@ -197,6 +197,23 @@ then passed. None of
 these results is a real model exchange: live Claude↔Codex acceptance, final review,
 all nine remote platform jobs, base CI and authoritative PR review remain pending.
 
+The first real workflow (`live-attempt-v1`, harness `d23b72a`) reached the native
+Codex model, which attempted the reviewer tools. Native policy refused all four
+calls with "MCP tool call requires approval, but approval policy is never".
+Claude preserved the evidence and stopped without inventing a finding, fix or
+verdict. Native execution itself exited zero with complete retirement; overall
+acceptance failed. The controller's initial missing-file traceback is retained.
+Both full native transcripts, typed SDK history, original test evidence and the
+unchanged canonical core state remain intact.
+
+The verified fix adds a fixed four-tool allow list and per-tool native approval
+to the required reviewer server, retaining read-only sandbox and denied
+escalation. A fixed output allowance prevents the smaller native default from
+truncating bounded core replies. The public SDK configuration regression and a
+typed missing-workflow-evidence regression failed before their fixes; all 83
+adapter/verifier tests then passed. A fresh real attempt is required; the first
+attempt is not counted as full live acceptance.
+
 Six pre-hardening reviews are preserved under `prehardening-d06c1df` in the raw
 execution archive. Their verified findings produced regression tests and fixes
 for common-path receipt validation, filesystem probe errors, known stale ref

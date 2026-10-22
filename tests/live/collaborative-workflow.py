@@ -268,6 +268,17 @@ def worker(archive,claude):
     return 0
 
 
+async def verify_archive(archive,closure):
+    from collaborative_acceptance import AcceptanceError,verify_live
+    required=("operator.json","claude-events.jsonl","peer-history.json","before-run.json","after-run.json")
+    if any(not (archive/name).is_file() for name in required):
+        raise AcceptanceError("MISSING_WORKFLOW_EVIDENCE")
+    value=load_json(archive/"operator.json")
+    events=[json.loads(line) for line in (archive/"claude-events.jsonl").read_text("utf-8").splitlines() if line.strip()]
+    return await verify_live(operator(value),author_events=events,peer_history=load_json(archive/"peer-history.json"),
+        closure=closure,evidence_runs=[load_json(archive/f"{phase}-run.json") for phase in ("before","after")])
+
+
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive",required=True,type=Path)
@@ -294,7 +305,7 @@ def main(argv=None):
         parser.error("absolute installed Claude executable required")
     if os.environ.get("GAUNTLET_TEST_OWNER"):
         parser.error("live controller must run outside its worker owner")
-    from collaborative_acceptance import verify_live
+    from collaborative_acceptance import AcceptanceError
     from gauntlet_review.codex_bridge.server import _require_extra
     _require_extra()
     args.archive.mkdir(mode=0o700,parents=False,exist_ok=False)
@@ -309,9 +320,13 @@ def main(argv=None):
     if not outcome.completed:
         print(json.dumps({"accepted":False,"reason":"INCOMPLETE_NATIVE_WORKFLOW","receipt":str(outcome.receipt_path)}))
         return 1
-    events=[json.loads(line) for line in (args.archive/"claude-events.jsonl").read_text("utf-8").splitlines() if line.strip()]
-    report=asyncio.run(verify_live(operator(value),author_events=events,peer_history=load_json(args.archive/"peer-history.json"),
-        closure=load_json(args.archive/"closure.json"),evidence_runs=[load_json(args.archive/f"{phase}-run.json") for phase in ("before","after")]))
+    try:
+        report=asyncio.run(verify_archive(args.archive,load_json(args.archive/"closure.json")))
+    except AcceptanceError as error:
+        failure={"accepted":False,"code":error.code,"native_completed":outcome.completed,"native_retired":outcome.tree_retired}
+        write_json(args.archive/"acceptance-failure.json",failure)
+        print(json.dumps(failure,separators=(",",":")))
+        return 1
     write_json(args.archive/"acceptance.json",report)
     print(json.dumps(report,separators=(",",":")))
     return 0

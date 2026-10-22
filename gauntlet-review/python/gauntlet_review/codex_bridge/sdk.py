@@ -19,11 +19,18 @@ EVENT_BYTES=8*1024*1024
 
 def reviewer_config(config):
     operator=config.operator
+    tools=["read_review","record_evidence","review_status","submit_review"]
     return {"mcp_servers":{"gauntlet-reviewer":{"command":sys.executable,"args":[
         "-m","gauntlet_review.collaborative","--repo",str(operator.repo_path),
         "--state-dir",str(operator.state_dir),"--repository-id",operator.repository_id,
         "--source-ref",operator.source_ref.decode("utf-8"),"--target-ref",operator.target_ref.decode("utf-8"),
-        "--participant",operator.participant,"--role","reviewer"],"required":True}}}
+        "--participant",operator.participant,"--role","reviewer"],"required":True,
+        "enabled":True,"enabled_tools":tools,"disabled_tools":[],"default_tools_approval_mode":"prompt",
+        # These exact core operations are operator-authorized. This does not
+        # enable shell escalation or approve any other MCP tool. A byte-sized
+        # token allowance avoids the host's smaller default output truncation
+        # for bounded complete core results (serialization allowance is native).
+        "tools":{name:{"approval_mode":"approve","output_token_limit":256*1024} for name in tools}}}}
 
 
 class SdkConversation:

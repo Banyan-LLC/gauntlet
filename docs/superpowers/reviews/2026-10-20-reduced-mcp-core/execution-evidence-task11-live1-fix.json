@@ -1,0 +1,223 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-10-22T00:27:59.5866758Z",
+  "archive_root": "C:/Users/geoff/Documents/Projects/Banyan/gauntlet/.git/info/reduced-mcp-core/20261021-execution",
+  "prior_manifests": [
+    "execution-evidence-migration-plan.json",
+    "execution-evidence-task0.json",
+    "execution-evidence-task1.json",
+    "execution-evidence-task10.json",
+    "execution-evidence-task11-prelive.json",
+    "execution-evidence-task2.json",
+    "execution-evidence-task3.json",
+    "execution-evidence-task4.json",
+    "execution-evidence-task5.json",
+    "execution-evidence-task6.json",
+    "execution-evidence-task7.json",
+    "execution-evidence-task8-finalfix.json",
+    "execution-evidence-task8.json",
+    "execution-evidence-task9.json"
+  ],
+  "files": [
+    {
+      "path": "app-server-migration/live-attempt-v1-console.log",
+      "bytes": 1516,
+      "sha256": "278061f975b856359f442d14f5e65ff1e21139720eac31a557297810831ce648"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1-harness.json",
+      "bytes": 13293,
+      "sha256": "b91f2551a137d8e295db8a06ddb4a2e194213505290bd1f0c89401885992ad54"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/author-prompt.txt",
+      "bytes": 4955,
+      "sha256": "8bbeca45aded2f3f6281132f627266e16386e0e755e15d4ca1dc4b74fe992595"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/before-native/823eb82cb3de4c859512a77625bd1cbe-receipt.json",
+      "bytes": 3232,
+      "sha256": "20401b56d0bcffdf6e6f1722631dfb1cd0cb40de3958b15f93bb3dc898f6c388"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/before-run.json",
+      "bytes": 3736,
+      "sha256": "643afd1cc63fde2a496654e867569dc481cfbb11d86797c8837bf172cb8b3cf4"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/claude-events.jsonl",
+      "bytes": 230693,
+      "sha256": "148028d8ca3364f541d573a80b4b28e8067b1974ced9b14ee54ba053b3a57f19"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/claude-native/020acd29b220420da21b998e403fa607-receipt.json",
+      "bytes": 309772,
+      "sha256": "073b2dba0efe64ae5e4630b26920af65ba11197cf2303ddc24246de55d17a287"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/claude-settings.json",
+      "bytes": 113,
+      "sha256": "90d5d57e854f42df9967cdff49378189b8bd2c348e6f6495d5e64f27ad99f4f1"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/claude-stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/closure.json",
+      "bytes": 2100,
+      "sha256": "b7345b6611f1c20ba04b032fd138e7a6349742688520b0a649598dc43a32fd55"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/fixture/.gitignore",
+      "bytes": 13,
+      "sha256": "32dae3052f331ee34d628ef535709b301259a45df7c7522c4d35dcf49873f00b"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/fixture/discount.py",
+      "bytes": 169,
+      "sha256": "f2878f2ee742e617ba012c6ca0bc4c047e81fe4214410313b9a50f3d5c95bade"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/fixture/README.md",
+      "bytes": 471,
+      "sha256": "fb1f26220554be482850bce11916232578cd4a44a0cb07806e20dc6c32683225"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/fixture/test_discount.py",
+      "bytes": 289,
+      "sha256": "5f40ac6c5e691da4db0d8205fc5b2709dcb4dc533485b7f4bcb2551b23663e1c"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/mcp.json",
+      "bytes": 1800,
+      "sha256": "d01f666ee00ded858596f34830422c68843b30581c8a1ffcf3dea77bec31b2f0"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/native-claude-transcript.jsonl",
+      "bytes": 243342,
+      "sha256": "79c419967086cf52006ac3aab0245e9c583d4c432d7449c1b3a2231b581bc2e4"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/native-versions.json",
+      "bytes": 136,
+      "sha256": "5d0ed4f8347718b1e3c2b9fed4aa3a1461225043fba734ef582c561c795dceb3"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/native/10b1a56b48d04b4184c5d682c7a4e111-budget.bin",
+      "bytes": 49,
+      "sha256": "1c1e395edad0fd0e59174ffe1758238424bfacc7470d420675560f1a293bb518"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/native/10b1a56b48d04b4184c5d682c7a4e111-receipt.json",
+      "bytes": 1796,
+      "sha256": "c58e78379e0630fc969ff01c2fffd021c64583bc75696431c26dceeb891b1ead"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/operator.json",
+      "bytes": 795,
+      "sha256": "dd55e01d1ba509149c5af3684944dcae4d7c1d18e0f16994869e28ad6e65255d"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/peer-history.json",
+      "bytes": 42252,
+      "sha256": "3d6b36d9a5d214440630b85dd34327abef801d182dd0ae6120ee142d035fc00f"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/sdk-runtime.json",
+      "bytes": 236,
+      "sha256": "ba96a878742419b29a6007a049a06b5a83edfe8e0819a8dcfce0c4b9c73b70d9"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/state/collaborative-v1.sqlite3",
+      "bytes": 53248,
+      "sha256": "bbed8ff286e462bbe007e143f445ec408d0a89437fd4b0de3ca40473fd45eb1b"
+    },
+    {
+      "path": "app-server-migration/live-attempt-v1/versions-native/58804f2e59834422a984a3c5a64f45fb-receipt.json",
+      "bytes": 1499,
+      "sha256": "d1ac06748fc03642f64d4feac5846c7fa94ade9288399485071e89376cfb545c"
+    },
+    {
+      "path": "app-server-migration/live-progress-v1.log",
+      "bytes": 275,
+      "sha256": "c5d2b45d2d5b17fe4300ca3f207f51160c375edcda2650263b1c5511d5b28483"
+    },
+    {
+      "path": "app-server-migration/live-progress-v1/c7d95776846f402cbeaff6229046190f-budget.bin",
+      "bytes": 49,
+      "sha256": "2a02799f56f831107e621c6c85684eca5ba989118483af6d08d643a959afec1c"
+    },
+    {
+      "path": "app-server-migration/live-progress-v1/c7d95776846f402cbeaff6229046190f-receipt.json",
+      "bytes": 2108,
+      "sha256": "9933bf5bb7b55254fe5eab8c433018c6927673276a00550205689dad2bbd7589"
+    },
+    {
+      "path": "app-server-migration/openai-mcp-tool-policy-v1.md",
+      "bytes": 26995,
+      "sha256": "c78df8c70b7f31f73557f77ad4208ff97656808fb423e6f4eb81151f8b009284"
+    },
+    {
+      "path": "app-server-migration/task11-native-permission-red-v1.log",
+      "bytes": 1505,
+      "sha256": "24ebfac4418895738721aff9ff0232e12a78f169a733289ae2c2dc0f7f365b87"
+    },
+    {
+      "path": "app-server-migration/task11-native-permission-red-v1/3444f7349cb84646b3583fd37344b87e-budget.bin",
+      "bytes": 49,
+      "sha256": "489e195a3ac3158a653953099b39daf1e07db45915dcc6a09a30180ccbc17694"
+    },
+    {
+      "path": "app-server-migration/task11-native-permission-red-v1/3444f7349cb84646b3583fd37344b87e-receipt.json",
+      "bytes": 3428,
+      "sha256": "6c46760aa6ebfa9f0309eea09209c43ff5a92ffd4b11f1456309434f72bc17ce"
+    },
+    {
+      "path": "app-server-migration/task11-permission-bridge-green-v1.log",
+      "bytes": 439,
+      "sha256": "1926f574208b4b3f71bce11349478aea51d24b553b54be3cc16776c15d8c7293"
+    },
+    {
+      "path": "app-server-migration/task11-permission-bridge-green-v1/0f6a1c38a73e4e12be9e96335797c686-receipt.json",
+      "bytes": 6185,
+      "sha256": "9a3b772fe02ea63a4c5e7bc4a4a21701acc0d814f13c597b72b48d6fbb5ff42c"
+    },
+    {
+      "path": "app-server-migration/task11-permission-bridge-green-v1/1c32100760284e478d8913074cb9c3e5-receipt.json",
+      "bytes": 4186,
+      "sha256": "11c7b1b78e128ae002e1a2471d253837563ec6835b88540f07908ef3b52473ab"
+    },
+    {
+      "path": "app-server-migration/task11-permission-bridge-green-v1/426a3fdd34f843c6a1390dbede5b3d4f-receipt.json",
+      "bytes": 2352,
+      "sha256": "7b9111336e0e47d1eb1ac0e64ac3ccda29c0af71d4920996e8f1f1c45124cd29"
+    },
+    {
+      "path": "app-server-migration/task11-permission-bridge-green-v1/abbf933ca5174ad2bdb7a9bcde59f164-budget.bin",
+      "bytes": 49,
+      "sha256": "179948bb4225c016de07a889165cf9092dedb49bb0c5d1279445bb6725a4503f"
+    },
+    {
+      "path": "app-server-migration/task11-permission-bridge-green-v1/abbf933ca5174ad2bdb7a9bcde59f164-receipt.json",
+      "bytes": 1821,
+      "sha256": "e7ae3b4b7cb1f09a360e2e975cf1c8732a40f6288d6453e0c7b2f445467727e0"
+    },
+    {
+      "path": "app-server-migration/task11-permission-bridge-green-v1/b553bdd2af1a48f390989bf512b0873a-receipt.json",
+      "bytes": 3117,
+      "sha256": "2163aae58b958b8e142418e634b6576ad4ccbad38e4a1a601baaddf9fe1534b3"
+    },
+    {
+      "path": "app-server-migration/task11-permission-bridge-green-v1/c34d005df8fd4042af5a3a1ad77da08a-receipt.json",
+      "bytes": 2320,
+      "sha256": "8270bc25e275353a905e94bcff2427da374cca67e775ba063a19c2971b2513b6"
+    },
+    {
+      "path": "app-server-migration/task11-permission-bridge-green-v1/caeac422f7714fa6891eaa44b6c8300f-receipt.json",
+      "bytes": 1939,
+      "sha256": "c2f60e497909634ec87b28c904f4e0ef8d24e086c1be855a7ceedaac8100a133"
+    }
+  ]
+}

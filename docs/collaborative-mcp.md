@@ -117,6 +117,13 @@ The SDK adapter registers its required reviewer-role core automatically with
 the fixed operator tuple, read-only sandbox and escalation denied. It uses the
 native host's configured model unless the operator supplies `--model` on the
 adapter CLI; MCP clients cannot change that choice or any permissions/paths/refs.
+Its thread-local server configuration allows exactly `read_review`,
+`record_evidence`, `review_status` and `submit_review`, with explicit per-tool
+approval and a 262,144-token output allowance for bounded complete core replies.
+Unknown tools remain outside the allow list. This implements the authorized
+review operations while keeping native escalation denied; global configuration
+and other servers' policies are unchanged. See the official
+[MCP tool policy options](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
 
 For a separately operated Codex host, its user-owned `config.toml` can instead
 register the core reviewer directly:

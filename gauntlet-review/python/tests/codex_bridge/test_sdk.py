@@ -93,6 +93,10 @@ async def test_public_sdk_start_configuration_and_same_thread_are_locked(config,
     assert options["model"] is None and options["cwd"]==str(config.operator.repo_path)
     required=options["config"]["mcp_servers"]["gauntlet-reviewer"]
     assert required["required"] is True and required["command"]==sys.executable
+    assert required["enabled_tools"]==["read_review","record_evidence","review_status","submit_review"]
+    assert required["enabled"] is True and required["disabled_tools"]==[]
+    assert required["default_tools_approval_mode"]=="prompt"
+    assert required["tools"]=={name:{"approval_mode":"approve","output_token_limit":262144} for name in required["enabled_tools"]}
     assert required["args"]==["-m","gauntlet_review.collaborative","--repo",str(config.operator.repo_path),
         "--state-dir",str(config.operator.state_dir),"--repository-id","fixture","--source-ref","refs/heads/topic",
         "--target-ref","refs/heads/main","--participant","peer","--role","reviewer"]
