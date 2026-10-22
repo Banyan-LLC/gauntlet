@@ -185,12 +185,20 @@ the configured host's tool list.
    when requesting that old body. Reconstruct byte pages until `eof=true`, check
    full length/SHA-256, and interpret path fields as base64 raw bytes. Paths that
    differ in case or Unicode normalization remain distinct.
-5. Submit the review using current IDs/version, `coverage_digest` equal to the
-   snapshot digest, every changed-path ID in `coverage`, and exactly one
+5. Submit the review using current IDs/version and set `coverage_digest` to the
+   exact `manifest_digest` returned by `open_review`. This is the snapshot digest:
+   SHA-256 of the canonical full change manifest **and** its repository/ref/OID/policy
+   header, rather than a detached hash of change rows. Include every changed-path
+   ID in `coverage`, and exactly one
    `carryover` entry for **every** prior finding, including nits and previously
    addressed findings. Entries retain the original ID/digest and a disposition
    (`addressed`, `disputed`, `outstanding`) with a bounded reason. Status rollups
    link to the full immutable finding record and its index in the event body.
+   A finding's namespace is the pair `(review_id, id)`. The local ID retains the
+   existing round/index/content scheme; the immutable record and its digest include
+   the review ID. Every request also carries its review binding. Equal local IDs in
+   different reviews therefore do not identify the same finding, and a foreign
+   record or carry-over digest is refused. Never treat a local finding ID as global.
    Coverage is a reviewer attestation, not a proof the model read the bytes.
 6. New non-nit findings normalize approval to `request_changes`. Commit a fix
    outside the service, open a new revision and have the peer review again.

@@ -137,6 +137,32 @@ def main():
         from collaborative_process import OwnedTransport
 
         async def exercise():
+            if scenario=="mcp-teardown-deadline":
+                import collaborative_process as api
+                children=[]
+                initialize=api.NativeChild.__init__
+                def observe_child(self,*args,**kwargs):
+                    initialize(self,*args,**kwargs)
+                    children.append(self)
+                api.NativeChild.__init__=observe_child
+                transport=OwnedTransport([sys.executable,"-c","pass"],cwd=Path(__file__).parent)
+                async with transport as (read,write):
+                    try:
+                        await read.receive()
+                    except anyio.EndOfStream:
+                        pass
+                    while children[0].poll() is None or children[0].active():
+                        await anyio.sleep(.002)
+                    await anyio.sleep(0)
+                    scope=anyio.CancelScope
+                    def expire_teardown(*args,**kwargs):
+                        if kwargs.get("shield") and kwargs.get("deadline")==owner_context()["execution_deadline"]:
+                            kwargs["deadline"]=anyio.current_time()-1
+                            checkpoint("teardown-deadline-injected")
+                        return scope(*args,**kwargs)
+                    anyio.CancelScope=expire_teardown
+                print("continued",flush=True)
+                return
             if scenario.startswith("mcp-fatal-"):
                 import collaborative_process as api
                 failure=scenario.rsplit("-",1)[1]

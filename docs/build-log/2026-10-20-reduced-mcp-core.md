@@ -380,3 +380,43 @@ The successful real Claude↔Codex walkthrough remains bound to its clean
 `0f123b6` harness. These later fixes harden invalid source admission and failure
 paths; they do not constitute a second live walkthrough. Native CI and an
 independently verified exact-head MCP verdict remain required before handoff.
+
+The first authoritative PR #14 MCP round on `ec29d198` completed seven real
+native turns and independently verified all 235 required source artifacts plus
+complete metadata/history/evidence bodies. Its canonical verdict requested
+changes with four original findings; the full public/vendor transcripts, state,
+original IDs/digests and closed hash index remain preserved. This is review
+evidence, not an accepted final handoff.
+
+Two failure classes reproduced and were fixed: eight SQLite cleanup regressions
+first failed, then passed with preserved typed primary/cleanup causes, cancellation
+propagation, typed post-commit uncertainty and exact retry recovery. A real AnyIO
+expired teardown first reported success and allowed continuation; the corrected
+transport requires completed teardown, observed retirement and settled I/O within
+its inherited deadline. That regression and normal transport/sibling controls pass.
+
+Two independent controls verify the already approved identity contracts: coverage
+binds the canonical full manifest and snapshot header, and findings are namespaced
+by `(review_id, local_id)` with review-bound immutable digests. Detached/altered
+coverage hashes and foreign finding records/digests are refused. The operator guide
+now names these values explicitly. No existing IDs, receipt semantics or historical
+verdicts were rewritten; the later peer must weigh every original finding.
+
+The required lens refresh exposed two further instances within the SQLite cleanup
+class before push: startup's separate unguarded rollback, and ambient caller
+exceptions leaking through `sys.exception()`. Ten added cases reproduced those
+failures. Startup now delegates rollback to the shared handler, which tracks only
+an exception actually propagating from its operation. All 18 cleanup regressions
+and both independent binding controls pass. Earlier partial fixes and their
+verification remain preserved as historical evidence.
+
+Final local review-fix qualification passed 485 Python tests on Windows 3.14
+(254 core, 86 adapter/verifier, 145 legacy), with seven explicit inherited/environment
+legacy skips. Custody passed 32 probes with three POSIX-only skips. Python 3.13
+passed all 20 storage/binding cases and three teardown/normal/sibling controls.
+Original suite/command exits were zero and native retirement was verified; all 77
+exercised source-file hashes match the final working bytes. One earlier matrix
+refused a normal MCP startup timeout before suites began; its zero-output failure,
+same-budget passing controls and all later results remain preserved. No timeout or
+policy bound was increased. Exact-head native CI and a later canonical peer verdict
+remain required; all four original finding IDs/digests are retained.

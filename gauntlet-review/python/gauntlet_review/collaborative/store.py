@@ -129,29 +129,24 @@ class Store:
         value._checked_paths()
         with value._connection(create=True) as connection:
             connection.execute("BEGIN IMMEDIATE")
-            try:
-                tables={row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-                if not tables:
-                    if (connection.execute("PRAGMA application_id").fetchone()[0]!=0
-                            or connection.execute("PRAGMA user_version").fetchone()[0]!=0):
-                        raise CoreError("UNSUPPORTED_SCHEMA",detail={"reason":"unrecognized_empty_database"})
-                    for statement in _DDL:
-                        connection.execute(statement)
-                    connection.execute("INSERT INTO meta VALUES(1,0,0)")
-                    connection.execute(f"PRAGMA application_id={_APPLICATION_ID}")
-                    connection.execute("PRAGMA user_version=1")
-                value._schema(connection)
-                checks=connection.execute("PRAGMA integrity_check").fetchall()
-                if len(checks)!=1 or checks[0][0]!="ok":
-                    _corrupt("sqlite_integrity")
-                if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
-                    _corrupt("foreign_key_integrity")
-                value._read_view(connection)
-                connection.execute("COMMIT")
-            except BaseException:
-                if connection.in_transaction:
-                    connection.execute("ROLLBACK")
-                raise
+            tables={row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if not tables:
+                if (connection.execute("PRAGMA application_id").fetchone()[0]!=0
+                        or connection.execute("PRAGMA user_version").fetchone()[0]!=0):
+                    raise CoreError("UNSUPPORTED_SCHEMA",detail={"reason":"unrecognized_empty_database"})
+                for statement in _DDL:
+                    connection.execute(statement)
+                connection.execute("INSERT INTO meta VALUES(1,0,0)")
+                connection.execute(f"PRAGMA application_id={_APPLICATION_ID}")
+                connection.execute("PRAGMA user_version=1")
+            value._schema(connection)
+            checks=connection.execute("PRAGMA integrity_check").fetchall()
+            if len(checks)!=1 or checks[0][0]!="ok":
+                _corrupt("sqlite_integrity")
+            if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
+                _corrupt("foreign_key_integrity")
+            value._read_view(connection)
+            connection.execute("COMMIT")
             if connection.execute("PRAGMA journal_mode=DELETE").fetchone()[0].lower()!="delete":
                 raise CoreError("STORAGE_ERROR",detail={"reason":"journal_mode_unavailable"})
         return value
@@ -202,6 +197,7 @@ class Store:
             raise CoreError("STORAGE_ERROR",detail={"reason":"store_closed"})
         self._checked_paths()
         connection=None
+        primary=None
         try:
             target=str(self.path) if create else self.path.resolve().as_uri()+"?mode=rw"
             connection=sqlite3.connect(target,uri=not create,timeout=2,isolation_level=None)
@@ -216,19 +212,49 @@ class Store:
                 connection.execute("COMMIT")
         except sqlite3.OperationalError as error:
             if "locked" in str(error).lower() or "busy" in str(error).lower():
-                raise CoreError("LOCK_TIMEOUT",True,{"reason":"sqlite_lock_timeout"}) from error
-            raise CoreError("STORAGE_ERROR",detail={"reason":"sqlite_operation_failed"}) from error
+                primary=CoreError("LOCK_TIMEOUT",True,{"reason":"sqlite_lock_timeout"})
+            else:
+                primary=CoreError("STORAGE_ERROR",detail={"reason":"sqlite_operation_failed"})
+            raise primary from error
         except sqlite3.DatabaseError as error:
-            raise CoreError("CORRUPT_STATE",detail={"reason":"sqlite_database_invalid"}) from error
+            primary=CoreError("CORRUPT_STATE",detail={"reason":"sqlite_database_invalid"})
+            raise primary from error
         except OSError as error:
-            raise CoreError("STORAGE_ERROR",True,{"reason":"storage_outcome_uncertain"}) from error
+            primary=CoreError("STORAGE_ERROR",True,{"reason":"storage_outcome_uncertain"})
+            raise primary from error
+        except BaseException as error:
+            primary=error
+            raise
         finally:
             if connection is not None:
+                cleanup=[]
                 try:
                     if connection.in_transaction:
                         connection.execute("ROLLBACK")
-                finally:
+                except BaseException as error:
+                    cleanup.append(error)
+                try:
                     connection.close()
+                except BaseException as error:
+                    cleanup.append(error)
+                if cleanup:
+                    failures=([primary] if primary is not None else [])+cleanup
+                    control=next((error for error in failures if not isinstance(error,Exception)),None)
+                    if control is not None:
+                        # Cancellation/interrupt remains control flow after every
+                        # cleanup action has been attempted. Keep all other causes.
+                        others=[error for error in failures if error is not control]
+                        if control.__cause__ is not None:
+                            others.append(control.__cause__)
+                        if others:
+                            raise control from BaseExceptionGroup("SQLite cleanup failures",others)
+                        raise control
+                    if isinstance(primary,CoreError):
+                        result=CoreError(primary.code,primary.retryable,
+                            {**primary.detail,"cleanup_failed":True},observation=primary.observation)
+                    else:
+                        result=CoreError("STORAGE_ERROR",True,{"reason":"storage_outcome_uncertain"})
+                    raise result from ExceptionGroup("SQLite operation and cleanup failures",failures)
 
     @staticmethod
     def _schema(connection):

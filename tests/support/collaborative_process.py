@@ -1291,9 +1291,10 @@ class OwnedTransport:
                     yield read_receive, write_send
                 finally:
                     closing = True
+                    teardown_observed = False
                     # Teardown consumes the existing absolute execution deadline.
                     # The outer owner retains the cleanup reserve if this fails.
-                    with anyio.CancelScope(shield=True, deadline=deadline):
+                    with anyio.CancelScope(shield=True, deadline=deadline) as cleanup_scope:
                         await write_send.aclose()
                         await read_receive.aclose()
                         while not writer_done.is_set():
@@ -1311,7 +1312,13 @@ class OwnedTransport:
                         outcome.readers_settled = True
                         if outcome.exit_code != 0 or not outcome.tree_retired:
                             raise RuntimeError("MCP peer exit/retirement incomplete")
+                        teardown_observed = True
                         group.cancel_scope.cancel()
+                    if (not teardown_observed or cleanup_scope.cancel_called
+                            or cleanup_scope.cancelled_caught or time.monotonic() >= deadline
+                            or not (outcome.root_reaped and outcome.tree_retired
+                                    and outcome.readers_settled and outcome.writer_settled)):
+                        fail("teardown",TimeoutError("MCP teardown did not complete within its inherited deadline"))
             protocol_finished = True
         except BaseException as exception:
             fail("transport", exception)

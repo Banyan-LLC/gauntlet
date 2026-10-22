@@ -326,6 +326,16 @@ class ProcessContract(unittest.TestCase):
         self.assertTrue(result.ownership_inventory["pending_sessions"])
 
     @unittest.skipUnless(importlib.util.find_spec("mcp"), "optional SDK not installed")
+    def test_cancelled_transport_teardown_cannot_record_success_or_continue(self):
+        result=self.case("mcp-teardown-deadline",seconds=10)
+        self.assertIn(b"teardown-deadline-injected",result.control.prefix)
+        self.assert_failure(result)
+        self.assertNotIn(b"continued",result.stdout.prefix)
+        self.assertTrue(result.root_reaped and result.tree_retired,result)
+        receipts=[json.loads(p.read_text("utf-8")) for p in self.evidence.glob("*-receipt.json")]
+        self.assertTrue(any(not item["fresh_owner"] and not item["completed"] for item in receipts))
+
+    @unittest.skipUnless(importlib.util.find_spec("mcp"), "optional SDK not installed")
     def test_sdk_transport_roundtrip_and_normal_shutdown(self):
         result = self.case("mcp-roundtrip", seconds=10)
         self.assertTrue(result.completed, result)
