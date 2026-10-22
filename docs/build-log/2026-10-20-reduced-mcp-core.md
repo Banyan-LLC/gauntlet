@@ -157,6 +157,46 @@ remain explicitly disputed pending Human disposition. No clean formal verdict,
 SDK implementation, native handshake or live workflow is claimed yet. PR creation
 remains held.
 
+That preceding paragraph is the preserved pre-approval checkpoint. The Human
+subsequently approved the amended spec/plan and all three stated assurance
+exceptions; the exact answer and finding IDs are committed in
+`app-server-approval.json`. Canonical spec request-changes verdicts remain intact
+and are not relabelled as approvals. Amended plan rounds 3–7 preserve every
+finding; round 7 approved with no recommendations. One failed attempt caused by
+a relative output path also remains preserved, including its full advisory.
+
+SDK implementation is now committed. Its 54 initial model-free cases and the
+complete 423-test Python run passed. Native qualification added actual packaged
+runtime handshake, required reviewer MCP discovery, real adapter stdio, scoped
+SDK cancellation and externally owned expiry. Current local qualification:
+
+| Environment | Measured result |
+| --- | --- |
+| Windows Python 3.14 | 225 core, 57 initial adapter, 145 legacy tests passed; seven explicit inherited/environment skips. |
+| Windows Python 3.14 after known-ID fix | All 58 adapter cases passed, including actual native cases. |
+| Windows Python 3.13 after known-ID fix | 225 core, 58 adapter, 145 legacy tests passed; seven explicit inherited/environment skips. |
+| Native custody on both optional environments | 29 passed; two explicit POSIX-only skips. Real SDK expiry observed readiness and complete retirement. |
+| Base-only Python 3.14 | 148 passed; four explicit inherited/environment skips; optional packages remain absent. |
+| Existing MCP-only Python 3.13 before SDK installation | 11 passed; three base-only skips; SDK absence explicitly verified. |
+
+Every successful command above retained original zero exits and full native
+tree-retirement receipts. The strengthened SDK-scope cancellation probe was
+verified separately on both runtimes; the earlier weaker waiter-cancellation
+probe is retained and is not used for that claim. New identifier regressions
+failed before status/refusals began exposing known SDK thread/turn IDs. The
+unchanged PowerShell result remains 40 files and 7,281 assertions passed.
+
+Both native auth preflights passed without credential copying. The live verifier
+has 19 model-free cases for complete actual read receipts, request-digest binding,
+canonical finding closure, exact retries, malformed input and restart recovery.
+Five live-driver cases verify opt-in, clean committed fixture setup, original
+declared failing/passing-test evidence and refusal of altered regression tests.
+The pre-live checkpoint passed 450 tests with seven explicit skips; the subsequent
+fixture-integrity regression failed before its guard and all five driver cases
+then passed. None of
+these results is a real model exchange: live Claude↔Codex acceptance, final review,
+all nine remote platform jobs, base CI and authoritative PR review remain pending.
+
 Six pre-hardening reviews are preserved under `prehardening-d06c1df` in the raw
 execution archive. Their verified findings produced regression tests and fixes
 for common-path receipt validation, filesystem probe errors, known stale ref

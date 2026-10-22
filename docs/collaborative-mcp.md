@@ -3,8 +3,10 @@
 The optional `collaborative-v1` service keeps pinned Git snapshots, immutable
 findings, evidence and retry receipts in SQLite. Claude Code, Codex or another
 local MCP host owns its conversations, credentials, model permissions and process
-lifetime. Gauntlet exposes only local stdio tools. It launches no shell, Git,
-model, CI job or network listener, and performs no publication, approval or merge.
+lifetime. The five-tool review core launches no shell, Git, model, CI job or
+network listener. A separate optional conversation adapter delegates local
+app-server lifecycle to the official Python Codex SDK. Neither component performs
+publication, approval or merge.
 
 `peer_complete` means a current peer verdict closes the outstanding non-nit
 findings and the configured local refs still match. It does not certify CI,
@@ -29,6 +31,15 @@ python3 -m venv "$HOME/.local/share/gauntlet/mcp-venv"
 The optional direct pins are `mcp==2.3.0`, `dulwich==1.2.17` and
 `pydantic==2.14.1`. Startup checks those exact versions. Base installation
 requires none of them; existing commands retain their behavior.
+
+For the Claude↔Codex conversation adapter, install `gauntlet-review[codex]` in
+that same venv instead. This extra includes the three core pins plus
+`openai-codex==0.163.0`, whose dependency pins
+`openai-codex-cli-bin==0.163.0`. Startup checks both exact versions and uses the
+SDK's packaged runtime. The Python SDK is stable; its underlying app-server
+command remains experimental. Native Codex and Claude authentication must
+already be configured in their own user stores. No credential copying or global
+host-configuration rewrite is required.
 
 Create one **existing, private, local state directory outside both the reviewed
 checkout and its common Git directory**. Do not use legacy review state. Avoid
@@ -88,16 +99,27 @@ Claude Code can read a user-owned JSON configuration supplied with
 ```json
 {
   "mcpServers": {
-    "gauntlet-author": {
+    "gauntlet_author": {
       "type": "stdio",
       "command": "C:/Users/YOU/AppData/Local/Gauntlet/mcp-venv/Scripts/python.exe",
       "args": ["-m", "gauntlet_review.collaborative", "--repo", "C:/work/project", "--state-dir", "C:/Users/YOU/AppData/Local/Gauntlet/state/project-review", "--repository-id", "project", "--source-ref", "refs/heads/feature", "--target-ref", "refs/heads/main", "--participant", "claude-author", "--role", "author"]
+    },
+    "codex_peer": {
+      "type": "stdio",
+      "command": "C:/Users/YOU/AppData/Local/Gauntlet/mcp-venv/Scripts/python.exe",
+      "args": ["-m", "gauntlet_review.codex_bridge", "--repo", "C:/work/project", "--state-dir", "C:/Users/YOU/AppData/Local/Gauntlet/state/project-review", "--repository-id", "project", "--source-ref", "refs/heads/feature", "--target-ref", "refs/heads/main", "--participant", "codex-reviewer", "--timeout-seconds", "600"]
     }
   }
 }
 ```
 
-Codex's user-owned `config.toml` can register the reviewer:
+The SDK adapter registers its required reviewer-role core automatically with
+the fixed operator tuple, read-only sandbox and escalation denied. It uses the
+native host's configured model unless the operator supplies `--model` on the
+adapter CLI; MCP clients cannot change that choice or any permissions/paths/refs.
+
+For a separately operated Codex host, its user-owned `config.toml` can instead
+register the core reviewer directly:
 
 ```toml
 [mcp_servers.gauntlet-reviewer]
@@ -121,7 +143,7 @@ and [Claude Code stdio configuration](https://code.claude.com/docs/en/mcp).
 | `submit_review` | reviewer | Validate coverage, complete prior-finding ledger and peer verdict. |
 | `review_status` | both | Check current objects/local refs and derive current peer status. |
 
-Every call has one strict outer `request` object. Requests cannot select another
+Every core call has one strict outer `request` object. Requests cannot select another
 identity, role, repository, state path or ref. Discover exact input schemas from
 the configured host's tool list.
 
@@ -169,39 +191,79 @@ content under that key conflicts. For a new operation, fetch current status and
 use a new key/version. Cancellation before COMMIT leaves no accepted event;
 response loss after COMMIT may require exact-key recovery.
 
-## Native conversation walkthrough: remaining acceptance
+## Native conversation through the Python SDK
 
-The Human has directed replacement through the official Python Codex SDK/app
-server. The [spec amendment](superpowers/specs/2026-10-20-reduced-mcp-core-design.md#host-integration-amendment-python-sdk-and-app-server)
-and [plan](superpowers/plans/2026-10-20-reduced-mcp-core.md#task-9-sdk-conversation-adapter-and-locked-configuration)
-describe the proposed adapter and mandatory real finding/fix/closure proof.
-Implementation and live acceptance remain pending; the following capability record
-is preserved historical evidence, not instructions to restore the removed endpoint.
+Claude calls the separate adapter's `codex_status` with `{}` to obtain a fresh
+`instance_id`, nullable owned `thread_id`, and `ready`, `busy` or `poisoned` state.
+This does not start a model turn. Its `codex_review` arguments are direct fields,
+without the core's outer `request` wrapper:
 
-The approved design referenced Claude hosting the official Codex MCP server,
-calling its `codex` tool for the review and `codex-reply` for a later fix/closure.
-That endpoint is **absent from both available Codex binaries**, PATH version
-0.160.1 and the plan-review binary 0.163.0-alpha.10.2: each capability probe
-`codex help mcp-server` returned exit 2. Claude Code 2.1.282 is installed.
-OpenAI now documents the [Codex MCP-server removal](https://learn.chatgpt.com/docs/mcp-server)
-and marks the [referenced recipe deprecated](https://developers.openai.com/cookbook/examples/codex/codex_mcp_agents_sdk/building_consistent_workflows_codex_cli_agents_sdk).
+```json
+{"instance_id":"RETURNED_INSTANCE_ID","key":"initial-peer","prompt":"Review the exact pinned review/revision/snapshot; read every manifest, source-tree, history and byte page before submitting a genuine verdict.","expected_thread_id":null}
+```
 
-Consequently, no live Claude-to-Codex conversation pass is claimed. The historical
-additional Claude host entry was `"codex": {"type":"stdio", "command":
-"/absolute/path/to/codex", "args":["mcp-server"]}`; **do not add it to current
-Codex installations**. A host exposing that old protocol would own the native
-session identifier returned by `codex`, continue that same conversation through
-`codex-reply`, and have its reviewer call `gauntlet-reviewer` using the IDs and
-complete byte-reading flow above. Conversation success itself would still not
-record or imply peer completion.
+Supply the actual pinned IDs in the prompt. A successful reply contains
+`thread_id`, `turn_id` and the complete final text; it has no `peer_complete`
+field. Read the peer's canonical finding event bodies through the core. Commit a
+verified fix, open the next core revision, record current evidence, then call
+`codex_review` with a new key, the same instance and the returned thread ID as
+`expected_thread_id`. The peer must reread complete source/history/evidence and
+account for every original finding ID/digest. Check fresh core `review_status`
+after the peer submits its verdict.
 
-A replacement conversation integration using a current native interface needs
-its own host configuration and live validation. Keep that lifecycle outside this
-core. Until then, the operator may coordinate separate native-host conversations
-using the shared review IDs. The deterministic integration test uses two real SDK
-stdio connections, a blocker/fix/closure, restart and retained bytes; it is
-model-free protocol evidence, not a live Claude/Codex model walkthrough or legacy
-hermetic certification. The build log records the remaining acceptance item.
+Exact retry returns the stored response unchanged, even after later turns.
+Changing any field under that key conflicts. One call can be active; others
+receive `BUSY`. Per process: 20 keys, 64 KiB UTF-8 prompt, 128 KiB final text,
+256 KiB complete serialized MCP result, 4 MiB logical retry cache, and 8 MiB
+cumulative decoded SDK events per turn. Retry capacity is reserved before native
+work, and complete results are checked before return. No source, response or
+history is silently truncated.
+
+The operator's `--timeout-seconds` defaults to 600 and accepts 10–1800, with five
+seconds reserved for interruption/close inside that deadline. Native failures,
+deadline expiry, lost/invalid terminal state or cancellation poison the
+conversation; no automatic model retry occurs. Safe errors include fixed code,
+cause category, correlation ID, known thread/turn IDs, uncertainty, unusable
+partial marker and structured cleanup outcome. Cancellation propagates after
+cleanup. Pre-admission argument, ownership, conflict, busy and quota refusals
+leave the conversation usable.
+
+After a process restart, an old instance returns `ADAPTER_RESTARTED`, including
+for a lost first reply. Stop; never silently substitute the new instance and
+replay. An explicitly fresh conversation must reread the existing core series,
+every history page, prior finding body and referenced source/evidence bytes.
+Restart never resets findings or counters and never automatically resumes a
+saved thread. Native conversation history remains in native user storage.
+
+SDK close bounds application waits; it does **not** certify native thread or
+process-tree retirement. Logical quotas do not certify physical SDK/parser
+memory, decompression or OS blocking. Existing native host configuration is
+trusted; this collaborative route is not legacy hermetic isolation. These and
+finite review-budget exhaustion are the three recorded
+[Human-approved assurance exceptions](superpowers/reviews/2026-10-20-reduced-mcp-core/app-server-approval.json).
+The required real workflow and native closure evidence remain separate gates.
+
+The explicit live acceptance command, run from an external terminal with a new
+absolute archive whose parent already exists, is:
+
+```sh
+/absolute/venv/bin/python tests/live/collaborative-workflow.py --live --archive /absolute/new-live-archive --claude /absolute/path/to/claude
+```
+
+It uses a disposable committed repository, temporary host settings, existing
+native auth and one externally owned deadline. A real Claude author obtains a
+real Codex finding, commits the fix and continues the same peer thread. The
+independent verifier requires actual complete-read receipts, original test
+exits/bytes, canonical finding continuity and fresh completion after native
+processes retire. Model-free fixtures cannot pass this live gate. Live execution
+is still pending at this documentation checkpoint; see the build log for the
+measured outcome. No PR is published until the live workflow passes.
+
+The removed native `mcp-server` endpoint and its failed capability probes remain
+in preserved history. Do not restore or downgrade to it. Current references:
+[Python SDK](https://learn.chatgpt.com/docs/codex-sdk),
+[app server](https://learn.chatgpt.com/docs/app-server), and
+[Claude programmatic CLI](https://code.claude.com/docs/en/headless).
 
 ## Limits and state operations
 
@@ -233,7 +295,7 @@ existing boundaries; this opt-in service activates none of those helpers.
 
 ## Verification
 
-Install `.[mcp,dev]` in a separate test venv and run the repository's external
+Install `.[codex,dev]` in a separate test venv and run the repository's external
 Python controller from an unowned terminal, supplying a new absolute receipts
 directory and the full tested commit:
 
@@ -241,8 +303,9 @@ directory and the full tested commit:
 /absolute/venv/bin/python tests/run-collaborative-matrix.py --receipts /absolute/new-evidence --source-revision FULL_40_HEX_COMMIT
 ```
 
-The controller first runs native process-custody probes, then collaborative and
-legacy suites with bounded owners. It preserves original exits, exact output
+The controller first runs native process-custody probes, then core, SDK-adapter
+and legacy suites with bounded owners. Native handshake/discovery makes no model
+request. It preserves original exits, exact output
 prefixes, dependencies and source hashes, and rejects incomplete capture or
 retirement. A separate venv installed only with `.[dev]` uses `--base-only`.
 The workflow tests Linux, Windows and macOS at Python 3.11, 3.14 and 3.15, plus
