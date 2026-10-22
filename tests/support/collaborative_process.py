@@ -389,6 +389,7 @@ class NativeChild:
         self.registered_groups=set()
         self.retired_groups=set()
         self.pending_sessions=set()
+        self.observed_groups=set()
         if os.name == "nt":
             info = PROCESS_INFORMATION()
             startup = STARTUPINFO()
@@ -524,14 +525,20 @@ class NativeChild:
                    _terminate_process(self.process, 74))
         else:
             failures=[]
-            targets=({self.group}|self.registered_groups)-self.retired_groups if self.fresh else {self.pid}
+            targets=set()
+            if self.fresh:
+                for pid in self.members():
+                    try:
+                        targets.add(os.getpgid(pid))
+                    except ProcessLookupError:
+                        pass
+                self.observed_groups.update(targets)
+            else:
+                targets.add(self.pid)
             for target in targets:
                 try:
                     if self.fresh:
-                        if self.members(group=target):
-                            os.killpg(target,signal.SIGKILL)
-                        else:
-                            self.retired_groups.add(target)
+                        os.killpg(target,signal.SIGKILL)
                     else:
                         os.kill(target,signal.SIGKILL)
                 except ProcessLookupError:
@@ -626,31 +633,42 @@ class NativeChild:
             return info.prefix[4]
         raise RuntimeError("unsupported process ancestry platform")
 
-    def members(self,group=None):
+    def members(self,session=None):
         if os.name == "posix":
-            if group is None:
+            if session is None:
                 result=set()
                 for current in ({self.group}|self.registered_groups)-self.retired_groups:
-                    found=self.members(group=current)
+                    # A native child may create another group without leaving
+                    # the owned session (Codex MCP does exactly this). Session
+                    # inventory survives both that group change and root exit.
+                    found=self.members(session=current)
                     if not found:
                         self.retired_groups.add(current)
                     result.update(found)
                 return result
             if sys.platform == "darwin":
-                # Apple's libproc.h: proc_listpgrppids returns an int PID count.
+                # Apple's libproc.h: proc_listallpids returns an int PID count.
                 # https://github.com/apple-oss-distributions/xnu/blob/main/libsyscall/wrappers/libproc/libproc.h
                 library = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
-                enumerate_group = library.proc_listpgrppids
-                enumerate_group.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_int]
-                enumerate_group.restype = ctypes.c_int
+                enumerate_all = library.proc_listallpids
+                enumerate_all.argtypes = [ctypes.c_void_p, ctypes.c_int]
+                enumerate_all.restype = ctypes.c_int
                 buffer = (ctypes.c_int * 65536)()
                 ctypes.set_errno(0)
-                count = enumerate_group(group, buffer, ctypes.sizeof(buffer))
+                count = enumerate_all(buffer, ctypes.sizeof(buffer))
                 if count < 0 or (count == 0 and ctypes.get_errno()):
-                    raise OSError(ctypes.get_errno(), "process-group inventory unavailable")
+                    raise OSError(ctypes.get_errno(), "process-session inventory unavailable")
                 if count >= len(buffer):
-                    raise RuntimeError("process-group inventory exceeds limit")
-                return {pid for pid in buffer[:count] if pid > 0}
+                    raise RuntimeError("process-session inventory exceeds limit")
+                members=set()
+                for pid in buffer[:count]:
+                    if pid>0:
+                        try:
+                            if os.getsid(pid)==session:
+                                members.add(pid)
+                        except ProcessLookupError:
+                            pass
+                return members
             if not sys.platform.startswith("linux"):
                 raise RuntimeError("unsupported process-group inventory platform")
             members = set()
@@ -663,7 +681,7 @@ class NativeChild:
                     if not entry.name.isdecimal():
                         continue
                     try:
-                        if os.getpgid(int(entry.name)) == group:
+                        if os.getsid(int(entry.name)) == session:
                             members.add(int(entry.name))
                     except ProcessLookupError:
                         pass
@@ -780,7 +798,6 @@ def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
                              expected_exit=asdict(expected))
     identity = uuid.uuid4().hex
     directory = environment.get("GAUNTLET_TEST_RECEIPTS", str(Path.cwd() / ".superpowers" / "process-receipts"))
-    Path(directory).mkdir(parents=True, exist_ok=True)
     nested = bool(os.environ.get(OWNER_ENV))
     context = None
     child = None
@@ -803,6 +820,7 @@ def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
         return item
 
     try:
+        Path(directory).mkdir(parents=True, exist_ok=True)
         if not argv or any(not isinstance(arg, str) or "\0" in arg for arg in argv):
             raise ValueError("nonempty native argument vector required")
         if not math.isfinite(deadline_seconds) or deadline_seconds <= 0:
@@ -1003,9 +1021,10 @@ def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
                 if child.pending_sessions:
                     outcome.tree_retired=False
                     error("session-registration",RuntimeError("new session launch has unconfirmed custody"),cleanup=True)
-                if child.registered_groups or child.pending_sessions:
+                if child.registered_groups or child.pending_sessions or child.observed_groups:
                     outcome.ownership_inventory={"registered_groups":sorted(child.registered_groups),
-                        "retired_groups":sorted(child.retired_groups),"pending_sessions":sorted(child.pending_sessions)}
+                        "retired_groups":sorted(child.retired_groups),"pending_sessions":sorted(child.pending_sessions),
+                        "observed_groups":sorted(child.observed_groups)}
                 # Drain EOF only after retirement; no buffered stream is closed
                 # under a live reader or writer.
                 while time.monotonic() < outcome.deadline and not all(

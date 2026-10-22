@@ -11,6 +11,8 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import signal
+import time
 import unittest
 from unittest import mock
 
@@ -228,6 +230,25 @@ class ProcessContract(unittest.TestCase):
         self.assertNotIn(b"continued", result.stdout.prefix)
         self.assertTrue(result.tree_retired)
 
+    def test_nested_receipt_directory_failure_cannot_continue(self):
+        result=self.case("nested-mkdir-failure")
+        self.assert_failure(result)
+        self.assertNotIn(b"continued",result.stdout.prefix)
+        self.assertIn(b"FileExistsError",result.stderr.prefix)
+        self.assertTrue(result.root_reaped and result.tree_retired)
+
+    def test_receipt_directory_failure_retains_structured_outcome(self):
+        blocked=self.evidence/"not-directory"
+        blocked.write_bytes(b"original")
+        environment=dict(os.environ,GAUNTLET_TEST_RECEIPTS=str(blocked))
+        environment.pop("GAUNTLET_TEST_OWNER",None)
+        with self.assertRaises(self.api.CommandFailure) as caught:
+            self.api.run_case([],cwd=HERE,environment=environment,deadline_seconds=2)
+        result=caught.exception.outcome
+        self.assertFalse(result.started or result.completed)
+        self.assertTrue(any(error.exception_type=="FileExistsError" for error in result.errors))
+        self.assertEqual(blocked.read_bytes(),b"original")
+
     def test_nested_context_cannot_be_replaced_or_start_a_fresh_owner(self):
         for scenario in ("nested-fresh-session", "nested-context-mismatch"):
             with self.subTest(scenario=scenario):
@@ -262,6 +283,32 @@ class ProcessContract(unittest.TestCase):
         self.assert_failure(result)
         self.assertTrue(result.timed_out and result.root_reaped and result.tree_retired,result)
         self.assertIn(b"sdk-ready",result.stdout.prefix)
+
+    @unittest.skipUnless(os.name=="posix","native changed-group custody is POSIX")
+    def test_native_changed_group_is_retired_after_root_and_pipes_close(self):
+        result=self.case("changed-group",seconds=4)
+        records=[json.loads(line) for line in result.control.prefix.splitlines()]
+        record=next(item for item in records if item["checkpoint"]=="changed-group-ready")
+        try:
+            self.assertNotEqual(record["group"],record["session"])
+            self.assert_failure(result)
+            self.assertTrue(result.root_reaped and result.tree_retired,result)
+            self.assertIn(record["group"],result.ownership_inventory["observed_groups"])
+            for pid in record["pids"]:
+                while time.monotonic()<result.deadline:
+                    try:
+                        os.kill(pid,0)
+                    except ProcessLookupError:
+                        break
+                    time.sleep(.005)
+                with self.assertRaises(ProcessLookupError):
+                    os.kill(pid,0)
+        finally:
+            # A RED regression must not abandon the deliberately escaped group.
+            try:
+                os.killpg(record["group"],signal.SIGKILL)
+            except ProcessLookupError:
+                pass
 
     @unittest.skipUnless(os.name=="posix","legacy separate-session custody is POSIX; Windows uses the enclosing job")
     def test_outer_expiry_retires_legacy_sut_separate_session_and_descendant(self):

@@ -266,3 +266,52 @@ observations, unsupported empty database versions, independent cleanup, fatal
 diagnostic handling and POSIX process custody. The POSIX launch handshake and
 legacy-session registration require native CI; Windows results do not certify
 them. Earlier failed test attempts remain preserved beside the passing runs.
+## Final implementation review and verification (2026-10-21)
+
+A fresh whole-branch reviewer and all six Gauntlet hardening lenses inspected
+`ca0ff39..92ee959`. The whole-branch reviewer reported no actionable findings;
+the resource and typed-error lenses found three defects, all reproduced before
+their fixes. Original reports, failed runs and subsequent results are retained.
+
+- **[P1] Native POSIX groups:** the test owner inventoried only its original
+  process group and explicitly registered legacy groups. The pinned native
+  runtime creates a new group for reviewer MCP. A real Linux regression with
+  closed inherited pipes reproduced a false successful retirement receipt. The
+  owner now inventories its entire owned session and registered legacy sessions,
+  terminates their observed groups and verifies disappearance. The regression
+  independently checks both the changed-group child and its grandchild.
+- **[P2] SDK cleanup causes:** simultaneous interrupt and close failures lost
+  the interruption cause. Typed aggregation now preserves both original cause
+  chains while retaining the fixed safe external error schema.
+- **[P2] Receipt setup:** receipt-directory creation preceded guarded failure
+  handling, so a nested caller could catch the raw error and continue. Setup now
+  produces the structured outcome and enforces nested termination even when
+  receipt persistence itself is unavailable.
+
+Post-fix Windows Python3.14 matrix: **225 core,84 adapter/verifier and145 legacy
+tests passed**, with seven explicit inherited/environment legacy skips. All
+three suite owners recorded original exit0 and complete native retirement.
+The external custody controller passed31 probes, with three POSIX-only skips.
+Python3.13's complete SDK-message suite passed18 tests with exit0 and retirement.
+Working source hashes bind these results independently of their parent92ee959.
+
+Supplemental Linux-container verification passed28 custody probes with six
+explicit optional-package skips, including the changed-group child/grandchild
+and legacy-session cases. Evidence was generated on the container's native
+filesystem and exported afterward. An earlier run using Windows bind-mounted
+receipt files and an omitted package search path failed; its complete records
+remain intact. Container evidence does not replace native Linux/macOS CI.
+
+The real Windows Claude↔Codex success remains bound to its clean0f123b6 harness.
+These changes repair cleanup-failure diagnostics and test-only custody; the
+successful conversation path was unchanged. No second model run is claimed.
+
+The verified legacy local gate refused the complete92ee959 packet before any
+model attempt: **2,190,162 characters exceeds its fixed1,048,576 limit**. No
+source/history was omitted or truncated, and no earlier prerequisite exception
+was inherited. The full native refusal and reconstruction metadata are retained;
+the reconstructed packet hash is explicitly distinguished from the child
+wrapper's actual character count. A proposed replacement with collaborative MCP
+local/PR-head gates is awaiting explicit Human authorization. Publication, the
+nine native CI jobs plus base-only job, and authoritative PR-head review remain
+pending. No approval or merge has been performed.

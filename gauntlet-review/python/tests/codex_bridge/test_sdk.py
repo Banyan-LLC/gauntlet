@@ -174,3 +174,22 @@ async def test_sdk_typed_causes_are_chained_without_leaking_native_messages(conf
     result=await bridge.call({"instance_id":bridge.instance_id,"key":"first","prompt":"review","expected_thread_id":None})
     assert result["error"]["cause"]==cause and "private-sdk-detail" not in json.dumps(result)
     assert native.closed
+
+
+async def test_interrupt_and_close_failures_both_retain_typed_causes(config,monkeypatch):
+    peer,native=conversation(config,monkeypatch,[message()])
+    with pytest.raises(BridgeError):
+        await peer.run("review")
+    interrupt_error=JsonRpcError(-1,"private-interrupt")
+    close_error=TransportClosedError("private-close")
+    async def failed_interrupt():
+        raise interrupt_error
+    native.handles[0].interrupt=failed_interrupt
+    native.close_failure=close_error
+    with pytest.raises(BridgeError) as caught:
+        await peer.close()
+    assert native.closed
+    combined=caught.value.__cause__
+    assert isinstance(combined,ExceptionGroup)
+    assert [item.cause for item in combined.exceptions]==["interrupt_failure","close_failure"]
+    assert [item.__cause__ for item in combined.exceptions]==[interrupt_error,close_error]

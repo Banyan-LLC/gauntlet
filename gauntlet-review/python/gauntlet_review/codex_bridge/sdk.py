@@ -123,6 +123,11 @@ class SdkConversation:
             if self.client is not None:
                 await self.client.close()
         except Exception as error:
+            if failure is not None:
+                close_failure=BridgeError("CLEANUP_FAILURE",cause="close_failure")
+                close_failure.__cause__=error
+                raise BridgeError("CLEANUP_FAILURE",cause="close_failure") from ExceptionGroup(
+                    "SDK cleanup failures",[failure,close_failure])
             raise BridgeError("CLEANUP_FAILURE",cause="close_failure") from error
         if failure is not None:
             raise failure

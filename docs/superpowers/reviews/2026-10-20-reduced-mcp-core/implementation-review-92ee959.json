@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "review_base": "ca0ff39c8dbae4b9cd998c9a2dcf3ca0a952a688",
+  "review_head": "92ee959d87291447854235ce8447d4bb1efe13a7",
+  "whole_branch_reviewer": "gpt-6-astra",
+  "hardening_lenses": 6,
+  "reports": [
+    {
+      "path": "app-server-migration/final-conformance-92ee959.md",
+      "bytes": 588,
+      "sha256": "bdb62978e0d5a1b12c7c97e15ab87f92803589b29cd351d099c32cdacf20ecc5"
+    },
+    {
+      "path": "app-server-migration/final-errors-92ee959.md",
+      "bytes": 1247,
+      "sha256": "9fdd61d0c48696c345507218f52220996796e0e39c9c54c9cde8b4671c4d16c2"
+    },
+    {
+      "path": "app-server-migration/final-failclosed-92ee959.md",
+      "bytes": 342,
+      "sha256": "9632dd72c151fb33451eba47ad94e2af025ff27c09797a4825236bcd9ae5f59f"
+    },
+    {
+      "path": "app-server-migration/final-parity-92ee959.md",
+      "bytes": 360,
+      "sha256": "a50b3b4367eff98154d1ba7297a2867234aeca56e69a17fed7798f4a3ddcb01b"
+    },
+    {
+      "path": "app-server-migration/final-paths-92ee959.md",
+      "bytes": 398,
+      "sha256": "2c92a52e647efce59486c00e2b23f80a3a75b488ea6a7f01466e75e495818138"
+    },
+    {
+      "path": "app-server-migration/final-resources-92ee959.md",
+      "bytes": 1551,
+      "sha256": "68b3ff1670a7bc3fba3d6f2325a1af571c229ab48d80ac4ed9af5e36d16860dd"
+    },
+    {
+      "path": "app-server-migration/final-whole-branch-92ee959.md",
+      "bytes": 3356,
+      "sha256": "d146b21d826872564fb15c5b81c13fa184afd658e1df7bb702201ba126af5934"
+    }
+  ],
+  "findings": [
+    {
+      "priority": "P1",
+      "location": "tests/support/collaborative_process.py:633",
+      "issue": "POSIX native-created groups could escape inventory and produce false tree-retirement receipts",
+      "status": "addressed",
+      "regression": "test_native_changed_group_is_retired_after_root_and_pipes_close",
+      "red": "session-linux-red-v1.log",
+      "green": "session-full-linux-v2.log"
+    },
+    {
+      "priority": "P2",
+      "location": "gauntlet-review/python/gauntlet_review/codex_bridge/sdk.py:125",
+      "issue": "Simultaneous interruption and SDK close failures discarded the interruption cause",
+      "status": "addressed",
+      "regression": "test_interrupt_and_close_failures_both_retain_typed_causes",
+      "red": "cleanup-double-red-v1.log",
+      "green": "cleanup-double-green-v1.log"
+    },
+    {
+      "priority": "P2",
+      "location": "tests/support/collaborative_process.py:783",
+      "issue": "Pre-guard receipt-directory failure escaped structured fatal handling and permitted nested continuation",
+      "status": "addressed",
+      "regression": [
+        "test_nested_receipt_directory_failure_cannot_continue",
+        "test_receipt_directory_failure_retains_structured_outcome"
+      ],
+      "red": "setup-red-v1.log",
+      "green": "task12-final-matrix314-v1/custody-results.json"
+    }
+  ],
+  "verification": {
+    "windows314": {
+      "core": 225,
+      "adapter": 84,
+      "legacy": 145,
+      "legacy_skipped": 7,
+      "custody": 31,
+      "custody_posix_skipped": 3,
+      "all_suite_exits": 0,
+      "all_suite_trees_retired": true,
+      "archive": "app-server-migration/task12-final-matrix314-v1"
+    },
+    "sdk313": {
+      "passed": 18,
+      "receipt": "app-server-migration/task12-sdk313-native-v1/7720b39e7afb42e8af98a072803346b0-receipt.json"
+    },
+    "linux_container": {
+      "passed": 28,
+      "optional_package_skips": 6,
+      "archive": "app-server-migration/session-full-linux-probes-v2",
+      "native_ci_substitute": false
+    },
+    "source_hashes": "app-server-migration/task12-review-fix-source-v1.json"
+  },
+  "deferred_minors": [],
+  "legacy_local_gate": {
+    "status": "preflight_refused",
+    "wrapper_exit": 10,
+    "reported_characters": 2190162,
+    "fixed_character_limit": 1048576,
+    "model_attempt_ran": false,
+    "receipt": "app-server-migration/local-preflight-native-v1/128aaa9a864f4edda76d8e5639ee31e3-receipt.json",
+    "metadata_clarification": "app-server-migration/local-packet-refusal-v2.json"
+  },
+  "remaining": [
+    "Human authorization for replacement review route or exact legacy-gate exception",
+    "Required local review gate",
+    "Ready PR main publication",
+    "Nine native CI jobs and base-only job",
+    "Authoritative exact-head PR gate"
+  ],
+  "approval_or_merge_performed": false
+}

@@ -12,6 +12,16 @@ import time
 def main():
     from collaborative_process import ExpectedExit, checkpoint, owner_context, run_case
     scenario = sys.argv[1]
+    if scenario=="nested-mkdir-failure":
+        blocked=Path(os.environ["GAUNTLET_TEST_RECEIPTS"])/"blocked-receipts"
+        with blocked.open("xb") as stream:
+            stream.write(b"not a directory")
+        try:
+            run_case([],cwd=Path(__file__).parent,
+                environment=dict(os.environ,GAUNTLET_TEST_RECEIPTS=str(blocked)),deadline_seconds=5)
+        except BaseException:
+            print("continued",flush=True)
+        return
     if scenario=="nested-save-failure":
         import collaborative_process as api
         def broken(*args):
@@ -52,6 +62,20 @@ def main():
         os.close(0)
         checkpoint("stdin-closed")
         time.sleep(0.2)
+    elif scenario == "changed-group":
+        # Codex's native MCP launcher uses a new group in the same session.
+        # Close every inherited pipe so EOF cannot accidentally detect it.
+        pids=Path(os.environ["GAUNTLET_TEST_RECEIPTS"])/"changed-group-pids.json"
+        child=subprocess.Popen([sys.executable,"-c",
+            "import subprocess,sys,time; child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(120)']); "
+            "open(sys.argv[1],'x').write(str(child.pid)); time.sleep(120)",str(pids)],
+            process_group=0,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        while not pids.exists():
+            if time.monotonic()>=owner_context()["execution_deadline"]:
+                raise TimeoutError("changed-group descendant did not start")
+            time.sleep(.005)
+        checkpoint("changed-group-ready",pids=[child.pid,int(pids.read_text())],
+            group=os.getpgid(child.pid),session=os.getsid(child.pid))
     elif scenario=="legacy-session-expiry":
         from collaborative_legacy import track_sessions
         from gauntlet_review.bounded import run_bounded
