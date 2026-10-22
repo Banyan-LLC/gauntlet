@@ -70,11 +70,25 @@ def test_exact_pages_validate_whole_blob_on_every_read(git_fixture,cfg):
         assert first.data == b"a"*65536 and not first.eof
         assert last.data == b"b"*17 and last.eof
         assert first.digest == last.digest == hashlib.sha256(body).hexdigest()
-        loose=cfg.repo_path / ".git" / "objects" / change.new_oid[:2] / change.new_oid[2:]
-        loose.write_bytes(zlib.compress(b"blob 65553\0"+b"a"*65536+b"c"*17))
+        git_fixture.corrupt_loose_object(change.new_oid,zlib.compress(b"blob 65553\0"+b"a"*65536+b"c"*17))
         with pytest.raises(CoreError) as error:
             source.read_blob(change.new_oid,0,10,change.new_digest)
         assert error.value.code == "DIGEST_MISMATCH"
+
+
+def test_corruption_fixture_restores_read_only_loose_object_mode(git_fixture,cfg):
+    import stat
+    git_fixture.pair({}, {b"file":(0o100644,b"original")})
+    with source_type()(cfg) as source:
+        change=source.capture(Policy()).changes[0]
+        path=cfg.repo_path/".git"/"objects"/change.new_oid[:2]/change.new_oid[2:]
+        path.chmod(0o444)
+        before=stat.S_IMODE(path.stat().st_mode)
+        git_fixture.corrupt_loose_object(change.new_oid,zlib.compress(b"blob 5\0other"))
+        assert stat.S_IMODE(path.stat().st_mode)==before
+        with pytest.raises(CoreError) as caught:
+            source.read_blob(change.new_oid,0,64,change.new_digest)
+        assert caught.value.code=="DIGEST_MISMATCH"
 
 
 def test_missing_pinned_blob_never_falls_back_to_worktree(git_fixture,cfg):
@@ -105,7 +119,7 @@ def test_unchanged_referenced_blob_is_validated_at_admission_and_freshness(git_f
         if failure=="missing":
             path.unlink()
         else:
-            path.write_bytes(zlib.compress(b"blob 5\0other"))
+            git_fixture.corrupt_loose_object(oid,zlib.compress(b"blob 5\0other"))
         with pytest.raises(CoreError) as caught:
             source.capture(Policy()) if phase=="capture" else source.check_snapshot(snapshot)
         assert caught.value.code==code

@@ -71,16 +71,32 @@ async def test_payload_quota_reservation_is_atomic_and_preserves_prior_history(s
 
 
 @pytest.mark.anyio
-async def test_database_lock_is_a_bounded_retryable_failure(store,append_event):
+async def test_database_lock_is_a_bounded_retryable_failure(store,append_event,monkeypatch):
     import time
+    real_connect=sqlite3.connect
+    configured=[]; busy=[]; attempts=[]
+    class ObservedConnection(sqlite3.Connection):
+        def execute(self,sql,*args):
+            if sql=="BEGIN IMMEDIATE":
+                attempts.append(sql)
+                busy.append(super().execute("PRAGMA busy_timeout").fetchone()[0])
+            return super().execute(sql,*args)
+    def slow_connect(*args,**kwargs):
+        configured.append(kwargs.get("timeout"))
+        # Connection setup / scheduler delay is outside SQLite's busy handler.
+        time.sleep(1.25)
+        return real_connect(*args,factory=ObservedConnection,**kwargs)
     with sqlite3.connect(store.path,isolation_level=None) as blocker:
         blocker.execute("BEGIN IMMEDIATE")
-        started=time.monotonic()
         try:
-            with pytest.raises(CoreError) as error:
-                await append_event(store)
+            with monkeypatch.context() as patch:
+                patch.setattr(sqlite3,"connect",slow_connect)
+                with pytest.raises(CoreError) as error:
+                    await append_event(store)
             assert error.value.code == "LOCK_TIMEOUT" and error.value.retryable
-            assert time.monotonic()-started < 3
+            assert configured==[2] and busy==[2000] and attempts==["BEGIN IMMEDIATE"]
+            # Check the logical wait and absence of retries directly. Scheduler
+            # and connection/OS setup are not a certified wall-clock deadline.
         finally:
             blocker.execute("ROLLBACK")
     assert store.version() == 0 and store.read_series() is None

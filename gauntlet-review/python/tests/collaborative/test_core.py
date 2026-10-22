@@ -101,7 +101,7 @@ async def test_unavailable_unchanged_context_cannot_leave_peer_complete(flow,fai
     if failure=="missing":
         path.unlink()
     else:
-        path.write_bytes(zlib.compress(b"blob 5\0other"))
+        flow.writer.corrupt_loose_object(oid,zlib.compress(b"blob 5\0other"))
     response=await flow.reviewer.review_status({})
     assert_error(response,code)
     assert response["freshness"]=={"state":"unknown"}

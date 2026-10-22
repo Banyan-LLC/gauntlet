@@ -78,6 +78,16 @@ class GitFixture:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
 
+    def corrupt_loose_object(self, oid, data):
+        import stat
+        target=self.config.repo_path/".git"/"objects"/oid[:2]/oid[2:]
+        original=stat.S_IMODE(target.stat().st_mode)
+        target.chmod(original|stat.S_IWUSR)
+        try:
+            target.write_bytes(data)
+        finally:
+            target.chmod(original)
+
     def pair(self, old, new):
         base = self.commit(old)
         head = self.commit(new, parents=[base])
