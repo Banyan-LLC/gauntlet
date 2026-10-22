@@ -1,0 +1,218 @@
+{
+  "schema_version": 1,
+  "source_head": "3bc5fa9c8825c49a655773cea82a1e393ec040ae",
+  "canonical_status": "changes_requested",
+  "qualified_complete_read_gate": true,
+  "required_source_artifacts": 243,
+  "review_id": "a403d262abcd45b5940e0d4f55958523",
+  "revision_id": "37913bde5ece4f16847b103a8aec80d4",
+  "snapshot_digest": "6c37198a72d7ebf7efacab6f9f1f1197256a06ca93e1ea5048b42d3bd6107ede",
+  "thread_id": "01a164d0-110e-7370-9d7b-b8ef333fe00e",
+  "turn_ids": [
+    "01a164d0-1e2c-7493-b23e-e4fa9649c9f7",
+    "01a164e0-047f-7790-8f4f-0d015bd5e5d5",
+    "01a164e7-cf9e-7401-8bd4-41d367a8bfa5",
+    "01a164ef-6569-7b03-895a-c3ba81f02fde",
+    "01a164f7-61ef-7d93-9aef-93bacc656758",
+    "01a16502-5b71-7930-8a8c-e9a426877270",
+    "01a16507-edb0-7bc0-9705-c09c17c23428"
+  ],
+  "verdict_event_id": "5efa930cf8934319b9256c0ef4d26b82",
+  "original_findings": [
+    {
+      "record": {
+        "severity": "important",
+        "location": "gauntlet-review/python/gauntlet_review/collaborative/policy.py:26",
+        "issue": "The verdict accepts the snapshot digest as coverage_digest, and open_review labels that same header-and-manifest digest as manifest_digest. The approved attestation requires the exact complete change-manifest digest; docs/collaborative-mcp.md:188-189 teaches the same wrong value.",
+        "suggestion": "Compute and expose a distinct digest of the complete ordered change manifest, validate coverage_digest against it, and correct the guide and protocol tests.",
+        "id": "r2-5faf990621240ce2fe9b09161bf984e1",
+        "review_id": "a403d262abcd45b5940e0d4f55958523",
+        "revision_id": "c56297edd48d476da931da257d2aa260",
+        "round": 2,
+        "index": 0
+      },
+      "digest": "1251329395b01f7a3f88f045049aba5b649121119ec13badc7ea3c12f5958b5d",
+      "disposition": "addressed",
+      "event_id": "424be810cb3344fabcb3ee07f1e59f76",
+      "snapshot_digest": "0e1db9a916c94ee07383acda83c25deee88f2db160e27b6557bd564e0da5f040"
+    },
+    {
+      "record": {
+        "severity": "important",
+        "location": "gauntlet-review/python/gauntlet_review/collaborative/policy.py:53-55",
+        "issue": "recommendation_id receives only round, index and finding content. Identical findings in different review series therefore get the same ID, contrary to the required review-ID namespace; the legacy helper confirms no review ID is mixed into its hash.",
+        "suggestion": "Include the review ID in deterministic ID derivation and validation while preserving the bounded ID shape; test identical findings in separate series.",
+        "id": "r2-34493f4d8fb121bd8127199f8cc5be0d",
+        "review_id": "a403d262abcd45b5940e0d4f55958523",
+        "revision_id": "c56297edd48d476da931da257d2aa260",
+        "round": 2,
+        "index": 1
+      },
+      "digest": "f777db5c4cbdea83cdfd74a53fec0a9904983d8907d0c734b29288a4a52f743c",
+      "disposition": "addressed",
+      "event_id": "424be810cb3344fabcb3ee07f1e59f76",
+      "snapshot_digest": "0e1db9a916c94ee07383acda83c25deee88f2db160e27b6557bd564e0da5f040"
+    },
+    {
+      "record": {
+        "severity": "important",
+        "location": "gauntlet-review/python/gauntlet_review/collaborative/store.py:225-231",
+        "issue": "Rollback or connection.close errors in the _connection finally block escape outside its typed SQLite handlers and can replace the initiating failure. After a committed write, a close failure becomes the core's generic INTERNAL_ERROR rather than a structured uncertain storage outcome.",
+        "suggestion": "Handle cleanup failures as typed storage errors, preserve the primary cause and committed-or-uncertain state, and cover rollback and close failures around commits.",
+        "id": "r2-dfbac36ce12e527a9400371979b45ee7",
+        "review_id": "a403d262abcd45b5940e0d4f55958523",
+        "revision_id": "c56297edd48d476da931da257d2aa260",
+        "round": 2,
+        "index": 2
+      },
+      "digest": "8e46cda1084e8635d12cc3ef6a3b1d60e598c323d5ff882ffe862448810fde11",
+      "disposition": "addressed",
+      "event_id": "424be810cb3344fabcb3ee07f1e59f76",
+      "snapshot_digest": "0e1db9a916c94ee07383acda83c25deee88f2db160e27b6557bd564e0da5f040"
+    },
+    {
+      "record": {
+        "severity": "important",
+        "location": "tests/support/collaborative_process.py:1296-1332",
+        "issue": "The shielded AnyIO deadline scope can suppress its own cancellation during transport teardown. Execution then reaches protocol_finished and writes completed=true without requiring observed root reaping, tree retirement, and settled readers/writer. This can produce an internally inconsistent native custody receipt.",
+        "suggestion": "Check whether teardown scope was cancelled and derive completed only from the observed retirement and I/O flags; persist a failed partial receipt on deadline.",
+        "id": "r2-3c0a08cedf832c8481420c9e840dafee",
+        "review_id": "a403d262abcd45b5940e0d4f55958523",
+        "revision_id": "c56297edd48d476da931da257d2aa260",
+        "round": 2,
+        "index": 3
+      },
+      "digest": "5533d789bce00a67bb32239b3b6ff1ecdc61751a5d3df77120048c79630491ea",
+      "disposition": "addressed",
+      "event_id": "424be810cb3344fabcb3ee07f1e59f76",
+      "snapshot_digest": "0e1db9a916c94ee07383acda83c25deee88f2db160e27b6557bd564e0da5f040"
+    },
+    {
+      "record": {
+        "severity": "important",
+        "location": "gauntlet-review/python/gauntlet_review/codex_bridge/sdk.py:102",
+        "issue": "An exception from stream.aclose() in the finally block replaces an earlier typed turn failure, such as INVALID_FINAL_MESSAGE or LIMIT_EXCEEDED. Bridge.call then reports generic SDK_FAILURE and loses the primary cause and cleanup classification.",
+        "suggestion": "Capture stream-close failure separately, preserve and chain the primary BridgeError, and report cleanup failure through the structured outcome without exposing partial text.",
+        "id": "r3-dddeb1eca8704c4129a5118c5d27eb69",
+        "review_id": "a403d262abcd45b5940e0d4f55958523",
+        "revision_id": "0a0d6ee1164b497bbf9ad7df36ecfc78",
+        "round": 3,
+        "index": 0
+      },
+      "digest": "10e6e8527f58294f17091a096e06242d57e9040f0c6f5421eaf04001251e6d46",
+      "disposition": "addressed",
+      "event_id": "3b046d37e7114dd0a8827f9b560c2c47",
+      "snapshot_digest": "83245ff539df9081cb958c3dce3f4478d68867cad545440e4eb075a16ef3c811"
+    },
+    {
+      "record": {
+        "severity": "important",
+        "location": "gauntlet-review/python/gauntlet_review/codex_bridge/sdk.py:83-90,132-151",
+        "issue": "run() clears self.active on a matching terminal before checking its status or final message. Failed terminals and missing finals therefore poison the bridge, but close() skips native interrupt. A stream.aclose() failure after a successful terminal follows the same path. Cleanup can report success despite no interruption attempt.",
+        "suggestion": "Retain the active turn handle until terminal validation and stream closure succeed, or explicitly interrupt on these failure paths. Assert interruption and structured cleanup results for failed terminal, missing final, and stream-close failure.",
+        "id": "r4-cfcd23705e4546fc92baa1d33383598c",
+        "review_id": "a403d262abcd45b5940e0d4f55958523",
+        "revision_id": "37913bde5ece4f16847b103a8aec80d4",
+        "round": 4,
+        "index": 0
+      },
+      "digest": "a9cc7986d044dbbd19c557c37751552513f167ba9c5ace1b7a615093fc5e9b31",
+      "disposition": "outstanding",
+      "event_id": "5efa930cf8934319b9256c0ef4d26b82",
+      "snapshot_digest": "6c37198a72d7ebf7efacab6f9f1f1197256a06ca93e1ea5048b42d3bd6107ede"
+    },
+    {
+      "record": {
+        "severity": "important",
+        "location": "tests/support/collaborative_process.py:139-143,793-835,963-978,1130-1140",
+        "issue": "The native test owner checks only the outer deadline at admission. run_case() and OwnedTransport can launch children after the inherited execution_deadline, during the reserved cleanup interval. run_case() also accepts root exit and EOF before checking that cutoff, so a fast late child can receive a completed receipt.",
+        "suggestion": "Refuse new nested launches after execution_deadline and check the cutoff before accepting run_case completion. Add boundary probes for both run_case and OwnedTransport so the cleanup reserve cannot admit new native work.",
+        "id": "r4-615dc77501bc7f83da1ab836810e32df",
+        "review_id": "a403d262abcd45b5940e0d4f55958523",
+        "revision_id": "37913bde5ece4f16847b103a8aec80d4",
+        "round": 4,
+        "index": 1
+      },
+      "digest": "cc6f54079c4ae1b4c7bba077b36f27fddeafbacb20684b319819ba0fbbd9e4e1",
+      "disposition": "outstanding",
+      "event_id": "5efa930cf8934319b9256c0ef4d26b82",
+      "snapshot_digest": "6c37198a72d7ebf7efacab6f9f1f1197256a06ca93e1ea5048b42d3bd6107ede"
+    }
+  ],
+  "peer_carryover": [
+    {
+      "digest": "1251329395b01f7a3f88f045049aba5b649121119ec13badc7ea3c12f5958b5d",
+      "id": "r2-5faf990621240ce2fe9b09161bf984e1",
+      "reason": "Human binding clarification confirms coverage_digest is the snapshot digest including header and manifest; the implementation enforces this binding.",
+      "status": "addressed"
+    },
+    {
+      "digest": "f777db5c4cbdea83cdfd74a53fec0a9904983d8907d0c734b29288a4a52f743c",
+      "id": "r2-34493f4d8fb121bd8127199f8cc5be0d",
+      "reason": "Human binding clarification defines identity as (review_id, local finding_id); review-scoped lookup and record digests satisfy it.",
+      "status": "addressed"
+    },
+    {
+      "digest": "8e46cda1084e8635d12cc3ef6a3b1d60e598c323d5ff882ffe862448810fde11",
+      "id": "r2-dfbac36ce12e527a9400371979b45ee7",
+      "reason": "store._connection now preserves the typed primary failure and accounts for rollback and close failures.",
+      "status": "addressed"
+    },
+    {
+      "digest": "5533d789bce00a67bb32239b3b6ff1ecdc61751a5d3df77120048c79630491ea",
+      "id": "r2-3c0a08cedf832c8481420c9e840dafee",
+      "reason": "The external native owner now requires observed root reaping and group or job retirement before a completed custody receipt.",
+      "status": "addressed"
+    },
+    {
+      "digest": "10e6e8527f58294f17091a096e06242d57e9040f0c6f5421eaf04001251e6d46",
+      "id": "r3-dddeb1eca8704c4129a5118c5d27eb69",
+      "reason": "SDK stream-close failures now preserve the earlier typed cause and appear in structured cleanup failure results.",
+      "status": "addressed"
+    }
+  ],
+  "new_recommendations": [
+    {
+      "digest": "a9cc7986d044dbbd19c557c37751552513f167ba9c5ace1b7a615093fc5e9b31",
+      "record": {
+        "id": "r4-cfcd23705e4546fc92baa1d33383598c",
+        "index": 0,
+        "issue": "run() clears self.active on a matching terminal before checking its status or final message. Failed terminals and missing finals therefore poison the bridge, but close() skips native interrupt. A stream.aclose() failure after a successful terminal follows the same path. Cleanup can report success despite no interruption attempt.",
+        "location": "gauntlet-review/python/gauntlet_review/codex_bridge/sdk.py:83-90,132-151",
+        "review_id": "a403d262abcd45b5940e0d4f55958523",
+        "revision_id": "37913bde5ece4f16847b103a8aec80d4",
+        "round": 4,
+        "severity": "important",
+        "suggestion": "Retain the active turn handle until terminal validation and stream closure succeed, or explicitly interrupt on these failure paths. Assert interruption and structured cleanup results for failed terminal, missing final, and stream-close failure."
+      }
+    },
+    {
+      "digest": "cc6f54079c4ae1b4c7bba077b36f27fddeafbacb20684b319819ba0fbbd9e4e1",
+      "record": {
+        "id": "r4-615dc77501bc7f83da1ab836810e32df",
+        "index": 1,
+        "issue": "The native test owner checks only the outer deadline at admission. run_case() and OwnedTransport can launch children after the inherited execution_deadline, during the reserved cleanup interval. run_case() also accepts root exit and EOF before checking that cutoff, so a fast late child can receive a completed receipt.",
+        "location": "tests/support/collaborative_process.py:139-143,793-835,963-978,1130-1140",
+        "review_id": "a403d262abcd45b5940e0d4f55958523",
+        "revision_id": "37913bde5ece4f16847b103a8aec80d4",
+        "round": 4,
+        "severity": "important",
+        "suggestion": "Refuse new nested launches after execution_deadline and check the cutoff before accepting run_case completion. Add boundary probes for both run_case and OwnedTransport so the cleanup reserve cannot admit new native work."
+      }
+    }
+  ],
+  "counts": {
+    "findings": 7,
+    "unresolved_non_nits": 2,
+    "verdicts": 4,
+    "revisions": 6,
+    "evidence_bytes": 684328,
+    "evidence_records": 6
+  },
+  "native_owner": "Actual original exit0 and confirmed native retirement; no deadline extension.",
+  "closed_evidence_index": {
+    "path": "C:\\Users\\geoff\\Documents\\Projects\\Banyan\\gauntlet\\.git\\info\\reduced-mcp-core\\20261021-execution\\app-server-migration\\collaborative-pr14-03\\closed-files.json",
+    "sha256": "6d43a97173784e30631d045198baeece2a0045846490aa2748a5d1eed04e8e7d"
+  },
+  "remaining": "Two genuine important findings require fixes, verification, exact-head native CI and a later complete-read peer gate. No GitHub approval or merge."
+}

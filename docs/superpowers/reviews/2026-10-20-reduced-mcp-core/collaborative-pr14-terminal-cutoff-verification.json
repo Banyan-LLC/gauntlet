@@ -1,0 +1,200 @@
+{
+  "schema_version": 1,
+  "parent_head": "3bc5fa9c8825c49a655773cea82a1e393ec040ae",
+  "source_file_sha256": {
+    "gauntlet-review/python/gauntlet_review/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "gauntlet-review/python/gauntlet_review/bounded.py": "aa27355cdfe3d7b540218ada545a64ee28edb7dcabdec37a9f44b9aada878b7b",
+    "gauntlet-review/python/gauntlet_review/broker.py": "c4d26803e6c25ddbed80da0dec7ff5eb52705989ab58c0ae25a6aa6ea66225a4",
+    "gauntlet-review/python/gauntlet_review/codex_bridge/__init__.py": "8dc7e0c139fe18da5d481d7d9444c39fd6079b992925314309f1152c330279ae",
+    "gauntlet-review/python/gauntlet_review/codex_bridge/__main__.py": "540fd0a5992ca535482a9d44b2e268ce3a39bb47a0576f301214afa5ef4494b9",
+    "gauntlet-review/python/gauntlet_review/codex_bridge/engine.py": "fa89c7a94d0abaae0e4528f3b54dcdda93f9de832cfa2f3701f88e119e42ed32",
+    "gauntlet-review/python/gauntlet_review/codex_bridge/sdk.py": "0d8c9de0034816cd29ae6758f3c95a68e3099a1f0a356dc99583f3c37fe0732f",
+    "gauntlet-review/python/gauntlet_review/codex_bridge/server.py": "fd992e5710acd136d2e16177b550fad074d1d8800e82b6428d67a2825f025de5",
+    "gauntlet-review/python/gauntlet_review/collaborative/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "gauntlet-review/python/gauntlet_review/collaborative/__main__.py": "540fd0a5992ca535482a9d44b2e268ce3a39bb47a0576f301214afa5ef4494b9",
+    "gauntlet-review/python/gauntlet_review/collaborative/contracts.py": "01eb8c1b26873b16ac5637f1e4807c03fa76a449dcc4592c5cfbf60ff061e800",
+    "gauntlet-review/python/gauntlet_review/collaborative/core.py": "04d16d416a6e3c5a375de522e008803c2388da60e2a68603fd785356f661766f",
+    "gauntlet-review/python/gauntlet_review/collaborative/policy.py": "4013ebc9ee2dcf79050b9fc00db426bffc0fcacefb50177c5842c09f020eb278",
+    "gauntlet-review/python/gauntlet_review/collaborative/server.py": "08dd79dd882b4e805739985d369292aa94700c3c02aff0154be4f70a3e46d623",
+    "gauntlet-review/python/gauntlet_review/collaborative/source.py": "dcdc9bb8aea969936146e027ab24e258402864cf4580ca494f0ec94d1587225e",
+    "gauntlet-review/python/gauntlet_review/collaborative/store.py": "43c63cc0d1292169b2bf7b506c59a4637fbd7cf6d70dbeb511008d6b0f7a4cb1",
+    "gauntlet-review/python/gauntlet_review/features.py": "043b3c3012e71182b3a7feb8756b3fc8f688595f0630fda7dce872cb5d5fcca4",
+    "gauntlet-review/python/gauntlet_review/jcs.py": "603da1683ec11f8ecd7d958106fb1d2554c61715bcf9002d3730d0bb48b94747",
+    "gauntlet-review/python/gauntlet_review/lease.py": "e8fd39aa31650d4afadc71f0265f92cfe22d3a02dbe3958af2c643b87290a046",
+    "gauntlet-review/python/gauntlet_review/runconfig.py": "da58ebf6bb15ccc004027dd27a82a616f9b6615a4c1e901dcf45cc7ceb0c877d",
+    "gauntlet-review/python/gauntlet_review/runtime.py": "821820081ed7606d79ed523c76495671e3940f04c077d091ebded334b40867f1",
+    "gauntlet-review/python/gauntlet_review/sandbox.py": "44b9102d8dee16fcff95b170334639b29fe611411d6305a7904f6041a59a2d34",
+    "gauntlet-review/python/gauntlet_review/state.py": "6c2da730948023273d28a177a237f1dc6a0e7591de96cee0333a0e6697c630aa",
+    "gauntlet-review/python/gauntlet_review/usage.py": "4aef1dd7206ea119d3e6a1c5a5a7d8ee7b9a029342f4748ed75bed105dc0ce25",
+    "gauntlet-review/python/gauntlet_review/verdict.py": "7c6a121b42d0dffac2e01e4e7dd08f82fb41ed4dce3df03053ac542be405dc36",
+    "gauntlet-review/python/pyproject.toml": "1587278e85e3b6f96765c9d515605e11ceb1212604b10ba52ae7b57dd9202b1f",
+    "gauntlet-review/python/tests/codex_bridge/__init__.py": "858f4e54b9133bb1986c0574b914ac7f576c5780d496f1d0e419a465aed4de34",
+    "gauntlet-review/python/tests/codex_bridge/conftest.py": "07149fb4a86b622459e8860fa0bc3cd12543d97a4b580e24a25575ae237aec2d",
+    "gauntlet-review/python/tests/codex_bridge/test_acceptance.py": "323932608c53b70fa8c0699ebddf023e700a7f9ab326735900e2abd6aed4b085",
+    "gauntlet-review/python/tests/codex_bridge/test_engine.py": "d95ac047354933d19e4de3feb6b2b8142255b16a26749dbc72ea5c498406910a",
+    "gauntlet-review/python/tests/codex_bridge/test_live_driver.py": "4cea0c317b5230364a758ab7b3dd1b7811761e5c2187b74e86d71fb6c941f6e7",
+    "gauntlet-review/python/tests/codex_bridge/test_native.py": "403480c1a07dd025be626316d50538bb4965c1caa04f5691b24f3ad73497a78e",
+    "gauntlet-review/python/tests/codex_bridge/test_sdk.py": "35c27336ae366df73d95cec723c64c621b1c7fbd7dba11e53e05b458e7c9c991",
+    "gauntlet-review/python/tests/codex_bridge/test_sdk_stream_cleanup.py": "fdc5e0dd3da74fbdbfb62e337b9fb35b39eca768cfe2c0e09b0180b97999a37e",
+    "gauntlet-review/python/tests/codex_bridge/test_server.py": "91fbaf6c5f0fbe3ab76385fd6cffdee1f2ebcb14a58dd5be5bd06c36624d99b7",
+    "gauntlet-review/python/tests/collaborative/conftest.py": "b9c60f8158555000f62af017e6ffebc956937dea7f9c98ea78619e0cd2ea4584",
+    "gauntlet-review/python/tests/collaborative/test_contracts.py": "8595c26fb936ec25f4dd9c7bbf52d500710ab1968d7a874e7f8958c1fc4344dd",
+    "gauntlet-review/python/tests/collaborative/test_core.py": "487722252cdc460fea8e739ee2ef1514693f0e91820003b6a3d4e64a90629e17",
+    "gauntlet-review/python/tests/collaborative/test_matrix.py": "4a5df26393464056ca6cd49288773399dc98ab03ba26255fab8177c59cc3b0c7",
+    "gauntlet-review/python/tests/collaborative/test_path_security.py": "409351b7a8d23bc9d55610ce0324b5a125a5e13e78fbf42c320b58628dc3daee",
+    "gauntlet-review/python/tests/collaborative/test_policy.py": "ec83288dde119508590b926c9851589fccb0bf36817ba38604755799726b1b9c",
+    "gauntlet-review/python/tests/collaborative/test_recovery.py": "74c69a3f02b83c388280a080cbc7c7af524cb7ff3557ff33bc828d6bc57faaec",
+    "gauntlet-review/python/tests/collaborative/test_review_bindings.py": "719f69baaaef637a93a9dece60ee2ccda47fff464e9613d05893c43ac4a6fc38",
+    "gauntlet-review/python/tests/collaborative/test_review_regressions.py": "f2f21b3dc3ca45a916f9cb1d51426828ac78252271206ad2b76fb047b3312c6a",
+    "gauntlet-review/python/tests/collaborative/test_server.py": "bec6a1bdcfdaef8b99a02004601cc8cc29189114d66d16f569819dbaa21e5052",
+    "gauntlet-review/python/tests/collaborative/test_source.py": "99e9e0354526fc042ff733ee71d4e1dcdf8081b655b30f817f44771e7c3fee89",
+    "gauntlet-review/python/tests/collaborative/test_stdio.py": "8c1a64181bd5ab2e923d359ab7fa00bb1aef0e1adee293ecc905ba315227f50b",
+    "gauntlet-review/python/tests/collaborative/test_store.py": "adad2fc2f354e4036a4ad051ab3a06ded3734d7d1fe41220b037700ccba35a62",
+    "gauntlet-review/python/tests/collaborative/test_store_cleanup.py": "a77a2ce4620c844f661c06763c8476a3d0cf3c2d0530985e90299dc6d5b5d08a",
+    "gauntlet-review/python/tests/conftest.py": "54f9c898fe65f44e931cc3d63309982e8fb9f59f183aa7e9c4a37620d526a10b",
+    "gauntlet-review/python/tests/integration/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "gauntlet-review/python/tests/integration/test_container_smoke.py": "532d00cd9c9096411bb1768ee2ced8b685c5d1977af29adfcdd9df9a571b8a64",
+    "gauntlet-review/python/tests/test_bounded.py": "0218506ff2499cb706e65eae9b0650d2579212a1c01c1c41f3c25868720779cc",
+    "gauntlet-review/python/tests/test_broker.py": "47c4e7fe443f05ce101a2e479582e2a59dad2e8e062e676c947ea9c8c4273bc7",
+    "gauntlet-review/python/tests/test_cp_bounded.py": "2405f3a42e91a4d4806e303420577c9c684a56045ed89a891fb01ebaf1529f92",
+    "gauntlet-review/python/tests/test_entrypoint.py": "b100ec2f1b487e4d57fc9a5e8d06422d27e0b64cab95c75d2bd379e22cd7c10a",
+    "gauntlet-review/python/tests/test_features.py": "3d48b9b3ded44f951a45d135110d167ba7013283013e3f76c925e83df059d071",
+    "gauntlet-review/python/tests/test_jcs.py": "6575adf85fc74111e32ae18a7ec8ec2269a5961ad63fc451b2a6f92a4107af3b",
+    "gauntlet-review/python/tests/test_lease.py": "fcb54364825b00e4f7469ba2fa398ac9e5f8c353507cabf2bf6f80fa4964d6ef",
+    "gauntlet-review/python/tests/test_normalize_verdict.py": "8dc3c4bef3950ddf160b197a86bf094b3ff1499ce510970d0710da2deb969ff9",
+    "gauntlet-review/python/tests/test_optional_install.py": "68299a74e339b9aafa085b6599b3f67fdda4aaf20472234fac3b550b5de416a4",
+    "gauntlet-review/python/tests/test_recommendation_id.py": "3904f7545ce13edf4b6774fc104c7326a9b6ad9eae3382c7c6b78b7e0293aa58",
+    "gauntlet-review/python/tests/test_runconfig.py": "212c5ea3d87409d0dce605abd4f52be19f05e94410b641874373d3c0ff9468a2",
+    "gauntlet-review/python/tests/test_runtime.py": "a2fe4db74c813894f00d35ae83008efc3c426bf53a44a6941dcbf77c12633724",
+    "gauntlet-review/python/tests/test_sandbox.py": "dabdcb524f1aef704748702481c248d78a552f5799b991042e2fc21d410bef12",
+    "gauntlet-review/python/tests/test_state.py": "369775aa4c2b463a50ad802abcae0f51bdcedb9c803967706a3cab103679247b",
+    "gauntlet-review/python/tests/test_usage.py": "2903e9f205181daef1481f111eb67aa3319f73f66d8edff548569e71fa9f05b7",
+    "tests/support/collaborative_acceptance.py": "76a1b9d9c9af21cb621ccccc7b96f76c15bc896c2725d7ac6dd106d24093a463",
+    "tests/support/collaborative_bootstrap.py": "4daf06844add2056802eee64166172c04db8fb1161460bf1b5e395ca1ba444b0",
+    "tests/support/collaborative_command.py": "cd261835fb51e67103bdb21486ba6bcaa3ea77131f3c3dc79bb940853263264c",
+    "tests/support/collaborative_cutoff.py": "cdc7a73dc63bde1ccd9d384571aa9eb83f8942276a74b89734ebb838d5490382",
+    "tests/support/collaborative_echo.py": "67d4551886acb670a4a9ff333e98b7a4bfc8f8dc147dff22fd264f2a0e122474",
+    "tests/support/collaborative_legacy.py": "4292ce6dd652b2e93bc27aa6c5604de82baec671296593d3a4c9dc3fc880bfab",
+    "tests/support/collaborative_process.py": "f02c7b4e6785c0daa8db98bd1a00de8e3fbbfc85f9925ddbd89e85ea4d9e75a4",
+    "tests/support/collaborative_scenario.py": "6dfd4789fc4f66c1686d25c6c08c2ad7cf5ee3f51b9c493e60af4aa4222d3d63",
+    "tests/support/collaborative_sdk_smoke.py": "84eb3abfe5c82ae35b5668fd3cef89e618b6f496443a6c83cedcb0e89ff906c6",
+    "tests/support/collaborative_worker.py": "6ccc27b32f4f21b1fcb70d2e6de5439d5e81a94f2de74b4bb0be689384b10d7f",
+    "tests/support/test_collaborative_process.py": "87c5fb34ad0b9fc54efdf9b5c8e34a7dc7d224164885b0a829064ff3aa62191d",
+    ".github/workflows/collaborative-python.yml": "545d6e42245ce3a617d220d02b2ee15235dc53ed3f948acbd7cb929689ca527d"
+  },
+  "qualification": "Complete suite qualified by components. Prior full matrix passed502. Only SDK implementation/regression file changed afterward; all77 other source hashes identical. Fresh full adapter107 covers the delta. No first-matrix final-source equality claimed for those two files.",
+  "windows314": {
+    "core": 254,
+    "adapter": 107,
+    "legacy": 145,
+    "total_python_passed": 506,
+    "legacy_explicit_skips": 7,
+    "legacy_instrumented_sessions": true,
+    "custody_passed": 37,
+    "custody_posix_only_skips": 4,
+    "custody": {
+      "successful": true,
+      "run": 41,
+      "skipped": [
+        {
+          "test": "test_execution_cutoff_refuses_legacy_launch_and_late_ack (custody_probes.ProcessContract.test_execution_cutoff_refuses_legacy_launch_and_late_ack)",
+          "reason": "legacy session wrapper is installed only on POSIX"
+        },
+        {
+          "test": "test_native_changed_group_is_retired_after_root_and_pipes_close (custody_probes.ProcessContract.test_native_changed_group_is_retired_after_root_and_pipes_close)",
+          "reason": "native changed-group custody is POSIX"
+        },
+        {
+          "test": "test_outer_expiry_retires_legacy_sut_separate_session_and_descendant (custody_probes.ProcessContract.test_outer_expiry_retires_legacy_sut_separate_session_and_descendant)",
+          "reason": "legacy separate-session custody is POSIX; Windows uses the enclosing job"
+        },
+        {
+          "test": "test_unconfirmed_session_launch_cannot_claim_complete_retirement (custody_probes.ProcessContract.test_unconfirmed_session_launch_cannot_claim_complete_retirement)",
+          "reason": "POSIX session registration protocol"
+        }
+      ]
+    },
+    "matrix_suite_receipts": [
+      {
+        "suite": "collaborative",
+        "completed": true,
+        "exit_code": 0,
+        "tree_retired": true,
+        "receipt": "C:\\Users\\geoff\\Documents\\Projects\\Banyan\\gauntlet\\.git\\info\\reduced-mcp-core\\20261021-execution\\app-server-migration\\pr14-terminal-cutoff-matrix314-v1\\15a20ee5e38c40a191f18d5d6c1a89e7-receipt.json"
+      },
+      {
+        "suite": "codex_bridge",
+        "completed": true,
+        "exit_code": 0,
+        "tree_retired": true,
+        "receipt": "C:\\Users\\geoff\\Documents\\Projects\\Banyan\\gauntlet\\.git\\info\\reduced-mcp-core\\20261021-execution\\app-server-migration\\pr14-terminal-cutoff-matrix314-v1\\ac90fd22fc0840749743c4c6a5a9060f-receipt.json"
+      },
+      {
+        "suite": "legacy",
+        "completed": true,
+        "exit_code": 0,
+        "tree_retired": true,
+        "receipt": "C:\\Users\\geoff\\Documents\\Projects\\Banyan\\gauntlet\\.git\\info\\reduced-mcp-core\\20261021-execution\\app-server-migration\\pr14-terminal-cutoff-matrix314-v1\\3eaa576db12843229e9c2d97f0d4144c-receipt.json"
+      }
+    ],
+    "final_adapter": {
+      "receipt": "C:\\Users\\geoff\\Documents\\Projects\\Banyan\\gauntlet\\.git\\info\\reduced-mcp-core\\20261021-execution\\app-server-migration\\pr14-terminal-cutoff-adapter314-v1\\a3d2f5b2ac384482980b899e2e1db5d5-receipt.json",
+      "completed": true,
+      "exit_code": 0,
+      "tree_retired": true
+    },
+    "all_qualifying_original_exits_zero_and_native_retirement": true
+  },
+  "python313": {
+    "sdk_passed": 40,
+    "sdk": {
+      "receipt": "C:\\Users\\geoff\\Documents\\Projects\\Banyan\\gauntlet\\.git\\info\\reduced-mcp-core\\20261021-execution\\app-server-migration\\pr14-terminal-cutoff-sdk313-v1\\35cafb57aab844d08fbb3d1b0629fc07-receipt.json",
+      "completed": true,
+      "exit_code": 0,
+      "tree_retired": true
+    },
+    "new_cutoff_probes_passed": 5,
+    "cutoff_posix_only_skips": 1,
+    "cutoff_archive": "pr14-terminal-cutoff-custody313-v1"
+  },
+  "regressions": {
+    "sdk_terminal_validation_stream_close": {
+      "red_failed": 4,
+      "normal_control_passed": 1,
+      "red_archive": "pr14-sdk-terminal-red-v1",
+      "original_red_exit": 1,
+      "checkpoint_and_retirement_verified": true
+    },
+    "sdk_complete_result_identity": {
+      "red_failed": 4,
+      "red_archive": "pr14-sdk-caller-result-red-v1",
+      "original_red_exit": 1,
+      "checkpoint_and_retirement_verified": true
+    },
+    "execution_cutoff": {
+      "windows_red_failed": 4,
+      "normal_cleanup_control_passed": true,
+      "red_archive": "pr14-cutoff-red-v2",
+      "green_windows_passed": 5,
+      "posix_sibling_pending_native_ci": true
+    }
+  },
+  "six_lens_final": {
+    "path": "pr14-terminal-cutoff-six-lens-v1.json",
+    "sha256": "d89d7f1f261b90d941eb361fc57c8bcee94cf3fb76d7ef1c5605800673a7b269",
+    "remaining_findings": 0,
+    "original_assessments_and_regrades_preserved": true
+  },
+  "preserved_attempts": [
+    "Cutoff RED v1 detected late admissions but injected completion before actual membership settlement, so completion did not reproduce. Corrected v2 injects after real zero exit/retirement/EOF and reproduces late success. Both retained.",
+    "Prior full matrix502 passed its own79 source hashes. Later SDK changes only two files; fresh adapter107 and alternate40 qualify final SDK bytes.",
+    "PR03 original seven canonical findings, actual peer carryover, complete243 source receipts, public/vendor history and state remain closed/hash-bound.",
+    "First seal invocation used system Python without optional package and failed at import before any index or verification output. Corrected qualifier uses venv314; no test failure was hidden."
+  ],
+  "closed_evidence_index": {
+    "path": "C:\\Users\\geoff\\Documents\\Projects\\Banyan\\gauntlet\\.git\\info\\reduced-mcp-core\\20261021-execution\\app-server-migration\\pr14-terminal-cutoff-files-v1.json",
+    "files": 288,
+    "sha256": "9bd42239e8c2cd121154baba15cf5562e2bbc70741a1f75624621e00496a36f3"
+  },
+  "canonical_boundary": "Seven canonical finding records immutable. PR03 peer addressed five, requested two new changes. Only later genuine peer can disposition changes. Commit/push, fresh nativeCI and qualified gate remain. No GitHub approval/merge."
+}

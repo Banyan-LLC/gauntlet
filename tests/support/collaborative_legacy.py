@@ -5,22 +5,38 @@ import signal
 import time
 import uuid
 
-from collaborative_process import checkpoint,owner_context
+from collaborative_process import (CommandOutcome,StageError,_terminal_failure,
+    checkpoint,owner_context,require_execution)
 
 
 def track_sessions(original):
     def launch(*args,**kwargs):
-        if os.name!="posix" or not kwargs.get("start_new_session"):
+        if os.name!="posix":
             return original(*args,**kwargs)
         context=owner_context()
+        identity=None
+        def admit():
+            try:
+                require_execution(context)
+            except TimeoutError as error:
+                outcome=CommandOutcome(deadline=context["deadline"],owner_token=context["token"],timed_out=True,
+                    errors=[StageError.from_exception("launch",error)])
+                if identity is not None:
+                    try:
+                        checkpoint("session-cancel",session=identity,parent=os.getpid())
+                    except BaseException as cleanup:
+                        outcome.cleanup_errors.append(StageError.from_exception("session-cancel",cleanup))
+                _terminal_failure(outcome,context["receipts"],uuid.uuid4().hex,"legacy-admission-fatal")
+        if not kwargs.get("start_new_session"):
+            admit()
+            return original(*args,**kwargs)
         identity=uuid.uuid4().hex
         checkpoint("session-begin",session=identity,parent=os.getpid())
         ack=Path(context["receipts"])/("session-"+context["token"]+"-"+identity+".ack")
         # Do not create a new session until the retained outer owner has seen
         # its pending launch. Lost registration can never imply full retirement.
         while True:
-            if time.monotonic()>=context["execution_deadline"]:
-                raise TimeoutError("session custody acknowledgement deadline expired")
+            admit()
             try:
                 with ack.open("rb") as stream:
                     value=stream.read(10)
@@ -32,6 +48,7 @@ def track_sessions(original):
             except FileNotFoundError:
                 time.sleep(min(.002,max(0,context["execution_deadline"]-time.monotonic())))
         try:
+            admit()
             process=original(*args,**kwargs)
         except BaseException:
             checkpoint("session-cancel",session=identity,parent=os.getpid())

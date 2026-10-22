@@ -12,7 +12,7 @@ from openai_codex.generated.v2_all import (
     TurnCompletedNotification,TurnStatus,
 )
 
-from .engine import BridgeError,PeerReply,TEXT_BYTES,_consume,_encode,validate_config
+from .engine import BridgeError,PeerReply,TEXT_BYTES,_consume,_encode,_safe_id,mcp_result,validate_config
 
 EVENT_BYTES=8*1024*1024
 
@@ -82,11 +82,16 @@ class SdkConversation:
                         explicit_final=item.phase is MessagePhase.final_answer
                 if (event.method=="turn/completed" and isinstance(payload,TurnCompletedNotification)
                         and payload.thread_id==self.thread_id and payload.turn.id==self.turn_id):
-                    self.active=None
                     if payload.turn.status is not TurnStatus.completed or payload.turn.error is not None:
                         raise BridgeError("TURN_FAILED",cause="terminal_failure")
                     if final is None:
                         raise BridgeError("INVALID_FINAL_MESSAGE",cause="missing_final")
+                    # These shared validators include the complete serialized
+                    # result, whose escaped duplicate copies can exceed text size.
+                    if not _safe_id(self.thread_id) or not _safe_id(self.turn_id):
+                        raise BridgeError("INVALID_FINAL_MESSAGE",cause="invalid_identity")
+                    mcp_result({"ok":True,"thread_id":self.thread_id,
+                        "turn_id":self.turn_id,"text":final})
                     return PeerReply(self.thread_id,self.turn_id,final)
             raise BridgeError("MISSING_TERMINAL",cause="unterminated_stream")
         except BaseException as original:
@@ -128,6 +133,11 @@ class SdkConversation:
                     if isinstance(cleanup,asyncio.CancelledError):
                         raise
                     raise failure from cleanup
+                else:
+                    # Retain uncertain turns for close() to interrupt. A terminal
+                    # receipt alone does not certify validation or stream cleanup.
+                    if primary is None:
+                        self.active=None
 
     async def close(self):
         # Interruption has its own short share of the caller's remaining budget;

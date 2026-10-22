@@ -140,3 +140,63 @@ async def test_stream_interrupt_and_client_close_failures_are_all_retained(confi
         "stream_close_failure", "interrupt_failure", "close_failure"]
     assert [item.__cause__ for item in combined.exceptions] == [
         stream_failure, interrupt_failure, client_failure]
+
+
+@pytest.mark.parametrize("events,stream_close_fails,code", [
+    ([message(), terminal(status="failed")], False, "TURN_FAILED"),
+    ([terminal()], False, "INVALID_FINAL_MESSAGE"),
+    ([message(), terminal(status="inProgress")], False, "TURN_FAILED"),
+    ([message(), terminal()], True, "CLEANUP_FAILURE"),
+])
+async def test_unsuccessful_turn_keeps_handle_for_native_interruption(
+        config, monkeypatch, events, stream_close_fails, code):
+    # Clearing the handle on receipt, before validation/stream cleanup, skips interrupt.
+    if stream_close_fails:
+        failing_stream(monkeypatch, OSError("private-close"))
+    peer, native = conversation(config, monkeypatch, events)
+    bridge = Bridge(config, peer)
+    result = await bridge.call({"instance_id": bridge.instance_id, "key": "first",
+                               "prompt": "review", "expected_thread_id": None})
+    assert result["ok"] is False and result["error"]["code"] == code
+    assert native.handles[0].interrupted
+    assert native.closed
+    assert result["error"]["uncertain"] and not result["error"]["partial_usable"]
+
+
+async def test_confirmed_successful_terminal_does_not_interrupt_finished_turn(config, monkeypatch):
+    peer, native = conversation(config, monkeypatch, [message(), terminal()])
+    bridge = Bridge(config, peer)
+    result = await bridge.call({"instance_id": bridge.instance_id, "key": "first",
+                               "prompt": "review", "expected_thread_id": None})
+    assert result["ok"] is True
+    assert (await bridge.close())["status"] == "succeeded"
+    assert native.closed and not native.handles[0].interrupted
+
+
+@pytest.mark.parametrize("text",["\0"*30000,"x"*131072],ids=["escaped","plain-envelope"])
+async def test_complete_serialized_result_overflow_keeps_native_handle(config, monkeypatch,text):
+    peer,native=conversation(config,monkeypatch,[message(text=text),terminal()])
+    bridge=Bridge(config,peer)
+    result=await bridge.call({"instance_id":bridge.instance_id,"key":"overflow",
+        "prompt":"review","expected_thread_id":None})
+    assert not result["ok"] and result["error"]["code"]=="LIMIT_EXCEEDED"
+    assert result["error"]["cause"]=="result_limit"
+    assert native.handles[0].interrupted and native.closed
+    assert result["error"]["uncertain"] and not result["error"]["partial_usable"]
+
+
+@pytest.mark.parametrize("field,invalid",[("thread","invalid/thread"),("turn","x"*129)])
+async def test_invalid_native_identity_keeps_handle(config,monkeypatch,field,invalid):
+    initialize=Handle.__init__
+    def invalid_identity(self,*args,**kwargs):
+        initialize(self,*args,**kwargs)
+        setattr(self,"thread_id" if field=="thread" else "id",invalid)
+    monkeypatch.setattr(Handle,"__init__",invalid_identity)
+    peer,native=conversation(config,monkeypatch,[message(**{field:invalid}),terminal(**{field:invalid})])
+    if field=="thread":
+        native.id=invalid
+    bridge=Bridge(config,peer)
+    result=await bridge.call({"instance_id":bridge.instance_id,"key":"identity",
+        "prompt":"review","expected_thread_id":None})
+    assert not result["ok"] and result["error"]["code"]=="INVALID_FINAL_MESSAGE"
+    assert native.handles[0].interrupted and native.closed

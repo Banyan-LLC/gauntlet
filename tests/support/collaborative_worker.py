@@ -12,6 +12,10 @@ import time
 def main():
     from collaborative_process import ExpectedExit, checkpoint, owner_context, run_case
     scenario = sys.argv[1]
+    if scenario.startswith("cutoff-"):
+        from collaborative_cutoff import probe
+        probe(scenario.removeprefix("cutoff-"))
+        return
     if scenario=="nested-mkdir-failure":
         blocked=Path(os.environ["GAUNTLET_TEST_RECEIPTS"])/"blocked-receipts"
         with blocked.open("xb") as stream:

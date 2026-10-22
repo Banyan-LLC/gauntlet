@@ -151,6 +151,13 @@ def owner_context():
     return value
 
 
+def require_execution(context):
+    """New work and success need execution time; diagnostics keep the reserve."""
+    deadline=context["execution_deadline"]
+    if not math.isfinite(deadline) or time.monotonic()>=deadline:
+        raise TimeoutError("inherited execution deadline expired")
+
+
 class Budget:
     def __init__(self, path, token, *, deadline, create=False):
         self.path = Path(path)
@@ -390,6 +397,7 @@ class NativeChild:
         self.retired_groups=set()
         self.pending_sessions=set()
         self.observed_groups=set()
+        context=json.loads(environment[OWNER_ENV])
         if os.name == "nt":
             info = PROCESS_INFORMATION()
             startup = STARTUPINFO()
@@ -412,6 +420,7 @@ class NativeChild:
             block = ctypes.create_unicode_buffer("\0".join(
                 f"{key}={value}" for key, value in sorted(environment.items(), key=lambda x: x[0].upper())) + "\0\0")
             try:
+                require_execution(context)
                 _check(_create_process(None, command, None, None, True,
                                        0x4 | 0x400 | 0x08000000, block, str(cwd),
                                        ctypes.byref(startup), ctypes.byref(info)))
@@ -441,6 +450,7 @@ class NativeChild:
                     os.set_blocking(exec_read,False)
                     inherited.add(exec_write)
                     child_environment["GAUNTLET_TEST_EXEC_STATUS"]=str(exec_write)
+                require_execution(context)
                 self.process = subprocess.Popen(argv, cwd=cwd, env=child_environment,
                                             stdin=pipes["stdin"].child,
                                             stdout=pipes["stdout"].child,
@@ -960,11 +970,10 @@ def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
                 fatal = True
             if faults == "cancel":
                 raise KeyboardInterrupt("injected cancellation")
-            if _observe_root(outcome,child) is not None:
-                # Membership may transiently lag exit observation on Windows.
-                # Poll with the original execution deadline, never a new grace.
-                if not child.active() and all(pipes[c].eof for c in CHANNEL_LIMITS):
-                    break
+            # Observe real completion before the cutoff check: OS polling can
+            # itself consume the last execution time. Cleanup has its own reserve.
+            finished=(_observe_root(outcome,child) is not None and not child.active()
+                      and all(pipes[c].eof for c in CHANNEL_LIMITS))
             if fatal:
                 break
             if (expected.checkpoint and expected.checkpoint not in checkpoints and
@@ -979,12 +988,15 @@ def run_case(argv: list[str], *, cwd: Path, environment: dict[str, str],
                 outcome.timed_out = True
                 fatal = True
                 break
+            if finished:
+                break
             if not progress:
                 time.sleep(min(0.005, max(0, execution_deadline - time.monotonic())))
     except KeyboardInterrupt as exception:
         outcome.cancelled = True
         error("cancellation", exception)
     except BaseException as exception:
+        outcome.timed_out |= isinstance(exception,TimeoutError)
         error("launch" if not outcome.started else "execution", exception)
     finally:
         if nested and fatal:
@@ -1336,6 +1348,10 @@ class OwnedTransport:
                     outcome.cleanup_errors.append(StageError.from_exception("handle-close",error))
                 if outcome.cleanup_errors:
                     fail("cleanup",RuntimeError("transport closure incomplete"))
+                try:
+                    require_execution(context)
+                except TimeoutError as error:
+                    fail("cleanup",error)
                 outcome.completed = outcome.expectation_match = True
                 outcome.elapsed_seconds = time.monotonic() - started_at
                 try:

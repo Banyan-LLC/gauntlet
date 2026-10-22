@@ -224,6 +224,50 @@ class ProcessContract(unittest.TestCase):
         self.assertEqual(data["deadline"], data["child_deadline"])
         self.assertFalse(data["fresh_owner"])
 
+    def assert_cutoff_refusal(self,scenario,*,completion=False):
+        result=self.case("cutoff-"+scenario,seconds=10)
+        self.assert_failure(result)
+        self.assertNotIn(b"continued",result.stdout.prefix)
+        self.assertNotIn(b"actual-late-launch",result.control.prefix)
+        self.assertFalse((self.evidence/"forbidden-launch.txt").exists())
+        self.assertTrue(result.root_reaped and result.tree_retired,result)
+        receipts=[json.loads(p.read_text("utf-8")) for p in self.evidence.glob("*-receipt.json")]
+        nested=[item for item in receipts if not item["fresh_owner"]]
+        self.assertTrue(any(not item["completed"] and item["timed_out"] for item in nested),nested)
+        if completion:
+            self.assertTrue(any(item["exit_code"]==0 and item["timed_out"] for item in nested),nested)
+        else:
+            self.assertTrue(all(not item["started"] and item["exit_code"] is None for item in nested),nested)
+
+    def test_execution_cutoff_refuses_nested_launch(self):
+        self.assert_cutoff_refusal("nested-admission")
+
+    def test_execution_cutoff_refuses_late_real_exit_success(self):
+        self.assert_cutoff_refusal("nested-completion",completion=True)
+
+    @unittest.skipUnless(importlib.util.find_spec("mcp"),"optional SDK not installed")
+    def test_execution_cutoff_refuses_transport_launch(self):
+        self.assert_cutoff_refusal("transport-admission")
+
+    @unittest.skipUnless(importlib.util.find_spec("mcp"),"optional SDK not installed")
+    def test_execution_cutoff_refuses_transport_closure_after_cutoff(self):
+        self.assert_cutoff_refusal("transport-completion",completion=True)
+
+    @unittest.skipUnless(os.name=="posix","legacy session wrapper is installed only on POSIX")
+    def test_execution_cutoff_refuses_legacy_launch_and_late_ack(self):
+        for scenario in ("legacy-direct","legacy-ack"):
+            with self.subTest(scenario=scenario):
+                self.assert_cutoff_refusal(scenario)
+
+    def test_execution_cutoff_preserves_cleanup_and_pre_cutoff_success(self):
+        control=self.case("cutoff-nested-control",seconds=10)
+        self.assertTrue(control.completed,control)
+        self.assertEqual(json.loads(control.stdout.prefix),{"completed":True,"exit_code":0})
+        cleanup=self.case("cutoff-cleanup-checkpoint",seconds=10)
+        self.assertTrue(cleanup.completed,cleanup)
+        self.assertIn(b"cleanup-reserve-checkpoint",cleanup.control.prefix)
+        self.assertIn(b"cleanup-usable",cleanup.stdout.prefix)
+
     def test_nested_fatal_error_stops_enclosing_worker(self):
         result = self.case("nested-failure")
         self.assert_failure(result)

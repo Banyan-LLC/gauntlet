@@ -478,3 +478,46 @@ output log. That index/log/draft proof and exact mismatch audit are retained as
 superseded. The second index excludes only its current output log and verifies
 every indexed closed file. The final verification record identifies the current
 index; exact-head CI and a qualified canonical peer gate remain required.
+
+PR peer round 3 passed independent complete-read verification for all 243 required
+source artifacts and complete metadata, history and evidence. Its original owner
+exited zero with confirmed native retirement. The actual peer addressed all five
+previous findings under the Human-approved binding clarification and recorded two
+new important findings: premature native turn-handle release and test execution
+admission/completion during the cleanup reserve. The request-changes verdict,
+seven immutable finding records, original public/vendor transcripts, canonical
+state and closed hash index remain preserved. This was not final acceptance.
+
+Four SDK regressions reproduced missing interruption on failed/inconsistent
+terminals, missing final text and stream-close failure. Handles now remain active
+until complete success validation and successful stream closure. The conformance
+refresh found two downstream validation siblings: complete serialized-result
+overflow, including JSON escaping and duplicate envelope copies, and unsafe native
+thread/turn IDs. Four additional typed SDK regressions reproduced those missing
+interruption attempts. The SDK now uses the same identity and actual MCP-result
+validators as the bridge before releasing the handle. Both earlier assessments,
+the subsequent finding, class expansion and final six-lens regrades are preserved.
+
+Real-child cutoff probes reproduced late command/transport launches and false
+success after observed root exit or final transport handle closure. Native creation
+now checks the inherited execution cutoff immediately before both OS launch APIs.
+Command completion checks the cutoff after real poll/membership/EOF observations;
+transport completion checks again after handles close. The POSIX legacy wrapper
+guards ordinary launches and rechecks after session acknowledgement, cancelling a
+pending declaration before terminal refusal. Cleanup diagnostics and session
+control retain the original outer deadline. No cleanup reserve admits new work.
+The initial completion probe injected before real membership settlement and did
+not reproduce that instance; its original receipts/log remain alongside the
+corrected failing probe. Normal execution and cleanup-reserve controls pass.
+
+Final local qualification covers 506 Python tests on Windows 3.14: 254 core,
+107 adapter and 145 instrumented legacy cases, with seven inherited/environment
+legacy skips. Custody passes 37 probes with four POSIX-only skips. Python 3.13
+passes all 40 SDK checks and five new cutoff probes, with one POSIX-only skip.
+Original qualifying command exits are zero and native retirement is verified.
+The earlier complete matrix passed 502 on its own recorded source. Only two SDK
+files changed afterward; all 77 other source hashes remain identical, and a fresh
+complete adapter run qualifies the final SDK delta. All 79 final source hashes
+match the verification record. All six final lenses have no remaining findings.
+Exact-head native CI and a later genuine peer disposition remain required; author,
+lens and test assertions do not close either original canonical finding.
