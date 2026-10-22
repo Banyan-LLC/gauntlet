@@ -1080,6 +1080,20 @@ Gauntlet hermetic review evidence and CI.
 
 ## Task 12: Local review, CI and ready PR
 
+**2026-10-22 Human-authorized gate substitution:** After the actual complete
+legacy packet was refused at its fixed character limit, the Human explicitly
+authorized collaborative MCP reviews for the remaining local and PR-head gates.
+Use the approved `collaborative-v1` assurance boundary, pinned committed source,
+complete paginated source/history access, validated canonical findings and
+carry-over, preserved native transcripts/evidence and exact PR-head/live-main
+freshness checks. Multiple bounded native reading turns may precede one canonical
+verdict; preserve every turn and verify their read receipts together. Preserve
+all original legacy refusals/reviews and the approved spec/plan history. This
+supersedes only the remaining legacy local/PR dispatch requirements below; it
+does not claim legacy hermetic certification, waive CI or authorize approval or
+merge. The exact direction is recorded in `collaborative-gate-authorization.json`
+under the existing review history.
+
 **Files:** preserve/append migration reviews, canonical findings, carry-over,
 ledger and SHA-256 evidence indexes under the existing review history.
 

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-22",
+  "human_instruction": "Authorize collaborative MCP reviews for the remaining local and PR-head gates. Preserve all evidence and review history, finish verification and CI, and publish the ready-for-review PR against main. Don’t approve or merge it.",
+  "scope": ["remaining local gate", "remaining authoritative PR-head gate"],
+  "assurance": "collaborative-v1",
+  "legacy_hermetic_certification_claimed": false,
+  "original_legacy_refusals_preserved": true,
+  "required": ["pinned committed source", "paginated source and history access", "validated canonical findings and carry-over", "preserved native transcripts and evidence", "live PR head and main-tip checks", "nine native matrix jobs and base-only CI", "ready-for-review PR against main"],
+  "approval_authorized": false,
+  "merge_authorized": false
+}
