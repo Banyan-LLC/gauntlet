@@ -120,6 +120,15 @@ adapter CLI; MCP clients cannot change that choice or any permissions/paths/refs
 Its thread-local server configuration allows exactly `read_review`,
 `record_evidence`, `review_status` and `submit_review`, with explicit per-tool
 approval and a 262,144-token output allowance for bounded complete core replies.
+That allowance does not certify the native host's later result formatting.
+For SDK/runtime0.163.0 reviews, qualification verified exact native receipts with
+listing `limit=5` and artifact/evidence `length=4096`. Continue every cursor and
+contiguous byte page through EOF. Larger legal core replies produced unparseable
+native receipt projections in qualification; preserve those failures and request
+smaller pages rather than accept a summary or missing bytes. Verify actual receipt
+bytes, lengths, digests and complete listing chains before accepting a gate.
+Other MCP hosts may use larger pages when they preserve complete responses.
+These client choices do not change the core's fixed maximum limits.
 Unknown tools remain outside the allow list. This implements the authorized
 review operations while keeping native escalation denied; global configuration
 and other servers' policies are unchanged. See the official
@@ -288,6 +297,12 @@ per carry-over reason; 64 MiB logical event/evidence payload per series; and
 1 GiB logical store payload. Metadata/listing and complete MCP results are also
 bounded. Quotas describe logical payloads, not physical Git decompression,
 SDK/parser memory, SQLite file size or OS I/O limits.
+
+Opening and freshness checks validate every referenced head blob, including
+unchanged context. The 4 MiB per-blob limit applies to that context as well as
+changed surfaces; a missing, corrupt or oversized referenced blob refuses
+admission or completion. Gitlinks remain opaque foreign pointers. Repositories
+outside this fixed profile need the legacy route; there is no quota override.
 
 A maximal 200-entry carry-over request serializes to 218,196 bytes, leaving
 43,948 bytes under the verdict cap. The ten-verdict cap still applies: reaching

@@ -91,6 +91,40 @@ def test_missing_pinned_blob_never_falls_back_to_worktree(git_fixture,cfg):
             assert error.value.code == "MISSING_OBJECT"
 
 
+@pytest.mark.parametrize("failure,code",[("missing","MISSING_OBJECT"),("corrupt","DIGEST_MISMATCH")])
+@pytest.mark.parametrize("phase",["capture","check"])
+def test_unchanged_referenced_blob_is_validated_at_admission_and_freshness(git_fixture,cfg,failure,code,phase):
+    from dulwich.objects import Blob
+    stable=b"unchanged context"
+    git_fixture.pair({b"stable":(0o100644,stable),b"file":(0o100644,b"old")},
+                     {b"stable":(0o100644,stable),b"file":(0o100644,b"new")})
+    oid=Blob.from_string(stable).id.decode()
+    with source_type()(cfg) as source:
+        snapshot=source.capture(Policy()) if phase=="check" else None
+        path=cfg.repo_path/".git"/"objects"/oid[:2]/oid[2:]
+        if failure=="missing":
+            path.unlink()
+        else:
+            path.write_bytes(zlib.compress(b"blob 5\0other"))
+        with pytest.raises(CoreError) as caught:
+            source.capture(Policy()) if phase=="capture" else source.check_snapshot(snapshot)
+        assert caught.value.code==code
+
+
+@pytest.mark.parametrize("extra",[0,1],ids=["exact-limit","over-limit"])
+def test_unchanged_source_blob_obeys_fixed_profile_at_capture(git_fixture,cfg,extra):
+    stable=b"x"*(Policy().blob_bytes+extra)
+    git_fixture.pair({b"stable":(0o100644,stable)},
+                     {b"stable":(0o100644,stable),b"file":(0o100644,b"new")})
+    with source_type()(cfg) as source:
+        if extra:
+            with pytest.raises(CoreError) as caught:
+                source.capture(Policy())
+            assert caught.value.code=="LIMIT_EXCEEDED" and caught.value.detail=={"limit":"blob_bytes"}
+        else:
+            assert len(source.capture(Policy()).changes)==1
+
+
 def test_new_commit_with_identical_tree_is_observed_as_drift(git_fixture,cfg):
     _, head=git_fixture.pair({}, {b"file":(0o100644,b"one")})
     with source_type()(cfg) as source:

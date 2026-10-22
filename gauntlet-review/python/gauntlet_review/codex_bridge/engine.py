@@ -216,7 +216,12 @@ class Bridge:
             done,_=await asyncio.wait({task},timeout=max(0,deadline-CLEANUP_SECONDS-asyncio.get_running_loop().time()))
             if not done:
                 raise BridgeError("DEADLINE_EXCEEDED",cause="deadline")
-            reply=task.result()
+            try:
+                reply=task.result()
+            except asyncio.CancelledError as error:
+                # This is cancellation of the SDK task, not cancellation of
+                # the caller waiting above. Return an uncertain receipt.
+                raise BridgeError("SDK_FAILURE",cause="cancellation") from error
             if (not isinstance(reply,PeerReply) or not _safe_id(reply.thread_id) or not _safe_id(reply.turn_id)
                     or self.thread_id is not None and self.thread_id!=reply.thread_id):
                 raise BridgeError("INVALID_FINAL_MESSAGE",cause="invalid_identity")

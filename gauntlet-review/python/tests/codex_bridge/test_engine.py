@@ -186,6 +186,17 @@ async def test_cancellation_propagates_after_cleanup_and_poisoning(config):
     assert peer.calls==1
 
 
+async def test_sdk_task_self_cancellation_returns_uncertain_receipt_without_cancelling_caller(config):
+    peer=Conversation(failure=asyncio.CancelledError("private-prompt"))
+    bridge=Bridge(config,peer); initial=request(bridge)
+    result=await bridge.call(initial)
+    refused(result,"SDK_FAILURE",uncertain=True,cleanup="succeeded")
+    assert result["error"]["cause"]=="cancellation"
+    assert asyncio.current_task().cancelling()==0
+    assert await bridge.call(initial)==result and peer.calls==1 and peer.closed==1
+    refused(await bridge.call(request(bridge,"new")),"POISONED",uncertain=True)
+
+
 async def test_deadline_includes_cleanup_and_refuses_unterminated_turn(config):
     peer=Conversation(); peer.release=asyncio.Event(); bridge=Bridge(config,peer)
     start=asyncio.get_running_loop().time()

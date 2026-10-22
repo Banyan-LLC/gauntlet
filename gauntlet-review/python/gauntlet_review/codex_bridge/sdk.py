@@ -28,8 +28,9 @@ def reviewer_config(config):
         "enabled":True,"enabled_tools":tools,"disabled_tools":[],"default_tools_approval_mode":"prompt",
         # These exact core operations are operator-authorized. This does not
         # enable shell escalation or approve any other MCP tool. A byte-sized
-        # token allowance avoids the host's smaller default output truncation
-        # for bounded complete core results (serialization allowance is native).
+        # token allowance raises the native output budget. Hosts may apply
+        # additional formatting limits; clients must verify complete receipts
+        # and choose smaller pages when needed.
         "tools":{name:{"approval_mode":"approve","output_token_limit":256*1024} for name in tools}}}}
 
 
@@ -116,7 +117,7 @@ class SdkConversation:
             else:
                 try:
                     task.result()
-                except Exception as error:
+                except (Exception,asyncio.CancelledError) as error:
                     failure=BridgeError("CLEANUP_FAILURE",cause="interrupt_failure")
                     failure.__cause__=error
         try:

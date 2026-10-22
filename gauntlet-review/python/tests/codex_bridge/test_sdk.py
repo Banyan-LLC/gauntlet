@@ -193,3 +193,18 @@ async def test_interrupt_and_close_failures_both_retain_typed_causes(config,monk
     assert isinstance(combined,ExceptionGroup)
     assert [item.cause for item in combined.exceptions]==["interrupt_failure","close_failure"]
     assert [item.__cause__ for item in combined.exceptions]==[interrupt_error,close_error]
+
+
+async def test_cancelled_interrupt_task_still_attempts_sdk_close(config,monkeypatch):
+    peer,native=conversation(config,monkeypatch,[])
+    with pytest.raises(BridgeError):
+        await peer.run("review")
+    cancelled=asyncio.CancelledError("private-interrupt")
+    async def cancelled_interrupt():
+        raise cancelled
+    native.handles[0].interrupt=cancelled_interrupt
+    with pytest.raises(BridgeError) as caught:
+        await peer.close()
+    assert native.closed
+    assert caught.value.code=="CLEANUP_FAILURE" and caught.value.cause=="interrupt_failure"
+    assert caught.value.__cause__ is cancelled

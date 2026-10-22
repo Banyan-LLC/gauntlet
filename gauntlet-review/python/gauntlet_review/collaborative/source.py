@@ -198,7 +198,20 @@ class GitSource:
         head = self._object(repo, observation.source_oid, Commit)
         # Bound complete tree enumeration independently of the changed-path cap.
         self._inventory(repo, base.tree.decode("ascii"), policy)
-        self._inventory(repo, head.tree.decode("ascii"), policy)
+        head_entries=self._inventory(repo, head.tree.decode("ascii"), policy)
+        verified={}
+        def blob_metadata(oid):
+            if oid not in verified:
+                data=self._blob(repo,oid,policy)
+                verified[oid]=(len(data),hashlib.sha256(data).hexdigest())
+            return verified[oid]
+        # Unchanged head context is also exposed by the pinned source tree.
+        # Validate it before admitting/rechecking a revision, retaining only
+        # bounded metadata rather than all decompressed contents. Gitlinks are
+        # foreign pointers and do not require local submodule objects.
+        for mode,oid in head_entries.values():
+            if mode!=0o160000:
+                blob_metadata(oid)
         header = self._header(self.config, observation, policy)
         records, seen, total = [], set(), 0
         for difference in tree_changes(repo.object_store, base.tree, head.tree, rename_detector=None):
@@ -216,12 +229,12 @@ class GitSource:
                 if mode == 0o160000:
                     record[f"{side}_length"] = record[f"{side}_digest"] = None
                 else:
-                    data = self._blob(repo, oid, policy)
-                    if total + len(data) > policy.changed_bytes:
+                    length,digest=blob_metadata(oid)
+                    if total + length > policy.changed_bytes:
                         _limit("changed_bytes")
-                    total += len(data)
-                    record[f"{side}_length"] = len(data)
-                    record[f"{side}_digest"] = hashlib.sha256(data).hexdigest()
+                    total += length
+                    record[f"{side}_length"] = length
+                    record[f"{side}_digest"] = digest
             change_id = _digest({"header": header, "change": record})[:32]
             if change_id in seen:
                 raise CoreError("DIGEST_MISMATCH", detail={"reason": "change_id_collision"})

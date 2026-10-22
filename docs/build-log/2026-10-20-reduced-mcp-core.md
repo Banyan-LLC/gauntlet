@@ -321,3 +321,62 @@ source hash still matched the committed working bytes. A fresh actual local
 preflight on that commit again refused before dispatch: **2,342,493 characters**
 against the same fixed1,048,576 limit, exit10, with native retirement confirmed.
 Its original receipt is preserved under `local-preflight-native-v2`.
+
+## Authorized collaborative gates and verified findings (2026-10-22)
+
+The Human authorized collaborative MCP reviews for the remaining local and
+PR-head gates, retaining every original review and evidence record. The plan
+records that substitution explicitly; legacy hermetic certification is not
+claimed. The original refusals above remain unchanged historical results.
+
+The first native attempt refused state inside repository metadata. A subsequent
+attempt exceeded the unchanged decoded-event quota. The next multi-pass attempt
+completed its metadata and ten source passes but exhausted its original overall
+deadline before a canonical verdict. Its full native/public histories were
+preserved; independent verification rejected 85 malformed large tool-result
+projections. Peer prose is not accepted as proof of complete reads or a gate.
+
+A real native control verified all three small-page receipts against canonical
+responses (listing limit five, artifact length 4,096 bytes). A separate attempted
+large-page feature configuration still failed and was not adopted. Subsequent
+gates use the qualified small pages, contiguous byte ranges and EOF checks;
+production quotas and the independent rejection of malformed receipts remain.
+Their explicit mandatory source scope is every changed old/new artifact plus
+the entire Python package dependency context, complete manifest/full-tree/history
+listing chains and all canonical event/evidence bodies. The entire pinned tree
+remains available for additional inspection. Earlier exhaustive whole-repository
+attempts and their failures remain preserved. The next fresh gate has its own
+finite original 3,600-second operator deadline; no admitted deadline is extended.
+
+That unsuccessful gate nevertheless reported three concrete implementation
+defects and one documentation defect, preserved verbatim with native thread and
+turn identifiers. They have no canonical finding IDs because no verdict was
+submitted. All three implementation classes were independently reproduced:
+
+- **[P1] Pinned unchanged source:** missing, corrupt or oversized unchanged
+  source blobs could evade admission/freshness checks. Capture and recheck now
+  validate every referenced non-gitlink head blob under the existing 4 MiB
+  source-blob profile. Only length/digest metadata is cached. Gitlinks remain
+  opaque foreign pointers and changed-byte accounting remains per occurrence.
+- **[P2] Internal SDK cancellation:** cancellation of the SDK task could be
+  mistaken for cancellation of the caller. It now returns a structured uncertain
+  response, poisons subsequent work and preserves exact retry behavior. Actual
+  caller cancellation continues to propagate after cleanup.
+- **[P2] Cancelled interruption:** an internally cancelled interruption task
+  could skip SDK close. It now retains its typed cause and still attempts close.
+- **[P3] README status:** the stale blocked-walkthrough description now reflects
+  the successful real SDK workflow and the remaining publication gates.
+
+The original regression run had nine failures and one exact-boundary control
+pass; all ten passed after the fixes. The final Windows Python 3.14 matrix passed
+233 core, 86 adapter/verifier and 145 legacy tests (464 total), with seven explicit
+inherited/environment legacy skips. Custody passed 31 probes with three
+POSIX-only skips. Original suite exits were zero and native retirement was
+verified. Source hashes bind the exercised working bytes independently of the
+parent commit. The former lazy-oversized-source test was replaced by an explicit
+no-partial-admission test; its original failing output remains preserved.
+
+The successful real Claude↔Codex walkthrough remains bound to its clean
+`0f123b6` harness. These later fixes harden invalid source admission and failure
+paths; they do not constitute a second live walkthrough. Native CI and an
+independently verified exact-head MCP verdict remain required before handoff.

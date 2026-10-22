@@ -83,6 +83,32 @@ async def test_missing_source_after_approval_never_reports_peer_completion(flow)
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("failure,code",[("missing","MISSING_OBJECT"),("corrupt","DIGEST_MISMATCH")])
+async def test_unavailable_unchanged_context_cannot_leave_peer_complete(flow,failure,code):
+    import zlib
+    from dulwich.objects import Blob
+    stable=b"unchanged context"
+    flow.writer.pair({b"stable":(0o100644,stable)},
+                     {b"stable":(0o100644,stable),b"file":(0o100644,b"new")})
+    await flow.open()
+    accepted=await flow.submit(recommendations=[dict(severity="nit",location="file:1",
+        issue="preserved original note",suggestion="review later")])
+    assert accepted["ok"]
+    assert (await flow.reviewer.review_status({}))["result"]["status"]=="peer_complete"
+    before=flow.author.store.read_series()
+    oid=Blob.from_string(stable).id.decode()
+    path=flow.config.repo_path/".git"/"objects"/oid[:2]/oid[2:]
+    if failure=="missing":
+        path.unlink()
+    else:
+        path.write_bytes(zlib.compress(b"blob 5\0other"))
+    response=await flow.reviewer.review_status({})
+    assert_error(response,code)
+    assert response["freshness"]=={"state":"unknown"}
+    assert flow.author.store.read_series()==before
+
+
+@pytest.mark.anyio
 async def test_evidence_and_verdict_refuse_superseded_revision(flow):
     await flow.open()
     evidence=await flow.evidence_request()
@@ -201,21 +227,15 @@ def test_core_rejects_relative_configuration_before_using_supplied_resources(cfg
 
 
 @pytest.mark.anyio
-async def test_unchanged_large_blob_does_not_block_other_artifacts_or_first_tree_page(flow):
+async def test_unchanged_oversized_blob_refuses_admission_without_a_partial_revision(flow):
     unchanged=b"x"*(4*1024*1024+1)
     flow.writer.pair({b"z-large":(0o100644,unchanged)},
                      {b"z-large":(0o100644,unchanged),b"a-small":(0o100644,b"small")})
     opened=await flow.open()
-    assert opened["ok"],opened
-    page=await flow.reviewer.read_review({**flow.bound(opened),"view":"source_tree","limit":1})
-    assert page["ok"] and not page["result"]["complete"]
-    entry=page["result"]["items"][0]
-    assert base64.b64decode(entry["raw_path_b64"]) == b"a-small"
-    blob=await flow.reviewer.read_review({**flow.bound(opened),"view":"artifact","artifact_id":entry["artifact_id"]})
-    assert blob["ok"] and base64.b64decode(blob["result"]["data_b64"]) == b"small"
-    refused=await flow.reviewer.read_review({**flow.bound(opened),"view":"source_tree","limit":1,
-                                           "cursor":page["result"]["next_cursor"]})
-    assert_error(refused,"LIMIT_EXCEEDED")
+    assert_error(opened,"LIMIT_EXCEEDED")
+    assert opened["error"]["detail"]=={"limit":"blob_bytes"}
+    assert opened["store_version"]==0 and opened["review_id"] is None
+    assert flow.author.store.read_series() is None
 
 
 @pytest.mark.anyio

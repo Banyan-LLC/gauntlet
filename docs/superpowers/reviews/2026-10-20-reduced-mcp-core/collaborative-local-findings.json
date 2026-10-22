@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-22",
+  "review_head": "144f0c2185ffc1e85c7ffd62c9130937e2d069c1",
+  "native_thread_id": "01a1637c-96b9-7a92-ad9f-b8040dac0921",
+  "native_turn_id": "01a16385-91ad-7fc3-bca9-84c2ae65d061",
+  "original_report": "Pass 4/10 is complete: all 73 assigned artifacts were read through EOF. I found these concerns; the README concern carries over from pass 1.\n\n- **[P1] `collaborative/source.py:195–224, 260–267`** — Capture and freshness checks verify changed blobs but do not open unchanged blobs referenced by the pinned trees. A missing or corrupt unchanged blob can therefore leave `review_status` at `peer_complete`. An oversized unchanged blob can also be admitted, then prevent completion of the `source_tree` listing. Validate those referenced blobs at capture and recheck, and refuse an over-limit snapshot at opening.\n- **[P2] `codex_bridge/engine.py:219, 234–259`** — An SDK task that cancels itself is treated as caller cancellation and re-raised, so the call can end without the required structured uncertain response. Distinguish internal task cancellation from cancellation of the caller.\n- **[P2] `codex_bridge/sdk.py:111–124`** — If the interrupt task ends with `CancelledError`, `task.result()` bypasses the `except Exception` block and skips `client.close()`. Record the interrupt failure and still attempt close within the remaining deadline.\n- **[P3] `README.md:5–7`** — The introduction says the live walkthrough is blocked by the removed Codex MCP endpoint, while the SDK-based walkthrough is recorded as successful. Update that description.\n\nNo canonical verdict was submitted. The next step is the assigned source reading pass 5/10.",
+  "canonical_verdict_submitted": false,
+  "canonical_finding_ids": [],
+  "status": "all four provisional findings verified addressed",
+  "native_gate_accepted": false,
+  "receipt_completeness": "85 malformed large projections rejected; original histories preserved",
+  "verification": {
+    "red": "9 failed, 1 exact-boundary passing control",
+    "green": "10 passed",
+    "windows314": "233 core + 86 adapter/verifier + 145 legacy passed; 7 legacy skips",
+    "custody": "31 passed; 3 POSIX-only skips",
+    "focused313": "13 passed, 90 deselected",
+    "source_hashes_match_matrix": true
+  },
+  "records": [
+    {
+      "path": "app-server-migration/collaborative-local-03/reply-04.json",
+      "bytes": 1662,
+      "sha256": "2d011798b0ec3de577070110111c70bf0c7d13ae123a281965e281168ee89712"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/closure.json",
+      "bytes": 3190,
+      "sha256": "34b109edf63be8090e09d32db177a3dc85a20a948c0fb672beb5c2fc2120b1e7"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/peer-history.json",
+      "bytes": 13243892,
+      "sha256": "b251d4207396312029ca7f656fc64c1d7de6aa2414d60e5dc1b5fda0675dd2c6"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/native-codex-transcript.jsonl",
+      "bytes": 17225418,
+      "sha256": "17ca4e6876c6063a13debb317c9b93520f6afc558cec36d632f4d130a2352c4d"
+    },
+    {
+      "path": "app-server-migration/local-review-findings-red-v1.log",
+      "bytes": 6077,
+      "sha256": "a0587cade81ff0f722dc828171e140f0220577059f234a859361ce3e8cca34c9"
+    },
+    {
+      "path": "app-server-migration/local-review-findings-green-v1.log",
+      "bytes": 351,
+      "sha256": "2008ffa7e239b08fff0c1e1ca90e9d5d9e2be57b34fbc841fcb2321ad2c339df"
+    },
+    {
+      "path": "app-server-migration/local-review-focused-v1.log",
+      "bytes": 1090,
+      "sha256": "48d6c67cc9fb6e8b2965bd8a0368fa6cf2c2898f9e98aa392cf59323cf60ba48"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1.log",
+      "bytes": 971,
+      "sha256": "86d94a343b3be94670c2b021c1ed0ee168825c7a81d2b40909a9a886bce33d5b"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/environment.json",
+      "bytes": 11122,
+      "sha256": "cc3cd6a982e432cbfde8fe0fd368a8666ce0517021049f71b698c27d4550bfe2"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/suite-results.json",
+      "bytes": 988,
+      "sha256": "2b0cea5a884d857aa09f3f935d1206f5bdd7a079e0cef9402823f5ba1d04ff34"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody-results.json",
+      "bytes": 843,
+      "sha256": "d195cd4a35be340ab99fc9590500a2a98da16075d3e893d13921a6fd95881859"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-focused313-v1.log",
+      "bytes": 367,
+      "sha256": "1bf04068f7b5130a3660a9cfd21e22262d559c7796cd0aaca09fb1f8564a385e"
+    },
+    {
+      "path": "app-server-migration/native-small-pages-probe-v1/acceptance.json",
+      "bytes": 219,
+      "sha256": "9bb44c81d85e982dc091c6bc11441ee77e5ba1975751ed0d2f8a5887aac84263"
+    }
+  ],
+  "next_gate": {
+    "original_deadline_seconds": 3600,
+    "artifact_page_bytes": 4096,
+    "listing_limit": 5,
+    "mandatory_scope": "all changed old/new artifacts, entire Python package dependency context, complete full-tree/manifest/history listing chains, every canonical event and evidence body",
+    "entire_pinned_tree_available": true,
+    "legacy_hermetic_certification": false
+  }
+}
