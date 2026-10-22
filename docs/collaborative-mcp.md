@@ -262,9 +262,15 @@ native auth and one externally owned deadline. A real Claude author obtains a
 real Codex finding, commits the fix and continues the same peer thread. The
 independent verifier requires actual complete-read receipts, original test
 exits/bytes, canonical finding continuity and fresh completion after native
-processes retire. Model-free fixtures cannot pass this live gate. Live execution
-is still pending at this documentation checkpoint; see the build log for the
-measured outcome. No PR is published until the live workflow passes.
+processes retire. Model-free fixtures cannot pass this live gate. The recorded
+Windows run passed with Claude 2.1.282 and SDK/runtime 0.163.0: two committed
+revisions and two turns on one peer thread preserved and closed the original
+non-nit finding. Complete read receipts, original failing/passing test bytes and
+native retirement were independently verified. See the
+[hash-bound proof record](superpowers/reviews/2026-10-20-reduced-mcp-core/native-live-acceptance.json)
+and [build log](build-log/2026-10-20-reduced-mcp-core.md) for exact source IDs,
+versions, limitations and the preserved earlier failed attempt. Native CI and
+source review remain separate publication gates.
 
 The removed native `mcp-server` endpoint and its failed capability probes remain
 in preserved history. Do not restore or downgrade to it. Current references:

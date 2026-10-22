@@ -1,0 +1,160 @@
+{
+  "version": 1,
+  "harness_commit": "0f123b6",
+  "archive": "app-server-migration/live-attempt-v2",
+  "acceptance": {
+    "status": "peer_complete",
+    "review_id": "da569a570de245858f7279c6c77a4ad1",
+    "thread_id": "01a16102-e538-7d32-8a26-ec484e2194ff",
+    "turns": 2,
+    "revisions": 2,
+    "findings": 1,
+    "source_oids": [
+      "024d7e7fabec954c52b84105edb19fe15d544a9a",
+      "2851c71cbab543b8c9bd7e02247495bc99df065c"
+    ]
+  },
+  "native_closure": {
+    "completed": true,
+    "exit_code": 0,
+    "root_reaped": true,
+    "tree_retired": true,
+    "elapsed_seconds": 417.46666140004527
+  },
+  "versions": {
+    "claude": {
+      "claude": "2.1.282 (Claude Code)",
+      "python": "3.14.6 (tags/v3.14.6:c63aec6, Jun 10 2026, 10:26:10) [MSC v.1944 64 bit (AMD64)]"
+    },
+    "sdk": {
+      "sdk": "0.163.0",
+      "runtime": "0.163.0",
+      "metadata": {
+        "userAgent": "codex_python_sdk/0.163.0 (Windows 10.0.26200; x86_64) dumb (codex_python_sdk; 0.163.0)",
+        "platformFamily": "windows",
+        "platformOs": "windows"
+      }
+    }
+  },
+  "turns": [
+    {
+      "turn_id": "01a16102-f214-7b81-bae7-54f3173045dd",
+      "status": "completed",
+      "mcp_calls": {
+        "read_review": 17,
+        "review_status": 3,
+        "submit_review": 1
+      },
+      "native_failed_calls": 0
+    },
+    {
+      "turn_id": "01a16106-4f68-77d3-856d-8dd5ad4cdda2",
+      "status": "completed",
+      "mcp_calls": {
+        "read_review": 21,
+        "review_status": 4,
+        "submit_review": 2
+      },
+      "native_failed_calls": 1
+    }
+  ],
+  "findings": [
+    {
+      "original": {
+        "record": {
+          "severity": "important",
+          "location": "discount.py:3",
+          "issue": "[P1] The implementation subtracts discount_percent as a fixed currency amount instead of applying it as a percentage to price * quantity. For valid documented input (100, 2, 10), it returns 190 instead of 180, reproducing the failure in test_discount.py:9. The same formula also returns a negative total for a zero price and a nonzero discount, and fails to reduce all totals to zero at 100% discount.",
+          "suggestion": "Restore percentage scaling, for example return price * quantity * (100 - discount_percent) / 100. Keep the committed regression test and verify the valid zero-price and 100%-discount cases.",
+          "id": "r1-36fede18be7d32d2891289755f383be6",
+          "review_id": "da569a570de245858f7279c6c77a4ad1",
+          "revision_id": "0d52ee26196d430fa1a2e31860189b95",
+          "round": 1,
+          "index": 0
+        },
+        "digest": "d0e299138fa13fd66f3b622c0e0d4564e019f099b3554bd8c52f7b2d8dcc6a0f",
+        "disposition": "addressed",
+        "event_id": "142fcb3c5a31452c870dbbafefc06c71",
+        "snapshot_digest": "41862b9d3684266046d614f22910b48cec7bed6873d0af19bc71afc640f5ef0c"
+      },
+      "final_disposition": {
+        "digest": "d0e299138fa13fd66f3b622c0e0d4564e019f099b3554bd8c52f7b2d8dcc6a0f",
+        "id": "r1-36fede18be7d32d2891289755f383be6",
+        "reason": "Commit 2851c71cbab543b8c9bd7e02247495bc99df065c, discount.py:3, restores price * quantity * (100 - discount_percent) / 100. Both committed tests and independent zero-price, 100%-discount, and fractional cases pass from pinned bytes.",
+        "status": "addressed"
+      }
+    }
+  ],
+  "proof_files": {
+    "acceptance.json": {
+      "bytes": 306,
+      "sha256": "34fee0ada641894852634c3623870a5068ab9c6564509a77f5b6f26d063cf382"
+    },
+    "after-run.json": {
+      "bytes": 2887,
+      "sha256": "0eae3030d52e81e9e063b880afd831ef372414332981f5d386e6667ad58a1821"
+    },
+    "author-prompt.txt": {
+      "bytes": 4955,
+      "sha256": "ebeff2b2bee958532eff48319e0cd496dad574f186c7fecf4277f0d09713c173"
+    },
+    "before-run.json": {
+      "bytes": 3735,
+      "sha256": "2471bd248aebaa8159a555348918d78aeb8ff09f7c3c54987f0d37d1d42ce830"
+    },
+    "canonical-records.json": {
+      "bytes": 30815,
+      "sha256": "0ee1098b112358f1a8023dbe67fcd667b0ef8a75da41381fb7e349d5091b97e9"
+    },
+    "claude-events.jsonl": {
+      "bytes": 243485,
+      "sha256": "2dae4503a5d7406bcecf01cc51e174e5d8b0d0da4397dfc26c193be1635d2fdc"
+    },
+    "claude-settings.json": {
+      "bytes": 113,
+      "sha256": "90d5d57e854f42df9967cdff49378189b8bd2c348e6f6495d5e64f27ad99f4f1"
+    },
+    "claude-stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "closure.json": {
+      "bytes": 2100,
+      "sha256": "e22089d61913db754732d8a0d186f6dbfbbc4a0424051bda70831ca8f7a8ee4b"
+    },
+    "fixture-commits.json": {
+      "bytes": 692,
+      "sha256": "23aec443aa5830601e350d9559633b707f37571d2c206b309335d05436c0d164"
+    },
+    "mcp.json": {
+      "bytes": 1800,
+      "sha256": "5d513b778db17dae51cfb4d53ea4a3424d3cfea632b2c44edcb11c8254b09a85"
+    },
+    "native-claude-transcript.jsonl": {
+      "bytes": 364620,
+      "sha256": "086fd3e9cea9ed0e7d9fcb24ad729e4fa6ea7ba107d8018e17927eab357588e8"
+    },
+    "native-codex-transcript.jsonl": {
+      "bytes": 770255,
+      "sha256": "2dd8189883232900a6b6a2ad8945907720c2e466f683f4a0e8692d18614908f3"
+    },
+    "native-versions.json": {
+      "bytes": 136,
+      "sha256": "5d0ed4f8347718b1e3c2b9fed4aa3a1461225043fba734ef582c561c795dceb3"
+    },
+    "operator.json": {
+      "bytes": 795,
+      "sha256": "cefcd92aea896e51c7ab346333e094ae5bf2f6913f1bceea74f3de3db615d5c2"
+    },
+    "peer-history.json": {
+      "bytes": 302031,
+      "sha256": "eb6fa2e33e1e382a4b5ca9d3c8290c772e1cde6b30c88260ccd1170e258e8556"
+    },
+    "sdk-runtime.json": {
+      "bytes": 236,
+      "sha256": "ba96a878742419b29a6007a049a06b5a83edfe8e0819a8dcfce0c4b9c73b70d9"
+    }
+  },
+  "prior_failed_attempt_preserved": "app-server-migration/live-attempt-v1",
+  "publication_approval_merge": "not performed; review and CI remain required"
+}

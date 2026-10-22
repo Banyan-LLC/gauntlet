@@ -40,7 +40,9 @@ identify their working source separately from their parent commit.
 | Review fixes, Windows Python 3.13.7 | Same 28 / 221 / 145 passed with the same explicit skips | `implementation-matrix313-v2` |
 | Final branch-review fix, Windows Python 3.14.6 | 28 custody probes passed, two POSIX-only skips; 224 collaborative and 145 legacy tests passed, six legacy/environment skips | `final-matrix314-v1` |
 | Fresh separate base-only Python 3.14.6 | 147 passed, four explicit inherited/environment skips; optional dependencies absent | `implementation-base314-v2` |
-| Final clean-source Python/base verification | Pending Task 8 completion | final execution evidence index |
+| SDK migration, clean `0f123b6`, Python 3.14.6 | Whole suite: 453 passed, seven explicit skips; exit 0 and full retirement | `app-server-migration/task11-postlive-full-suite-v1` |
+| Final SDK/acceptance cases, Python 3.13.7 | 83 passed; exit 0 and full retirement | `app-server-migration/task11-final-bridge313-v1` |
+| SDK migration base-only Python 3.14.6 | 148 passed, four explicit skips; optional dependencies absent | `app-server-migration/task10-base314-v1` |
 | Linux/Windows/macOS × Python 3.11/3.14/3.15 plus base-only | Workflow configured; remote results pending publication | `.github/workflows/collaborative-python.yml` |
 
 The six optional-environment skips are the existing Docker opt-in integration,
@@ -55,12 +57,12 @@ pass is inferred from Windows results.
 
 | Approved acceptance paragraph | Implemented evidence | Remaining acceptance |
 | --- | --- | --- |
-| 1. Shared pinned review, evidence, blocker, committed fix and preserved closure | `test_two_stdio_hosts_keep_history_source_and_evidence_after_restart`; four distinct native host PIDs across restart; original finding/evidence/source bytes re-read; independent author/reviewer core flow | Separately recorded native model-host conversation, described in paragraph 6 |
+| 1. Shared pinned review, evidence, blocker, committed fix and preserved closure | `test_two_stdio_hosts_keep_history_source_and_evidence_after_restart`; four distinct native host PIDs across restart; original finding/evidence/source bytes re-read; independent author/reviewer core flow; real native proof in paragraph 6 | Remote CI remains required |
 | 2. Drift, missing objects, malformed coverage/ledger, blockers and role misuse refuse completion | `test_core.py`, `test_policy.py`, `test_source.py`, role-specific SDK tests; real stdio head/target drift and exact replay | Cross-platform CI results pending |
 | 3. CAS/retries, cancellation, crashes, restart and second participant | Real before/after-COMMIT process exits 73 with required control checkpoints; exact-key recovery once; cancellation at three Store checkpoints and through SDK; post-COMMIT lost response; two-connection CAS | Cross-platform CI results pending |
 | 4. Exact bytes, quotas, raw paths, complete near-limit carry-over and persistent counters | `test_contracts.py`, `test_source.py`, `test_store.py`, `test_policy.py`, `test_path_security.py`; Git objects for case/normalization/raw-byte paths; whole-byte digests and pages; real 180-prior-finding closure in round ten | Cross-platform CI results pending; physical resource certification is outside the approved logical quotas |
-| 5. Legacy compatibility and base-only isolation | Legacy suite remains green on both installed supported Python runtimes; separate base-only venv has no optional dependencies; console missing-extra diagnostic is short and safe | Final PowerShell/base checks and remote floor job pending |
-| 6. Documented collaborative Claude-to-Codex native conversation walkthrough | Original host capability failures preserved; Human directed official Python SDK/app-server migration; amended spec and plan committed | SDK adapter implementation and real finding/fix/closure walkthrough remain required before publication; no live pass claimed |
+| 5. Legacy compatibility and base-only isolation | Legacy suite green on both local supported runtimes; base-only 148 passed with optional packages absent; missing-extra diagnostics safe; unchanged PowerShell 40 files/7,281 assertions passed | Remote floor/base jobs pending |
+| 6. Documented collaborative Claude-to-Codex native conversation walkthrough | `live-attempt-v2` from clean `0f123b6`: real Claude author, real SDK Codex peer; one thread/two terminal turns; two committed source OIDs; original non-nit finding closed by exact ID/digest; actual complete-read and native closure receipts independently verified | Live gate satisfied; final source review and remote CI remain separate gates |
 
 ## Payload and assurance boundaries
 
@@ -213,6 +215,49 @@ truncating bounded core replies. The public SDK configuration regression and a
 typed missing-workflow-evidence regression failed before their fixes; all 83
 adapter/verifier tests then passed. A fresh real attempt is required; the first
 attempt is not counted as full live acceptance.
+
+## Successful real Claude↔Codex proof
+
+The next fresh run, `live-attempt-v2`, **passed** from clean harness `0f123b6`.
+Claude Code 2.1.282 and the real Python SDK/packaged runtime 0.163.0 used native
+user authentication. The independent verifier ran after complete process
+retirement and derived fresh `peer_complete`. The
+[committed proof record](../superpowers/reviews/2026-10-20-reduced-mcp-core/native-live-acceptance.json)
+binds complete original transcripts, typed SDK history, canonical records,
+fixture commits, evidence, runtime versions and native outcomes by SHA-256.
+
+- Core review: `da569a570de245858f7279c6c77a4ad1`.
+- Same native thread: `01a16102-e538-7d32-8a26-ec484e2194ff`.
+- Completed turns: `01a16102-f214-7b81-bae7-54f3173045dd` and
+  `01a16106-4f68-77d3-856d-8dd5ad4cdda2`.
+- Committed source: `024d7e7fabec954c52b84105edb19fe15d544a9a` →
+  `2851c71cbab543b8c9bd7e02247495bc99df065c`.
+- Original non-nit finding: `r1-36fede18be7d32d2891289755f383be6`; its exact
+  immutable digest was preserved in the addressed carryover.
+- Original fixture tests: exit 1 before the committed fix, exit 0 afterward;
+  exact full bytes matched both canonical inline evidence records.
+
+Both native model turns read complete manifest, source-tree and history pages,
+all required pinned blob/event/finding/evidence ranges through EOF. The verifier
+compared those actual SDK MCP receipts with canonical bytes, lengths and hashes.
+It did not accept coverage prose as proof. A too-long carryover reason was
+refused without committing; the peer corrected it within the same turn. Six
+canonical events remain: two revisions, two evidence records and two verdicts.
+The original failure and corrected call both remain in native history.
+
+The outer native owner completed with actual exit 0, root reaped and full tree
+retirement in 417.47 seconds. Original vendor transcript files were copied
+create-only after retirement and hash-checked against their native originals.
+All fixture commits use the required author/committer and carry no tool credit.
+No credential or global host configuration was copied or rewritten.
+
+Post-live whole-suite verification passed 453 tests with seven explicit
+inherited/environment skips on Python 3.14.6. The final 83 adapter/verifier cases
+also passed on Python 3.13.7; all original exits were zero with complete native
+retirement. This proof certifies that recorded Windows workflow, not model
+independence, legacy hermetic isolation, universal SDK process retirement or
+cross-platform CI. Final source review, nine native matrix jobs, base CI and
+authoritative PR review still remain.
 
 Six pre-hardening reviews are preserved under `prehardening-d06c1df` in the raw
 execution archive. Their verified findings produced regression tests and fixes
