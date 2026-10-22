@@ -315,3 +315,9 @@ wrapper's actual character count. A proposed replacement with collaborative MCP
 local/PR-head gates is awaiting explicit Human authorization. Publication, the
 nine native CI jobs plus base-only job, and authoritative PR-head review remain
 pending. No approval or merge has been performed.
+
+After the verified fixes were committed as `4e3f7c7`, every recorded matrix
+source hash still matched the committed working bytes. A fresh actual local
+preflight on that commit again refused before dispatch: **2,342,493 characters**
+against the same fixed1,048,576 limit, exit10, with native retirement confirmed.
+Its original receipt is preserved under `local-preflight-native-v2`.
