@@ -1,8 +1,11 @@
 # Gauntlet
 
-An optional [collaborative MCP core](docs/collaborative-mcp.md) stores pinned
-Git reviews, findings and evidence while native hosts manage conversations.
-Legacy hermetic mode remains the default. The live Claude-to-Codex conversation
+The [collaborative MCP core](docs/collaborative-mcp.md) is the default route in
+the Gauntlet skills. It stores pinned Git reviews, findings and evidence while
+native hosts manage conversations. Legacy hermetic mode remains an explicit
+option: request `legacy`, `hermetic` or `mode=legacy` and follow the preserved
+`LEGACY.md` in each skill. Missing MCP setup does not silently select legacy.
+The live Claude-to-Codex conversation
 walkthrough passed through the official Python SDK and app server. The setup
 guide records the proof, assurance limits and separate review/CI requirements.
 
@@ -13,7 +16,7 @@ use explicit backward references. The certified decoder reconstructs each full
 original section exactly and verifies full Git identities and ordered coverage.
 Code, tests and the live carry-over ledger never enter that metadata table. Both unchanged 1 MiB
 request limits and every existing review/capacity gate still apply. See
-`gauntlet-review/SKILL.md` for framing and bounds.
+`gauntlet-review/LEGACY.md` for legacy framing and bounds.
 
 `-CompactIndentation` additionally represents recoverable leading indentation
 in verified complete added source files under `src/`. Each four initial spaces
@@ -142,7 +145,16 @@ OpenAI Codex to act as an independent reviewer:
 | `gauntlet-dev` | A complete development workflow with Codex review gates after the spec, plan, and pull request. |
 
 The skills are developed and verified in this repository, but they are not limited to this
-repository. `install.ps1` installs them in your user-level Claude Code skills directory, after
+repository. The setup in [collaborative-mcp.md](docs/collaborative-mcp.md) is required
+for the default MCP route. Copy each skill's `SKILL.md`, `LEGACY.md` and referenced
+resources together into the host's skill directory (`~/.claude/skills` for Claude,
+`~/.agents/skills` for Codex). Back up existing files first and preserve runtime
+calibration files and all review state. Start a fresh host session for updated
+skill discovery; reloading a skill alone does not change fixed MCP refs/roles.
+
+The remaining installation, calibration and harness instructions below describe
+the **explicit legacy route**. `install.ps1` retains its legacy stack gates and
+installs the skills in your user-level Claude Code skills directory, after
 which a fresh Claude Code session can use them from any project checkout on the same machine.
 
 Codex reviews; it never edits the reviewed project and never merges a pull request. A human
@@ -453,7 +465,7 @@ The most useful exit codes when diagnosing a stopped run are:
 
 PR publication additionally uses `2`/`3` for review-context drift, `4` for an immediate human
 flag, `5` for one retryable transient GitHub failure, and `6` for locally detected verdict/
-provenance mismatch. See [`gauntlet-review/SKILL.md`](gauntlet-review/SKILL.md) for the full protocol.
+provenance mismatch. See [`gauntlet-review/LEGACY.md`](gauntlet-review/LEGACY.md) for the full legacy protocol.
 
 ## Update or reinstall
 
