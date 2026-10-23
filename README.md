@@ -1,5 +1,11 @@
 # Gauntlet
 
+An optional [collaborative MCP core](docs/collaborative-mcp.md) stores pinned
+Git reviews, findings and evidence while native hosts manage conversations.
+Legacy hermetic mode remains the default. The live Claude-to-Codex conversation
+walkthrough passed through the official Python SDK and app server. The setup
+guide records the proof, assurance limits and separate review/CI requirements.
+
 Historical review metadata can additionally use `-CompactReviewMetadata` with
 `-CompactAddedFiles` in local or PR mode. Complete added review JSON/JSONL files
 retain every unique raw string token and every other character; duplicate tokens

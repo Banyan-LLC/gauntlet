@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-10-22T01:10:18.0363356Z",
+  "archive_root": "C:/Users/geoff/Documents/Projects/Banyan/gauntlet/.git/info/reduced-mcp-core/20261021-execution",
+  "prior_manifests": [
+    "execution-evidence-migration-plan.json",
+    "execution-evidence-task0.json",
+    "execution-evidence-task1.json",
+    "execution-evidence-task10.json",
+    "execution-evidence-task11-live1-fix.json",
+    "execution-evidence-task11-prelive.json",
+    "execution-evidence-task11-success.json",
+    "execution-evidence-task12-review-fixes.json",
+    "execution-evidence-task2.json",
+    "execution-evidence-task3.json",
+    "execution-evidence-task4.json",
+    "execution-evidence-task5.json",
+    "execution-evidence-task6.json",
+    "execution-evidence-task7.json",
+    "execution-evidence-task8-finalfix.json",
+    "execution-evidence-task8.json",
+    "execution-evidence-task9.json"
+  ],
+  "files": [
+    {
+      "path": "app-server-migration/local-preflight-native-v2.log",
+      "bytes": 429,
+      "sha256": "d85d3d199c4c57f3bc7591783dcc9bacf8923e18908a94f975c36ea7fe1a69b3"
+    },
+    {
+      "path": "app-server-migration/local-preflight-native-v2/27ca5edef5fc4f4397c3007607286115-budget.bin",
+      "bytes": 49,
+      "sha256": "9b68c4f85b281a3d9be796fe27faf9b48fbccea40ab01263845948b55f2725c3"
+    },
+    {
+      "path": "app-server-migration/local-preflight-native-v2/27ca5edef5fc4f4397c3007607286115-receipt.json",
+      "bytes": 2169,
+      "sha256": "ab0a74db1fabc716bbf7a1214be892140c3ec6f4d7462c9663fe07eb95e556bd"
+    }
+  ]
+}

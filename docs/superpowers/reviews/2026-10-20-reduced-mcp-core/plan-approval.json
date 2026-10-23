@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "approved_utc": "2026-10-21T11:27:23.6752563Z",
+  "human_instruction": "Plan approved. Proceed with native execution, preserve all evidence and review history, and carry it through verification and a ready-for-review PR against main.",
+  "plan": "docs/superpowers/plans/2026-10-20-reduced-mcp-core.md",
+  "plan_blob": "3be7e18fe2e740c96397badb702e1c419624183b",
+  "approval_parent": "f94da93dbde3a21a269cfb7ed7caf582c3fd7e99",
+  "execution": "native-inline",
+  "publication": "ready-for-review against main",
+  "approval_or_merge_authorized": false
+}

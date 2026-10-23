@@ -1,0 +1,40 @@
+{
+  "verdict": "request_changes",
+  "summary": "Revise artifact discovery, read/replay integrity, test-process supervision, failure reporting and repository-path validation before implementation.",
+  "recommendations": [
+    {
+      "severity": "important",
+      "location": "Wire contracts: Change; Tasks 2 and 5: artifact IDs and manifest reads",
+      "issue": "[P1] Base-side artifacts have no discoverable read handles. Change contains paths, OIDs, lengths and digests, but no old/new artifact IDs. source_tree exposes only head-tree entries, while artifact reads require an opaque ID. Consequently, the specified interface cannot retrieve deleted files or the old bytes of modified files, despite requiring complete review of both sides.",
+      "suggestion": "Define manifest response records exposing nullable old/new artifact handles and their byte metadata, keeping lookup metadata outside source identity. Cover additions, modifications, deletions and symlinks through actual MCP reads to EOF; represent gitlinks explicitly as pointers without blob handles."
+    },
+    {
+      "severity": "important",
+      "location": "Tasks 1, 6, 7 and 8: installation checks, spawned protocol checks, stdio/crash tests, matrix runner and captured verification commands",
+      "issue": "[P1] The test-owned process lifecycle is insufficiently bounded. The 10-second checkpoint wait, 900-second command timeouts and unspecified outer deadline do not bound retained stdout/stderr/checkpoint data or cleanup. SDK context shutdown, kill/wait, pipe readers, joins and fallback calls have no shared cleanup deadline. Killing only the immediate crash child also leaves descendants able to hold stdout, stderr or stdin open. These gaps affect both stdio hosts, the fault helper and all test-run/"
+
+      ,
+      "suggestion": "Specify one test-only supervision contract for every spawned path: per-channel and aggregate retained-byte caps, termination immediately upon overflow, one monotonic deadline covering execution and every cleanup operation, and finally-based process-tree termination and reaping. Require equivalent Windows and POSIX behavior, with probes for descendants inheriting each of stdout, stderr and stdin, reader failures, cancellation and failed cleanup."
+    },
+    {
+      "severity": "important",
+      "location": "Tasks 2, 3 and 5: read_blob, read_page, lookup_retry and retries schema",
+      "issue": "[P2] Integrity validation does not explicitly cover every returned payload. The specified gates concern snapshot/status checks and validation before policy derivation or mutation; paginated artifact reads and early retry returns lack equivalent requirements. In addition, retries.result_bytes has no persisted content digest. Structurally valid SQLite content or Git object data can therefore change without a required check before returning historical bytes or an apparently successful original,"
+
+      ,
+      "suggestion": "Require verification before returning source pages, event-body pages, evidence pages and replay receipts. Compare source content with its pinned identity, validate stored bodies against their recorded digests, and persist/check a digest and event/version bindings for result_bytes. Add corruption tests for every read/replay path and return typed integrity errors rather than successful envelopes."
+    },
+    {
+      "severity": "important",
+      "location": "Tasks 1, 6, 7 and 8: test command helpers and matrix result reporting",
+      "issue": "[P2] Recording original exit codes does not define outcomes for launch failure, timeout, output overflow, pipe failure or incomplete cleanup. No structured partial-failure contract or aggregate exit policy is specified. Such failures can discard earlier results, lose underlying errors or leave recorded partial evidence mistaken for a completed verification run.",
+      "suggestion": "Define a structured command outcome containing completion state, observed exit status, bounded capture details, termination/reaping results and underlying errors. Typed helper exceptions should preserve that outcome. Persist completed and partial outcomes, and make the driver fail for every unexpected failure or incomplete run; declare and verify deliberately injected crash outcomes separately."
+    },
+    {
+      "severity": "important",
+      "location": "Task 1: OperatorConfig; Task 2: GitSource startup; Task 6: CLI validation",
+      "issue": "[P2] Absolute-path validation is explicit for state_dir but absent for repo_path. Path typing and Repo(path) allow relative repository paths, contrary to the controlling specification. Their meaning depends on the launching host's working directory.",
+      "suggestion": "Reject non-absolute repository paths before normalization or resource opening, through shared configuration validation used by CLI and direct-core callers. Test POSIX relative paths and Windows drive-relative/root-relative forms, with typed configuration errors."
+    }
+  ]
+}

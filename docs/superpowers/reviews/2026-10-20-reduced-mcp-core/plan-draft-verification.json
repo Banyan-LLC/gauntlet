@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "client_date": "2026-10-20",
+  "plan": "docs/superpowers/plans/2026-10-20-reduced-mcp-core.md",
+  "payload_projection_bytes": 218196,
+  "payload_limit_bytes": 262144,
+  "remaining_bytes": 43948,
+  "projection": "200 prior plus20new,1000coverageIDs,maximal permitted text escaping,wrapped MCP arguments; deliberately exceeds reachable finding count",
+  "python_blocks_parsed": 8,
+  "placeholder_scan": "No matches",
+  "product_tests": "Not run: planning only",
+  "product_dependencies": "Not installed",
+  "approved_spec_unchanged": true
+}

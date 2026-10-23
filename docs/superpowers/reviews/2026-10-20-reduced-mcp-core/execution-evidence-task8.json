@@ -1,0 +1,2947 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-10-21T15:26:49.2214085Z",
+  "archive_root": "C:/Users/geoff/Documents/Projects/Banyan/gauntlet/.git/info/reduced-mcp-core/20261021-execution",
+  "prior_manifests": [
+    "execution-evidence-task0.json",
+    "execution-evidence-task1.json",
+    "execution-evidence-task2.json",
+    "execution-evidence-task3.json",
+    "execution-evidence-task4.json",
+    "execution-evidence-task5.json",
+    "execution-evidence-task6.json",
+    "execution-evidence-task7.json"
+  ],
+  "files": [
+    {
+      "path": "implementation-base314-v2.log",
+      "bytes": 318,
+      "sha256": "1b8ca21c010a61bb57a706c968fb5161189bdff00123ad91bba1faafe611a7cb"
+    },
+    {
+      "path": "implementation-base314-v2/custody-probes.log",
+      "bytes": 4830,
+      "sha256": "010e5849da721a3452e40045db8f23ee63c73ddb9a092258ce7aa753f568e419"
+    },
+    {
+      "path": "implementation-base314-v2/custody-results.json",
+      "bytes": 1728,
+      "sha256": "4b32f98fa411a9d649697c93e57601c707745ddae6fd2d7b53f9b30b3f0ce94c"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-_f9juf7m/1c07fc7adf67452ab6c8715f799a062c-budget.bin",
+      "bytes": 49,
+      "sha256": "848f29cdbd3a13a1112a3c3a7587ab744bf531b19e1bf5af27e0801500842127"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-_f9juf7m/1c07fc7adf67452ab6c8715f799a062c-receipt.json",
+      "bytes": 1661,
+      "sha256": "53bf0424c22d1331dd58f9991b403bb46d1ac59aba253fc4ad789e095d3b2ff3"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-1b3fr4g2/03412d30e258408390d883a3c43495f7-budget.bin",
+      "bytes": 49,
+      "sha256": "a332407e1e47fd1ccf75d328e1ebae3e7751afb41aca28488b4f279dbc59a90d"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-1b3fr4g2/03412d30e258408390d883a3c43495f7-receipt.json",
+      "bytes": 1847,
+      "sha256": "d7bff7354a237b2ec64a260debd37b3b20c215a11a5eab564ca2c1f36974d9d8"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-2z485kfv/1c428f8d93de4aae9be22080c2ad082f-budget.bin",
+      "bytes": 49,
+      "sha256": "f161c6a9793feb5b0a73ccb5a4df729c6f41aa97a159ce77aa6d241282c7523c"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-2z485kfv/1c428f8d93de4aae9be22080c2ad082f-receipt.json",
+      "bytes": 1737,
+      "sha256": "7349d94ad57cc3d9edda2c08ae1cc7e5e441f88f303c1aa3545b90ca4b215ba9"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-2z485kfv/23b16d7a1d8b4a998f556fb354d84f13-receipt.json",
+      "bytes": 1713,
+      "sha256": "c8918dc0427f63c977b9263f7a90c744671b3378e918ecfce64ea80686376d5f"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-2z485kfv/98d87b116c3247f6a3da5eff632edb31-budget.bin",
+      "bytes": 49,
+      "sha256": "61de7980cf4e4b1700ef4a07bfe9415261c79a4f92b91b15d3f06c7f2fc45fe9"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-2z485kfv/98d87b116c3247f6a3da5eff632edb31-receipt.json",
+      "bytes": 1734,
+      "sha256": "81286d6b513bf009fc7de0f8f01a4f22d40b00772a4db6d2e9fb1d9ca02634f6"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-2z485kfv/ab689738bd8e4c31bac0bc63cde617d0-receipt.json",
+      "bytes": 1713,
+      "sha256": "e7d76446c7e78bc242dca2a406874117960a3a57c46e46d0a1b4e8f567a8d22b"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-4yad27nj/35cfe4bbdf8a4e71bd50c25b101f0ecf-budget.bin",
+      "bytes": 49,
+      "sha256": "7245300e40e2d6a797e61df89d6d96b28717e194c7cfab2c299488f984e3b9ce"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-4yad27nj/35cfe4bbdf8a4e71bd50c25b101f0ecf-receipt.json",
+      "bytes": 1685,
+      "sha256": "8d71ef518de96df31b272cf4d30e7a490a5af07636a421785a3cee29fc2d14dc"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-8228f51n/3a5005d3d03c4bf0a678a992248ec3bf-budget.bin",
+      "bytes": 49,
+      "sha256": "594eca6819eecf5f1a00b0fe9d198f4efc4903bc6ecd39e6cff8db66bdb9ed4e"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-8228f51n/3a5005d3d03c4bf0a678a992248ec3bf-receipt.json",
+      "bytes": 5594258,
+      "sha256": "b3847b1136dfecb7e382335a93a2887394f4e0f1f41213040f3ec91a3286e998"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-8lex2k12/ad594e76b4ce4bf8bf718b56c7b06544-budget.bin",
+      "bytes": 49,
+      "sha256": "2a9501f234d067669587a59da6ff319c485d403859619a09460287983fb0a648"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-8lex2k12/ad594e76b4ce4bf8bf718b56c7b06544-receipt.json",
+      "bytes": 1727,
+      "sha256": "924c78fad98f6b76f00d8dfba681d92f3c4bdf30d554679e10c493d8733bfcb3"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-98t5fulp/e54954d684364cd0bfbbe98e59d3ff32-budget.bin",
+      "bytes": 49,
+      "sha256": "5084abbedfdd1cf4ea03257747f96025789f1ffb758989e28ece3167a1a4571e"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-98t5fulp/e54954d684364cd0bfbbe98e59d3ff32-receipt.json",
+      "bytes": 1832,
+      "sha256": "a2f8b5689cd8bfb562ed989ee4dd9b9417cde28a107563c185e776e074948e49"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-ao4ddtc_/3f9fe0545ac64db1bd9b7a7711363b82-receipt.json",
+      "bytes": 1632,
+      "sha256": "455ae970c2a6693393dba7ef5091313b15ae61ab638416f038000ba043cc6fc1"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-ao4ddtc_/c51de7a620664734b3fb4e1922def3cc-budget.bin",
+      "bytes": 49,
+      "sha256": "4d521858b8b37b3c178ec29179611fd80e1940502dcb0e01481487887133e1f6"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-ao4ddtc_/c51de7a620664734b3fb4e1922def3cc-receipt.json",
+      "bytes": 1727,
+      "sha256": "94d1caaf116638d9509d8606fe789eb4d3054a0e98ad77cda6ff777efebed4cb"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-f1b9alqi/54b856440af140b182e1f240fb1b0e95-budget.bin",
+      "bytes": 49,
+      "sha256": "0168af2569e2f561487b8aa461b62e0d90b7b1ece11e2295484cf10769d7ad49"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-f1b9alqi/54b856440af140b182e1f240fb1b0e95-receipt.json",
+      "bytes": 1621,
+      "sha256": "7a3174c10d623529c104eeb92041a5dc9fe29731c2be501e0dae6d0f71499f51"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-fktz03l4/44105d09fb21413892567ff35a95eb97-budget.bin",
+      "bytes": 49,
+      "sha256": "3657556a103cc6b96fdb3b306c9d8b201c0cf0691eb3e22a880d97ae53fc9e36"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-fktz03l4/44105d09fb21413892567ff35a95eb97-receipt.json",
+      "bytes": 1642,
+      "sha256": "8f72e43caa627ad66ea8e732ff774b08d23c5af61035069d8dcbb8080f755b02"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-fktz03l4/f8e6ef8ee81e4dedaa3a6e6b3a3bbf78-budget.bin",
+      "bytes": 49,
+      "sha256": "86da0c1cff5c287cc58f067d9e71e4a0a2d74dd06280e16ee3da67a079935cb5"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-fktz03l4/f8e6ef8ee81e4dedaa3a6e6b3a3bbf78-receipt.json",
+      "bytes": 1730,
+      "sha256": "199d30d3a97c6e384da815f1aa7fb922eeb0ab73636f4193dec4e43bc72defbd"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-ht512qhz/a75f9cd8aa1f4e49a0b17228793cb723-budget.bin",
+      "bytes": 49,
+      "sha256": "d7c57c15f3ebae7337f4d11b7d5bfb67230563eba762701164659efe5853e96e"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-ht512qhz/a75f9cd8aa1f4e49a0b17228793cb723-receipt.json",
+      "bytes": 1648,
+      "sha256": "63f03c0dcb40af963555682c7b6ab72cc8de4e3869d67d6d7312852d9f4a7f54"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-jhp139g_/755f0dcb954f4cb6aec37c5c86a06656-budget.bin",
+      "bytes": 49,
+      "sha256": "ead0bddb9237137ba759851ba3702a0a7e865c570c8e237724d15454085e2623"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-jhp139g_/755f0dcb954f4cb6aec37c5c86a06656-receipt.json",
+      "bytes": 1748,
+      "sha256": "d66c4edd58f674234b199f716bc78a5419eeb3b95602a773f93e9a9cb69857a6"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-kcz4pbx9/09337f7f9c60400e92921f1b338178f3-budget.bin",
+      "bytes": 49,
+      "sha256": "7bc310276c9347ee12c589b9a2ed9d4331299a990b8d858c0bdda021c995fb47"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-kcz4pbx9/09337f7f9c60400e92921f1b338178f3-receipt.json",
+      "bytes": 1812,
+      "sha256": "6038cdf41d1a3502d754d0999ca86ec2a08bca85673628a116561e8ce24d8673"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-kcz4pbx9/5b626aadf11c4427ba381e7cb5626a2e-budget.bin",
+      "bytes": 49,
+      "sha256": "76ea453cb4fab7059dd864d9344585d885bc111f0a821cc7b6e8fb14066d6a35"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-kcz4pbx9/5b626aadf11c4427ba381e7cb5626a2e-receipt.json",
+      "bytes": 1810,
+      "sha256": "f2a33e049ce462a3db3d7475c7dd98bd314cccc581dbba3741995609b5e788a9"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-kcz4pbx9/a70e4ac4ca7a4693b243a8af2011574a-budget.bin",
+      "bytes": 49,
+      "sha256": "a83b06749a7343d211b5babb4b9c71785f46908857f8f401872e09877a223a3f"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-kcz4pbx9/a70e4ac4ca7a4693b243a8af2011574a-receipt.json",
+      "bytes": 1812,
+      "sha256": "387886b720ca90a71541c707fad99a103e27c8f20b3e18ac17eef44c1ec02ada"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-n8u_2_ri/3e1c62e3d16c48278e50cafe2f0fa93e-receipt.json",
+      "bytes": 4195863,
+      "sha256": "829a2e64d47222682b6aa1c1a947f750427c6be885962fc367c4a701a7eb2bc5"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-n8u_2_ri/3eaa42c13b1045a086868c74b3a5f198-budget.bin",
+      "bytes": 49,
+      "sha256": "7b4d63eb69d10bf095b3ba535e069d8e77603f3e3be5d535171b75478dadec5f"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-n8u_2_ri/3eaa42c13b1045a086868c74b3a5f198-receipt.json",
+      "bytes": 1722,
+      "sha256": "43c9678f590ee8f5272233638a1cb88ef10051e9afb836d9e060083d2f662d5a"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-n8u_2_ri/4bca2eb5e8494e2dbd9fcd45612a9d74-receipt.json",
+      "bytes": 2797993,
+      "sha256": "819e87ddab50ea1f64254d30748c83132b0341016d4b011ab2fbfa258ef69834"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-n8u_2_ri/8299d7682ef843f3b81404150e49655a-receipt.json",
+      "bytes": 4195862,
+      "sha256": "a592e8391beb1fb3339c63f8f70b6a03a1372cfe73867826cb2bb9b02d002708"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-o38kgjrg/b867f0fd9a3843ae9441b78f19888a02-budget.bin",
+      "bytes": 49,
+      "sha256": "4ac2a7eb9285d0891e53884c557e40533e13ccaa2e2174bce0bfe814c812639e"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-o38kgjrg/b867f0fd9a3843ae9441b78f19888a02-receipt.json",
+      "bytes": 11186697,
+      "sha256": "8e579c3e908b6ddc19d0e330f47ecc663c1d6ebc335c57f2f9eb0c6bccd6ddc6"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-plfid1s9/7a41b1da0bb243c08283fd5a522fae74-budget.bin",
+      "bytes": 49,
+      "sha256": "a7ef9238b36e14b6993d52e4f5a16c5ae70698abf9fc5ab312ec9cb4957ce97b"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-plfid1s9/7a41b1da0bb243c08283fd5a522fae74-receipt.json",
+      "bytes": 5594258,
+      "sha256": "641756248377f55c2d419be14fdbf146fb9b4abe9f650317449e27afee84bfc4"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-qroklp18/686d68370d584a18a2262f10c82c382e-budget.bin",
+      "bytes": 49,
+      "sha256": "d5ddd328e3f627fed6c39a6da818cafb7bb2fb0386ba2d666a60c3b0e4c18af8"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-qroklp18/686d68370d584a18a2262f10c82c382e-receipt.json",
+      "bytes": 2096,
+      "sha256": "e1cef9e4b3b00f2fac01bb9211a7a7ad077fe96308cb4ee73cb86b0f74d73109"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-rxb0w681/745c0f5b104143cf9e4cb29f2f178fcd-budget.bin",
+      "bytes": 49,
+      "sha256": "980281c846c2ddbad8eb1f74456015ae4892795d5409d441e162bd0b77379fbc"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-rxb0w681/745c0f5b104143cf9e4cb29f2f178fcd-receipt.json",
+      "bytes": 1917,
+      "sha256": "2f4cf4dbbfd8c860b6f1219edcb5569740103df307fd9f1fc2bf6594877669ac"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-x466qkaz/ba9f00c3fb71404988a5826a9c855bdc-budget.bin",
+      "bytes": 49,
+      "sha256": "4e32d27cbe51defc5a0c22e3090404b77c8c2c9aacaa3a62069e1cdb0dea30de"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-x466qkaz/ba9f00c3fb71404988a5826a9c855bdc-receipt.json",
+      "bytes": 1746,
+      "sha256": "8dd8d878033ff5ff0f8fc2a4acd5f004547a200a4d3e6610df18b8df66c70767"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-xsu51ytg/a22bfae0ee9a41e1b1f9fef1968cd3bd-budget.bin",
+      "bytes": 49,
+      "sha256": "ac8dd9a94654e4901718eaff56369c1d0d8f88e15b4a36b29f73002a0f20fddc"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-xsu51ytg/a22bfae0ee9a41e1b1f9fef1968cd3bd-receipt.json",
+      "bytes": 1873,
+      "sha256": "ec0057de18e23016301fae44d9f7763a05f1d730108a1a76bde89b369d6b46c5"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-xsu51ytg/c81b0b8dcf4c43d3a16c97a0df9f11d7-receipt.json",
+      "bytes": 2399,
+      "sha256": "606a78b2eb6fc2a277286945f74d0ffc112a3f52bd918639801a4b050954b0b9"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-zj6e2yok/3ec040bd406741f58410124d2f58589f-budget.bin",
+      "bytes": 49,
+      "sha256": "aad8672f1de2821149a909cf643bdd0a12e520f36914e306e5e561b1aa875872"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-zj6e2yok/3ec040bd406741f58410124d2f58589f-receipt.json",
+      "bytes": 89095,
+      "sha256": "2552f7230321a978484bfcad91b615740553ff1ce5eb49c3e0fe2cd1caeb59ef"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-zyqtz7gd/596c504fbcab4edfb2ce99d7f5041afe-budget.bin",
+      "bytes": 49,
+      "sha256": "860a242574bc53b33466a104473760313b41f981a82feaff26a72c56c6957a77"
+    },
+    {
+      "path": "implementation-base314-v2/custody/gauntlet-owner-probe-zyqtz7gd/596c504fbcab4edfb2ce99d7f5041afe-receipt.json",
+      "bytes": 1719,
+      "sha256": "0a9dc566e7a5436704ab2119b6333ebe8632cd29c244fb59095510bd8e86342d"
+    },
+    {
+      "path": "implementation-base314-v2/eea006fa7d4d48788816f13ed0c80065-budget.bin",
+      "bytes": 49,
+      "sha256": "916af0e170572697ef9cd328446acf650627f15dd31e6471ae11c30334622110"
+    },
+    {
+      "path": "implementation-base314-v2/eea006fa7d4d48788816f13ed0c80065-receipt.json",
+      "bytes": 1938,
+      "sha256": "9b89eddf168c802e2fce50c5850930d5810ae4b0a7734bf09811462eb58344f6"
+    },
+    {
+      "path": "implementation-base314-v2/environment.json",
+      "bytes": 8387,
+      "sha256": "77f34df202704e0d83c3c54dae41e4452570f95d69662bc4a21a4fc76f38e904"
+    },
+    {
+      "path": "implementation-base314-v2/suite-results.json",
+      "bytes": 299,
+      "sha256": "51078eaff9fa30668a909fac65e3d9e12554d6fa75d432b2298717cf50ae9460"
+    },
+    {
+      "path": "implementation-matrix313-v2.log",
+      "bytes": 728,
+      "sha256": "b683e90acae04489e0afe1b9a533fac3e5bd10e8bd1e392a9c6c9d02562756b7"
+    },
+    {
+      "path": "implementation-matrix313-v2/00d0c4c1d5fd40869c9aedc4f6351eba-budget.bin",
+      "bytes": 49,
+      "sha256": "9e14d9be3b9340d31053c03ca48c7b6528eddbd7e0fc3d1b45465c88f462f5ef"
+    },
+    {
+      "path": "implementation-matrix313-v2/00d0c4c1d5fd40869c9aedc4f6351eba-receipt.json",
+      "bytes": 1940,
+      "sha256": "2af39fa6296ed3236dc4c262df65d67b535e62c5002398bcca681455f6113ff6"
+    },
+    {
+      "path": "implementation-matrix313-v2/0dbf6c200f794974ab48678a196c28b1-receipt.json",
+      "bytes": 1872,
+      "sha256": "e663973fd0a8e22f438c6a2fb4b95979517d09614255cf7a5e4ce6533633b863"
+    },
+    {
+      "path": "implementation-matrix313-v2/1f98f4b1399b4f0796b413da34a968c6-receipt.json",
+      "bytes": 1921,
+      "sha256": "17172b5cf9976cbf9681891c3d8bdeebd4c72bf39950460acc54db595341198b"
+    },
+    {
+      "path": "implementation-matrix313-v2/3ec5a4c0e59a455b94598d829c85f51e-budget.bin",
+      "bytes": 49,
+      "sha256": "a781fe09910c0e4180e3806b10af4e5b47c729dac4c5ea17ad072907b1d8644d"
+    },
+    {
+      "path": "implementation-matrix313-v2/3ec5a4c0e59a455b94598d829c85f51e-receipt.json",
+      "bytes": 2032,
+      "sha256": "ea154e868ec5ac356ec579a0fd9070da97a6168dc7da6a322e44996f037a7ac0"
+    },
+    {
+      "path": "implementation-matrix313-v2/77811d00ea8646ff856c7f95c45be5ff-receipt.json",
+      "bytes": 1981,
+      "sha256": "1880fcc3f90256926a307321bbd59e8fba7f2a859c0d5d44d7a9ca3bc16ea489"
+    },
+    {
+      "path": "implementation-matrix313-v2/7809d847017e48eeae75c33280f11d65-receipt.json",
+      "bytes": 1871,
+      "sha256": "795925e2ca96ff9df2f4db4998c1f4f6fbe8922bfb3651d6c6edca584008a30f"
+    },
+    {
+      "path": "implementation-matrix313-v2/8377db7460fc4afb845fcceab5bb7557-receipt.json",
+      "bytes": 1918,
+      "sha256": "3a270672cc540c1264f68e620864776ec8a9883ba8da566d932657a45f4b8a12"
+    },
+    {
+      "path": "implementation-matrix313-v2/88a88fd4ea96485285b4b0b366df3aac-receipt.json",
+      "bytes": 2000,
+      "sha256": "40047051d41d3bd18ded6b732d8aef0fd9b8396d29b04a20e15822bee152af66"
+    },
+    {
+      "path": "implementation-matrix313-v2/89a23d8df39345bd8aabd8133321034b-receipt.json",
+      "bytes": 18197,
+      "sha256": "7b8c5ea745dcfafde5619cd8e5ec5501359e13ae1aed712506505c690748754c"
+    },
+    {
+      "path": "implementation-matrix313-v2/96064212745a4119a3d2fe1728fb0f91-receipt.json",
+      "bytes": 2003,
+      "sha256": "2c2f0f624e09cc2666670cc6cc627d792cfb0c76307a2b0eaa46726844fb687b"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody-probes.log",
+      "bytes": 4660,
+      "sha256": "28544530654eb32462a8091c58c2dc7a4f29c2558cf109b4799dfc8b5e672c4d"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody-results.json",
+      "bytes": 596,
+      "sha256": "5e9b2214d1de49ec80b3d1a955736fc12dc773f688a5baaa0a1e6798bfb09492"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-_lwa1wcv/f4a4f526d5c8440381f057cd3a2d32f1-budget.bin",
+      "bytes": 49,
+      "sha256": "63bc20c73ac3c91cfe61b887c887158b336be04a2a44972bbfc1d43b6903bc57"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-_lwa1wcv/f4a4f526d5c8440381f057cd3a2d32f1-receipt.json",
+      "bytes": 11181345,
+      "sha256": "ef2e43a3c0bbb09a706817f4f1fe6d917aabb2e94145582905a6255d0902e46d"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-1zgpenvm/e3d968159d744288aa3e06943a03167f-receipt.json",
+      "bytes": 1633,
+      "sha256": "6834baa249147a30d2b1597e99a819e14ecb3e1c8e117b5fc62081af2fac47be"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-1zgpenvm/e6c26cdb95be4bc5b01a5287ede1dcaa-budget.bin",
+      "bytes": 49,
+      "sha256": "3ddd231b3e97a8e5b8e561fe01cb0bf4b86a0a3a954eb77936b7eaa0a31ca2e8"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-1zgpenvm/e6c26cdb95be4bc5b01a5287ede1dcaa-receipt.json",
+      "bytes": 1727,
+      "sha256": "21fbecb7aa499dfc98f99f0abc2fb9e58d77fa19d3203183fae237ad415eb8e5"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-2pary1v7/2c1be3310edb49229dff4ad4ebbdd2cb-budget.bin",
+      "bytes": 49,
+      "sha256": "48c9e3663182d57c0d72851b2b84d11feed5ea8c4df0c8af24d0aeb335bc895e"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-2pary1v7/2c1be3310edb49229dff4ad4ebbdd2cb-receipt.json",
+      "bytes": 1688,
+      "sha256": "50ddd68f43607f78d5742c8bb36bf63762d915937aeb61bd844677ee5b599e1e"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-4n9i8b8g/8675270171a54fefbd3ef7100fb9baa8-budget.bin",
+      "bytes": 49,
+      "sha256": "c65fa96530ad23a59187f27bd2f637a5231a6fb620954704251ce88caa463c1e"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-4n9i8b8g/8675270171a54fefbd3ef7100fb9baa8-receipt.json",
+      "bytes": 1645,
+      "sha256": "d5cfbd195e8e0300d22bb511c0c2212db2ae0b688e9738f94de12115ea86ff76"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-4n9i8b8g/e214d638b32e49898ca8e6d83cfe4f46-budget.bin",
+      "bytes": 49,
+      "sha256": "38a0038c71b774343b23689270e7946ce8793d807c67ace2ea6fb32003431c62"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-4n9i8b8g/e214d638b32e49898ca8e6d83cfe4f46-receipt.json",
+      "bytes": 1734,
+      "sha256": "db056d13fef8c563f858c4c976a4ed84f8f1539c2a5cf13f1865c50cb5edf680"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-817ezwh5/f63f783d75724db08e56a8b2ba000241-budget.bin",
+      "bytes": 49,
+      "sha256": "b37e8a84120fe0e8af184c33416e7c6e33c58058d393ad5566fa40a15924f41e"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-817ezwh5/f63f783d75724db08e56a8b2ba000241-receipt.json",
+      "bytes": 1651,
+      "sha256": "022cd5659aec2e3c7c5ca17a6129ddc0400f7b78a64795acd482f7db8b39df4e"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-aw3ojau9/4e0df54c25e7419fa7f0ef9c8a996f66-budget.bin",
+      "bytes": 49,
+      "sha256": "82020bba526196757d5ff7aa658824accd2016ca500070dc6db207dac80ce98b"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-aw3ojau9/4e0df54c25e7419fa7f0ef9c8a996f66-receipt.json",
+      "bytes": 2099,
+      "sha256": "ae45dcb9e33038d1e937ae4655018ab66d67723152291351bb12d471b5676ff3"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-bshlrybj/23fc523010cb4d9fb098ed7962a8b6ab-receipt.json",
+      "bytes": 1718,
+      "sha256": "56ffef747468153e45f52a18a3cf13e253d4316e8f45d2e9d1c200b5a448bd8b"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-bshlrybj/5fd91281ad8c49388db426ca1b2c9efd-receipt.json",
+      "bytes": 1714,
+      "sha256": "19bcca073dbabd7d28f7c0969947b2a13373f2cd898e61b8c9031cd7f6b6a419"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-bshlrybj/bdbfa81047284eb1885125e20ea74532-budget.bin",
+      "bytes": 49,
+      "sha256": "2b5f36fe49581a243fb00fc4f118e0eff6cbdb29facafdcf1f882ddaf801c862"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-bshlrybj/bdbfa81047284eb1885125e20ea74532-receipt.json",
+      "bytes": 1739,
+      "sha256": "906656d819e58d49851068aacc3aa8e6a25379e12d4cdbae843c3132a5dc99ab"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-bshlrybj/e66b59329c284f74a7f74deae9cec528-budget.bin",
+      "bytes": 49,
+      "sha256": "b90f62762f0c512b8acbb5f86e53cbedc51aa5c1777202b51b7008cd564df7d2"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-bshlrybj/e66b59329c284f74a7f74deae9cec528-receipt.json",
+      "bytes": 1736,
+      "sha256": "3d6cb53101b0b91debc0e9da00cb0886ecb5d2acfd00df602c0ee3a56b8ac9ee"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-ctx7hsal/3b747d4a3cde49c0ba058856dcea190b-receipt.json",
+      "bytes": 2404,
+      "sha256": "a397b02bca5de788ab6c1c495393fda94e47a6f3e3da172a02c69744d5ee87aa"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-ctx7hsal/85e4e6e33c434e8c9eb606b68df88be6-budget.bin",
+      "bytes": 49,
+      "sha256": "98093d158f70c0bb19196c08936a941eef9596b9a904b0845c72cac111957e25"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-ctx7hsal/85e4e6e33c434e8c9eb606b68df88be6-receipt.json",
+      "bytes": 1871,
+      "sha256": "865e65ff8719dd32b3961ea7659b70929a118270be1fdcd1d59ae6065e431a1e"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-djukvhmd/760631a1c09b4e0484e0cccea378754c-budget.bin",
+      "bytes": 49,
+      "sha256": "c542a64c3d987ab0b305c1f8e61b1008f5ae4b9deef7811ace717ef65853a2e1"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-djukvhmd/760631a1c09b4e0484e0cccea378754c-receipt.json",
+      "bytes": 1847,
+      "sha256": "980611f9c95e7d3556e2aa25d5c385523072dd16245d721f97f11691ba27b624"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-dqk5vhnm/0e2266a6686045149b5384a0c281b101-budget.bin",
+      "bytes": 49,
+      "sha256": "715302920b316f589510e00b3b016b9f6a5939c5f6affcee2210374a5499e13a"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-dqk5vhnm/0e2266a6686045149b5384a0c281b101-receipt.json",
+      "bytes": 89100,
+      "sha256": "55455fb229d5b1fe3d268e1a380efa705796932c1a3799341897cb58c42d7802"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-ed2z9kju/d99959f9ff984dafb89cdbc9d54bebef-budget.bin",
+      "bytes": 49,
+      "sha256": "ae3951d764b567173a6063c85cfa1a4a5f50acf2201e8cb25bea475739acc7ce"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-ed2z9kju/d99959f9ff984dafb89cdbc9d54bebef-receipt.json",
+      "bytes": 1730,
+      "sha256": "a3d7130e74b0c7da94312f76df80c03bfd2fa14a31dedea6ea50a5160b15e993"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-f_q9kzw7/422548d0bd74406e9203200521e5f38a-budget.bin",
+      "bytes": 49,
+      "sha256": "67ee4a03503868f5d1a1f015060c87af58e9c2b08b33431eb81022346006e7f4"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-f_q9kzw7/422548d0bd74406e9203200521e5f38a-receipt.json",
+      "bytes": 1811,
+      "sha256": "a524d992c9dfc3915ee4867ba0229ffd6eee737fae4081f81c54ed698810085a"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-f_q9kzw7/819ee5280ee44d96ae0d0e08f06b66d5-budget.bin",
+      "bytes": 49,
+      "sha256": "9a4a7ae22989c00e322c1e4ea1abc2e2f924ee5e4bf5a0d78ad58a65267ecca7"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-f_q9kzw7/819ee5280ee44d96ae0d0e08f06b66d5-receipt.json",
+      "bytes": 1815,
+      "sha256": "d4f9a06b6a18791b29723a6917385d2a53a587af2ea60eb362c84336425712ba"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-f_q9kzw7/834a606f4a2e4921b5892a1e6556d4ff-budget.bin",
+      "bytes": 49,
+      "sha256": "0f3ab81489f92bde60c99538cb776e5692af64b157ea8be6c0b8389105622874"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-f_q9kzw7/834a606f4a2e4921b5892a1e6556d4ff-receipt.json",
+      "bytes": 1811,
+      "sha256": "73b92d22b21c81c91744e711f8d3a3235764de862a5d28b9207618fce7a01a75"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-f2klrfcn/04815d48e5ed43e5903abfa974f5f661-budget.bin",
+      "bytes": 49,
+      "sha256": "dbd4be792ab3df6567d049784a3331e9446104f347b4bb534944d51c459903c4"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-f2klrfcn/04815d48e5ed43e5903abfa974f5f661-receipt.json",
+      "bytes": 2568,
+      "sha256": "b9ed6190535cc45589997fba7b06269b300532789cca1512ed65ba79da22ab36"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-f2klrfcn/20978fcb3b0c4d108b5be4269097454d-budget.bin",
+      "bytes": 49,
+      "sha256": "444451ca796a4c03225acaa660494a1b26540811c773ec1f53d06fe395c92056"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-f2klrfcn/20978fcb3b0c4d108b5be4269097454d-receipt.json",
+      "bytes": 1733,
+      "sha256": "48ec02a254eee3eb8ea0d987422e03bb08ffb8ef15ae89632dd669a5568e1ff0"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-f2klrfcn/5e06e944ef7c48498febe324a4250fc5-receipt.json",
+      "bytes": 3175,
+      "sha256": "96af9bac60ce810918c8cb44318815cc4e493e4a35824184516d3cc189dd6c46"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-f2klrfcn/a92e9fcd19134a349e065ee81f35ff09-receipt.json",
+      "bytes": 2517,
+      "sha256": "453d715df6823eb4bfd441993c99e92b3b36815016a4f9af2ae1970069cc9085"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-f2klrfcn/a9bd487cef9e4e73945d6a361e19b844-budget.bin",
+      "bytes": 49,
+      "sha256": "c9752c360f2a7597313b88a5dcfbf29e57cfdb2f7b8762d6aac69e32916d3be6"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-f2klrfcn/a9bd487cef9e4e73945d6a361e19b844-receipt.json",
+      "bytes": 1844,
+      "sha256": "56b77355042e535537d9d6145477c9a57f1ad976e7ae4dba3b69eddc2cbaffb4"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-g35bt92e/f0697b619a264a8483cf3aab29bd24df-budget.bin",
+      "bytes": 49,
+      "sha256": "1b1ff535effb77e5cba7da8c6d0bd4ea7c9717e114b92302c6dcbcaa09dfe20a"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-g35bt92e/f0697b619a264a8483cf3aab29bd24df-receipt.json",
+      "bytes": 1622,
+      "sha256": "f6a5a6d64e85037b5ab54126891a9434c9d5f546bc77c78bd256d4e74e283c2c"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-j1zuaibo/af9015775a3a4b269075c6b79914e80a-budget.bin",
+      "bytes": 49,
+      "sha256": "141f4d58da822c46282f227d7bf9a2228d7d244c1349d511b0058255b42f0e8d"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-j1zuaibo/af9015775a3a4b269075c6b79914e80a-receipt.json",
+      "bytes": 5594260,
+      "sha256": "9a18eb9444cc7c99774b25c9dc5bd534cb7bd60344028164894cff1398693263"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-l5fiiu1u/095e6b1dc7ed41be9846baa737d2a6ae-budget.bin",
+      "bytes": 49,
+      "sha256": "051ad61a8377e702713be40fda2adb7f54e88cd64272a47b05de96057b163f20"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-l5fiiu1u/095e6b1dc7ed41be9846baa737d2a6ae-receipt.json",
+      "bytes": 2097,
+      "sha256": "e29bdd1ec05dc22f78bfdb14eab1a0dd7a2d2a211586acd5e228a2fe5e3d86fc"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-l5fiiu1u/309637d4dd36434a914a89f2bcffcfc3-receipt.json",
+      "bytes": 2308,
+      "sha256": "f0aeff3e52bd1e809c60e84fdcf3512ee8492f34e97cec2f9d3d36699396932d"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-m94fws1c/446aaf72615c488dadfa69be7b29d343-budget.bin",
+      "bytes": 49,
+      "sha256": "7cf4252d3d5af57efc93d637e3c38ecc2a4cb8d0ba305645700312a632c067b5"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-m94fws1c/446aaf72615c488dadfa69be7b29d343-receipt.json",
+      "bytes": 1663,
+      "sha256": "ba6f5bac91ee5ddc4b809249dbd8aee07e0a6d428690cda148bc04659bb8eb8d"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-n93d9612/c716bc216b3c4f8dbcf6149dd31a0a3f-budget.bin",
+      "bytes": 49,
+      "sha256": "06f3ee95f105244cd055408fbaf37c2fa1ae340e4c0bdf580f3659bd556c2370"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-n93d9612/c716bc216b3c4f8dbcf6149dd31a0a3f-receipt.json",
+      "bytes": 1751,
+      "sha256": "315423350a14d70a84a465caf35cd0809f5b91ec6459d16b7d6a67f6768f4b82"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-o_z2qphl/55d1d9ccf5a547b5a09ef2935257e4a0-receipt.json",
+      "bytes": 2641,
+      "sha256": "f2835373b2cb5bfbf398b8ca6b1e6082fa6d9b98650b4ece341585ad028b11e0"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-o_z2qphl/977adf2ad4184915a6466779a5f19bf9-budget.bin",
+      "bytes": 49,
+      "sha256": "447a6bef07b18674c7c0db14615ea6d36e9dfe2a55821c6999c9ed859aa5d6d5"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-o_z2qphl/977adf2ad4184915a6466779a5f19bf9-receipt.json",
+      "bytes": 1661,
+      "sha256": "9755f40a8437b61a6ab19021ab446291c105543bc39c7565f55d9a807163ac20"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-o_z2qphl/9b5f93c1cff34d3e8d531a13a68df552-receipt.json",
+      "bytes": 2307,
+      "sha256": "783811cafeed625c214e1bb6524cca81d46f4aa02faaab1d16a487873e9f0ce2"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-t3afeg79/7de50e649f84448fbe8c874eac29fc85-budget.bin",
+      "bytes": 49,
+      "sha256": "bf48f3d5e38964c57ac3d697ccdef557db1010729840b12755f6087df50537cb"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-t3afeg79/7de50e649f84448fbe8c874eac29fc85-receipt.json",
+      "bytes": 5594261,
+      "sha256": "9dc56217ce746cbc1537237b4e8a58cc1f33eef9957629675c71ebbbb380f5d0"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-vzj0hl7q/41115d4478ac4f9d8b5de04acc013d1a-budget.bin",
+      "bytes": 49,
+      "sha256": "fe40700b6918329fda5bb475bbec11fdc00cb9681cffdcb014cbd5ddee7a75fd"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-vzj0hl7q/41115d4478ac4f9d8b5de04acc013d1a-receipt.json",
+      "bytes": 1666,
+      "sha256": "9dfa23a3606edf85e537deb374d695cfdd6479fcadbceda86bf623e43c212ae4"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-vzj0hl7q/real-expiry-dc9unr8c/state/collaborative-v1.sqlite3",
+      "bytes": 53248,
+      "sha256": "bf21b4d774532f6cd6bfcd788e05fbb217e9272c408254163b8ccade952896ed"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-wd6yjjfs/411242030d8f4bebabb4eb5bed47cec1-budget.bin",
+      "bytes": 49,
+      "sha256": "8b0caeaae31d03757557abbb6d10c7fe3de1baa28eee506795ea088ef96ef8ed"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-wd6yjjfs/411242030d8f4bebabb4eb5bed47cec1-receipt.json",
+      "bytes": 1747,
+      "sha256": "20c930f01bb0444cd1aced187c77cbeb9853866eda9a48dc78fdfd830a8e59a8"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-wq6eenkx/11bb8caf37be4049a52eb5d218374c43-budget.bin",
+      "bytes": 49,
+      "sha256": "9f3bd8d34a63f25d8b74fc4d1e7045cb4613d5c6deeb7effcb4247211f570a8b"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-wq6eenkx/11bb8caf37be4049a52eb5d218374c43-receipt.json",
+      "bytes": 1834,
+      "sha256": "9290e509116cbb1b787f8c5b2fb1cd8b155babec52ce0d94e70291d558ee6699"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-x7lq31bl/330fc453161148ebbeb2c6f8f8e126e9-budget.bin",
+      "bytes": 49,
+      "sha256": "1f7ec90ad4b7f43a0d10ede993181d0d32423cb33bb9d536f460a89854e60576"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-x7lq31bl/330fc453161148ebbeb2c6f8f8e126e9-receipt.json",
+      "bytes": 1919,
+      "sha256": "fca8cb481c3c211c6e4844ac5d3a8a150c1435a3b2c82c74978a1c8f246a810f"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-xc_z2skc/fe04dbd6037647b59aab6ea8f0b7a669-budget.bin",
+      "bytes": 49,
+      "sha256": "d629db7306b9f2ad2bd519b8c2117dad7b6e986838726dc8c0da433ebcef154e"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-xc_z2skc/fe04dbd6037647b59aab6ea8f0b7a669-receipt.json",
+      "bytes": 1720,
+      "sha256": "a5ca790ae3a45c99a379eb6fae2311c96e651253434315bd91d6f3a159c19046"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-yl2ir2w0/70e81fe3a48e4cc6bb46ba0f93d3c011-receipt.json",
+      "bytes": 4195865,
+      "sha256": "0e1de0ece3688d03d7f07b3b620a95bc27000adeba509d66fc9e989342ef0a7e"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-yl2ir2w0/798f4d37c8644a518057bb772b5ad5bf-budget.bin",
+      "bytes": 49,
+      "sha256": "a05fe08d448fd61c98053fc54fcba690605509c055a434778a0427f07867cf45"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-yl2ir2w0/798f4d37c8644a518057bb772b5ad5bf-receipt.json",
+      "bytes": 1727,
+      "sha256": "74cddf011237decbd80b1a3fdfe48fdb98381227c142d099aa94a44611b3dda7"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-yl2ir2w0/a35cdcf335a8482c98f32a5f3912068f-receipt.json",
+      "bytes": 2797995,
+      "sha256": "e1300aa6746d4d63f3331e4d51cb3618e5cfeca2128a5f9015a2a887ec10bed3"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-yl2ir2w0/f8c20e61169e481fbb0341369e38a4ab-receipt.json",
+      "bytes": 4195865,
+      "sha256": "d4d83a42f74ee39e0d59d57803aa17d9a07fc45072930537eda620e6e5c74da0"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-ytvl5toz/1da34451eb81436286e179e8e1ae1dfa-budget.bin",
+      "bytes": 49,
+      "sha256": "f81ea09f79bf28b6879963e1e0c280d2c141489204de1fef870a3b9f51ad65dc"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-ytvl5toz/1da34451eb81436286e179e8e1ae1dfa-receipt.json",
+      "bytes": 1737,
+      "sha256": "320c3c5dbec8c6945d436234fc228cc0842bd3def6b913996bc5120b07e735e8"
+    },
+    {
+      "path": "implementation-matrix313-v2/custody/gauntlet-owner-probe-ytvl5toz/2b439f078b544d23bb491e38fc9401af-receipt.json",
+      "bytes": 700750,
+      "sha256": "018b2e88b4142b3db1c4962a1b6f8083c0c7356d80399b6e0691f3dbb15b8acd"
+    },
+    {
+      "path": "implementation-matrix313-v2/dec6e3cb490d4c8382b590a2c51fc46c-receipt.json",
+      "bytes": 12060,
+      "sha256": "906f90e67ace2372934d1f86c8c6fbed7f2d96743411f9591866fcf3c1f135c9"
+    },
+    {
+      "path": "implementation-matrix313-v2/eaba1144231c4109842cf0e125d84416-receipt.json",
+      "bytes": 97277,
+      "sha256": "f34e596bb2b270706342e7aca3161aa154805a806e6083efa8fceaf124c88d09"
+    },
+    {
+      "path": "implementation-matrix313-v2/edc62368aaf147a5ade92692fb21ef2c-receipt.json",
+      "bytes": 77055,
+      "sha256": "543fe3231735a553241a9e2ed3f3f0532ef32d5f5c06a43b5552acafd815cc3a"
+    },
+    {
+      "path": "implementation-matrix313-v2/environment.json",
+      "bytes": 9075,
+      "sha256": "cc623616b2bd6e5e303f78020ac06e0e229dc7858a4df3b74f8b8741550e3022"
+    },
+    {
+      "path": "implementation-matrix313-v2/suite-results.json",
+      "bytes": 610,
+      "sha256": "f06fb26237052015db8fe72fc11867f18fcd951acecff6be0d1ebe9b949ded37"
+    },
+    {
+      "path": "implementation-matrix314-v2.log",
+      "bytes": 1753,
+      "sha256": "647d021def12fe89941ce54de6c610df5ccb1cacf745f656a6d9ea9d8517cfef"
+    },
+    {
+      "path": "implementation-matrix314-v2/37cc12413b48467babce5a006f7fe664-receipt.json",
+      "bytes": 1919,
+      "sha256": "1d9679790262fa27f30e9f1db4f9987d0ee6b31d153cccdad07409a08f202389"
+    },
+    {
+      "path": "implementation-matrix314-v2/381f92e68d4e4821abf97e47813fed42-receipt.json",
+      "bytes": 1870,
+      "sha256": "02f003f5708018004102441854869f769d0e6ffb25e255f756ed24081cba2ab2"
+    },
+    {
+      "path": "implementation-matrix314-v2/46fa579fe092475c850bf4a825671178-receipt.json",
+      "bytes": 1872,
+      "sha256": "5a642687504f5e9f6f69fe368f08d99b966eed152e1be24e5400a3cff0dcfbea"
+    },
+    {
+      "path": "implementation-matrix314-v2/499d9065e82b4efe8e7f23ea439bff2b-receipt.json",
+      "bytes": 1980,
+      "sha256": "a3ae5f75c82affb38410a1f0f4bf55eb2807991f45183ecca9bd4937e1a5ec46"
+    },
+    {
+      "path": "implementation-matrix314-v2/4cc1e288821c4808af89a8d8a28920e5-receipt.json",
+      "bytes": 77054,
+      "sha256": "e3ebbafc31a9224278af56e2772a92d6d842e7ec3229dfc5105b88522cca04c0"
+    },
+    {
+      "path": "implementation-matrix314-v2/77ac36ce7eaa4e2899b1b4502f4dab5d-receipt.json",
+      "bytes": 18196,
+      "sha256": "b9ef4c086a79fb1199b240671fbb6190501f843faede762e610c2874420fb4c3"
+    },
+    {
+      "path": "implementation-matrix314-v2/984bc4e381d64046b6e6ee5e219772b1-receipt.json",
+      "bytes": 2002,
+      "sha256": "6e96e5623608f447b262970e472d04cd1cbb13856407ab949af0008a6b622bab"
+    },
+    {
+      "path": "implementation-matrix314-v2/c1ff27c712f04a148a915e83d1f4de46-receipt.json",
+      "bytes": 12061,
+      "sha256": "37166adf7eaf065b94e2180668fd10122e936043e5e9bfd55625f20efbdd80de"
+    },
+    {
+      "path": "implementation-matrix314-v2/c2590d29100e4d3fbece863149510274-budget.bin",
+      "bytes": 49,
+      "sha256": "84c0c1d092509dce44efcb66bed7ae338e942d0608f5363a5de5443555d5e897"
+    },
+    {
+      "path": "implementation-matrix314-v2/c2590d29100e4d3fbece863149510274-receipt.json",
+      "bytes": 3825,
+      "sha256": "e82d109bea4410dbbca72f613bb5474d4a7067ab14920e2752cb275ce6856961"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody-probes.log",
+      "bytes": 4660,
+      "sha256": "10e74964671037f05bd491b20cba631da043fad312c6f7c05e3dec68425ce75f"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody-results.json",
+      "bytes": 596,
+      "sha256": "5e9b2214d1de49ec80b3d1a955736fc12dc773f688a5baaa0a1e6798bfb09492"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-01xmo6o3/ea26db3e7b194f28bde7b4bb2710804a-budget.bin",
+      "bytes": 49,
+      "sha256": "2155a4423fbc3f9fa63d7c134ad516acd4e8cfcd986194f1c84d697fb02d8d10"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-01xmo6o3/ea26db3e7b194f28bde7b4bb2710804a-receipt.json",
+      "bytes": 1644,
+      "sha256": "ebea68c313a2e237b7bcc3fc44b37c498b712dbf8b6428f823b5e087f33c0504"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-01xmo6o3/ec136f3fd7c54a7ab430c4682a1447a7-budget.bin",
+      "bytes": 49,
+      "sha256": "8972ac12aaf0adf61bcb9e0199e18c8935ffb55066f63b068b2f4198327f3393"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-01xmo6o3/ec136f3fd7c54a7ab430c4682a1447a7-receipt.json",
+      "bytes": 1733,
+      "sha256": "4f205454428e5a8423a17ace8a77338371ad5f6c55b39ba2b2cac8d3b42cf2a4"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-7mib3d4t/3b1885f4047742ac8a76b8770c8ada8a-budget.bin",
+      "bytes": 49,
+      "sha256": "ba606f669c12a4fe2daa08808d31d4de21e5ba9295dd3bd0510c10ebb235a9db"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-7mib3d4t/3b1885f4047742ac8a76b8770c8ada8a-receipt.json",
+      "bytes": 1730,
+      "sha256": "aeba8076ee6118dacaeed256a8abdd3747a48f5c57e4786b0b4ca9a52f042985"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-7mib3d4t/3f6ba019ed81441b8bdc9882adc143ef-receipt.json",
+      "bytes": 1634,
+      "sha256": "f210637f275a5f17fe1b20e48d3b80afad4fc64e656cb8ca12b2c3f99c4b8d4c"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-82idrxzp/8bab0331fa5b4711aa7768045c1b8030-receipt.json",
+      "bytes": 700752,
+      "sha256": "ea2686e3e7c422043921d61b85040d156b74c7d90799d913b91c95bc4b3fc94f"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-82idrxzp/8f9aff1e5104453e93eab5ef16f16a42-budget.bin",
+      "bytes": 49,
+      "sha256": "29910f6352779b4f14ebb4e10da7f334544802d97d63a8465822b21fd529ca53"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-82idrxzp/8f9aff1e5104453e93eab5ef16f16a42-receipt.json",
+      "bytes": 1736,
+      "sha256": "2a8049a85d57903d832ada517bddee6228dd76abffda9f75cac57498544fc276"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-9ijrjh7h/30e5ca90c21b4b69a4a58b0ba293bf6a-budget.bin",
+      "bytes": 49,
+      "sha256": "e6c3040b10a5976e3bd3d269065467390913f8dc7c4c20dcd7f976432134a519"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-9ijrjh7h/30e5ca90c21b4b69a4a58b0ba293bf6a-receipt.json",
+      "bytes": 1623,
+      "sha256": "9094bd536d47168defec9ec16241789ac8e294d73c053f28081e2f69e4ee82cb"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-ayowc488/439a9733464b405194ba5d4c3b5b4b56-budget.bin",
+      "bytes": 49,
+      "sha256": "9958a8a02a672b5574951bcac0b106ac493e162ad1670136b37253a547dcf60a"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-ayowc488/439a9733464b405194ba5d4c3b5b4b56-receipt.json",
+      "bytes": 1664,
+      "sha256": "7d0608c088f348dd3e643e23a9c352cf7a3dacee0700827a80b5a55f53357ca6"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-b_ubhz2y/ea020fe4f2c84e84ae81c86e71c65ff1-budget.bin",
+      "bytes": 49,
+      "sha256": "3876c9d09a210f702f0b34ee0dcf6873052ce3fd2c6967ab99fc16812d63f81f"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-b_ubhz2y/ea020fe4f2c84e84ae81c86e71c65ff1-receipt.json",
+      "bytes": 2099,
+      "sha256": "3fdf0509df3b5a1638daee193f15ce822fda01f728f2fcde82b88b59c7b91bd7"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-bb_i_crq/4b89527efc5248a09f29e0b3a8d99391-budget.bin",
+      "bytes": 49,
+      "sha256": "7d39137ba82ccdc235082e1dbeff7880645466d2e6f1623c5c0065879ae28d81"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-bb_i_crq/4b89527efc5248a09f29e0b3a8d99391-receipt.json",
+      "bytes": 1730,
+      "sha256": "3910a7869d9695e3107f159545da425a03efd170b029687b15f7a040d82fd5bc"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-co2dwgb5/698b2769211f4a268dcef1ca5c212dfb-budget.bin",
+      "bytes": 49,
+      "sha256": "941e668ca048cb02924a39177c36c7d6bdaeaa0d3f26276a2c2afd53a194307c"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-co2dwgb5/698b2769211f4a268dcef1ca5c212dfb-receipt.json",
+      "bytes": 1666,
+      "sha256": "fcf2679216624057b8b28b556124b0aba386c5aed7777ec51468999d88d8be4b"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-co2dwgb5/real-expiry-z7a8ec4l/state/collaborative-v1.sqlite3",
+      "bytes": 53248,
+      "sha256": "bf21b4d774532f6cd6bfcd788e05fbb217e9272c408254163b8ccade952896ed"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-ed9ml2cn/94db2eb84a4b4285882d20c11185c043-budget.bin",
+      "bytes": 49,
+      "sha256": "bc8fa6e9094c114d26afa1c2e58b7e4a5b44f39420e80c3270675d71ee3eec87"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-ed9ml2cn/94db2eb84a4b4285882d20c11185c043-receipt.json",
+      "bytes": 89099,
+      "sha256": "79f37b3caf9e7580fdde386ffe096f5622ceefb501f63e08e2ebdd31c2aaff41"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-ekerqgge/90f3fb11865941a1b8546ce5a9685901-budget.bin",
+      "bytes": 49,
+      "sha256": "ac5e7fbd9ae562a32cabd7287994ad9ddd79f3b00da854aef2f454222b5c3c42"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-ekerqgge/90f3fb11865941a1b8546ce5a9685901-receipt.json",
+      "bytes": 1689,
+      "sha256": "9d8a8b369ec82b0df76dab2f7bcbe9dce679d830bb5686195106f98a179c5caa"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-fkmk9ugo/27a4e237b3d547bdaaddc44878b8c2ce-budget.bin",
+      "bytes": 49,
+      "sha256": "6969e0c8bd9a5d23363560520b4a18482c50d4be417685ae58bc915d8cfb623e"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-fkmk9ugo/27a4e237b3d547bdaaddc44878b8c2ce-receipt.json",
+      "bytes": 5594261,
+      "sha256": "c68b33377ccd3262aa9d48ca106f424e15bad705d054b73452d9790646c7ecf8"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-h800o24f/cb186bdfd7414b208fbc1c40a93196be-budget.bin",
+      "bytes": 49,
+      "sha256": "7d6cb649aab8432ae42f700b8f8fa6065688e20073c5521ea253b7abf936ae04"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-h800o24f/cb186bdfd7414b208fbc1c40a93196be-receipt.json",
+      "bytes": 1834,
+      "sha256": "e74c129fd18f8bb44391bb6aca443c1cfa76625cae4daaaf9283ef2524bfe3fa"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-hdvz_a74/cb280b8d0bac45acbd1482b93dfe8127-budget.bin",
+      "bytes": 49,
+      "sha256": "3015660494c18218a9008d85d5cad4ebd2749d1df1fb90b6639e4afa883cae69"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-hdvz_a74/cb280b8d0bac45acbd1482b93dfe8127-receipt.json",
+      "bytes": 5594261,
+      "sha256": "b28bd02b6849c686a7a600a51b46754d217dfb58cfd3f4a46e4f09a2faf3f6e4"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-ico88m6m/ecfebd77ea314ea193fdc95b1ba94f93-budget.bin",
+      "bytes": 49,
+      "sha256": "277fff471be1e6286d3b784dafafecc63c439b91cf892623ae17ac1b4ae6eca8"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-ico88m6m/ecfebd77ea314ea193fdc95b1ba94f93-receipt.json",
+      "bytes": 11181343,
+      "sha256": "45418cbcb730918ae51473ae4619ecf2147a70caaae81cf13127cfc5123547ef"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-kmuye7wj/0e92df8c8aa445cc980e1f43c4fcfa90-budget.bin",
+      "bytes": 49,
+      "sha256": "ccbf5096ca3f501ac3d5af7a3fd9b7be0e49daaa8e80c887c181978f869685f0"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-kmuye7wj/0e92df8c8aa445cc980e1f43c4fcfa90-receipt.json",
+      "bytes": 1751,
+      "sha256": "b7e02387fd80acd39d9a7a349f2e426568b35d140d35752c2849e4240a5c91b7"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-ltiyif6z/2dca970b5d5a46b1af21fd84efc0a71b-receipt.json",
+      "bytes": 2308,
+      "sha256": "abcf0520e4ac8e2e4bbd1b8840e26c95e1ebe6104d6d1a40fe9365f349721d92"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-ltiyif6z/f6960cdeae874d06bc7cbdc592624edd-budget.bin",
+      "bytes": 49,
+      "sha256": "12e81c3c1cc4e9900a8881e755367421b456e1bef59e4f4efc03ffdea2f2d7ce"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-ltiyif6z/f6960cdeae874d06bc7cbdc592624edd-receipt.json",
+      "bytes": 2098,
+      "sha256": "747dbbafb77372402e5014782c13c75e2120dbc3c97ef21f8fcfa47c0bb2aee2"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-nj73w3_5/2d0a75bea0444919bee89d3e15496711-budget.bin",
+      "bytes": 49,
+      "sha256": "64b8472798a1c1810593975961d6785d60f022d38b6760d43a0e96341ef142cf"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-nj73w3_5/2d0a75bea0444919bee89d3e15496711-receipt.json",
+      "bytes": 1732,
+      "sha256": "1a9b7400ff83effefedd2ba66f9ae867760e4d129da3699774b54510208810d8"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-nj73w3_5/4f72a7d138cd4942a2bc01a49699da1d-budget.bin",
+      "bytes": 49,
+      "sha256": "871d010104d94e71dd843e19c194ae7c2829985058c1667e5bb1598468ad8e32"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-nj73w3_5/4f72a7d138cd4942a2bc01a49699da1d-receipt.json",
+      "bytes": 1843,
+      "sha256": "52f7f55af2d65a53e22146d88d21973614914b79f71a123c0d393019f015f03d"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-nj73w3_5/52ec91d6f6fb40c787650ce06f4d4a20-receipt.json",
+      "bytes": 2517,
+      "sha256": "d149df9a7a356948900b98459291a43fa3acbcb7bbf4e82d73882b09167e52af"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-nj73w3_5/d426227eec224e1c93a26b097d8d213f-budget.bin",
+      "bytes": 49,
+      "sha256": "ff10e0db12bd716dc8c4d5d4b1722587619d8cb5310d17e620d80dcb1ac3cb45"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-nj73w3_5/d426227eec224e1c93a26b097d8d213f-receipt.json",
+      "bytes": 2568,
+      "sha256": "8f025c647d4ef14eb1594550a20f9beaae0dff22440e555a805d65816b49d73c"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-nj73w3_5/f3b76df044614fd1a68cbd1ea0c14ec1-receipt.json",
+      "bytes": 3176,
+      "sha256": "d4057e0e4b798f148fb69da45f71c9a4cbceca8b9db2a8e6044b21cb41603db2"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-o_8tkehq/6ef2f75e44a04e6f80f27c9f19db35e0-budget.bin",
+      "bytes": 49,
+      "sha256": "6ad9d7eb693550e7ac23e668770ae35fc6122cf108ad5363fcbee53976652563"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-o_8tkehq/6ef2f75e44a04e6f80f27c9f19db35e0-receipt.json",
+      "bytes": 1849,
+      "sha256": "e3fd93461cf0b78ff998a7b7748e02e935d5b9ca951c8028215b7a2e223af48a"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-q48ojgsv/46c48aa46d5f4f4f8a7f1cf25e093dd3-receipt.json",
+      "bytes": 2308,
+      "sha256": "5e4eadb1617e19df447cfaf49dd046483748f7d2c1654c4e2cb9de19b78045f9"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-q48ojgsv/ac51e297ba8c49afac776abb9c288b3c-budget.bin",
+      "bytes": 49,
+      "sha256": "3a5625a800ca247192754e230bc52454e619c2d924d21df99c4ba1a1f0de53fe"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-q48ojgsv/ac51e297ba8c49afac776abb9c288b3c-receipt.json",
+      "bytes": 1661,
+      "sha256": "0cc0c4f8b9430fb1c66d0c03cdafbca5b9dcbeef5e8fae64526673894f7aff82"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-q48ojgsv/d001ea5193cf4d6f8bda3a0306296af4-receipt.json",
+      "bytes": 2641,
+      "sha256": "4f1927516288f0f21b79b51f144b05b44343b2152eef62b8857f6ac2d42fa417"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-qu7p8967/55cde3d6af37444f9f27cfb5d5d6df96-receipt.json",
+      "bytes": 2409,
+      "sha256": "ae176631359c675b3b0e31f0684f7566bd6a6d07535bd53c8cac2313de39ebb9"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-qu7p8967/e429be5e1bf643769aa9d0aeebbcffe7-budget.bin",
+      "bytes": 49,
+      "sha256": "820497dc6ec60423202307ef6a29f1d63ad6d1d9cf68a1f4afec89fe51030524"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-qu7p8967/e429be5e1bf643769aa9d0aeebbcffe7-receipt.json",
+      "bytes": 1875,
+      "sha256": "979d212de750783b165f9f15d436a374ded42e9703687436e00f1d1379b8328b"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-qugw9pjw/23384de427174a04a457934673162602-receipt.json",
+      "bytes": 1718,
+      "sha256": "e7ef8d2196d7b85e0d64a5e13eb18dc0e31f35ff7dd9f2dd9c2c32d4a45ae05a"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-qugw9pjw/26d1a8a205f04c74a7ee789b0b2e0d47-receipt.json",
+      "bytes": 1715,
+      "sha256": "ca27ec17447ec1492aab37c28a1e6d46b6eb5449ca529f1a3babb106b88c1bad"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-qugw9pjw/862851ac6625457f8abac4dc0c8ce19b-budget.bin",
+      "bytes": 49,
+      "sha256": "82e555a2239422ad740ceff23e9d4994fab1bb89e4dc1be21a057dd274e69612"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-qugw9pjw/862851ac6625457f8abac4dc0c8ce19b-receipt.json",
+      "bytes": 1735,
+      "sha256": "03cc531d1a90de3de681dd61bf2c403e359bfe9849817de975e4ab4485ac5241"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-qugw9pjw/bb18fe1c352647bdb03bced254276231-budget.bin",
+      "bytes": 49,
+      "sha256": "b1eade89e5ab1c633c183cd8894ea945e50b22cc0008b0feb3f96a0f231b8bd7"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-qugw9pjw/bb18fe1c352647bdb03bced254276231-receipt.json",
+      "bytes": 1739,
+      "sha256": "d52f489e542161b5e58f5ae9e2f574bf8420308d4635f41b0c055396b71b8e56"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-smkcsbas/5ba8e05878cb47ee99015e6f51266634-budget.bin",
+      "bytes": 49,
+      "sha256": "6219d60aa630177d6a0570818e95477ce8834bb878327e26e0905c7cad43bd9b"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-smkcsbas/5ba8e05878cb47ee99015e6f51266634-receipt.json",
+      "bytes": 1650,
+      "sha256": "4bbde982ce575b10d4c87b6a67224d35363d05bc5792749eb349722afecfb1c5"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-ufzg3kws/2c84eab2869c4538a037cd550239c351-budget.bin",
+      "bytes": 49,
+      "sha256": "33c77381af7bfc4ec69cea3aa0399efa20578bb09d60d8520ccb2a78b17ce6db"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-ufzg3kws/2c84eab2869c4538a037cd550239c351-receipt.json",
+      "bytes": 1812,
+      "sha256": "0d8e2d72d4027c480e8c362a0e92ae63c4aba3e1a4fa866914ab91a8edbb6683"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-ufzg3kws/3e21c487c1a94c78bf8eb1220d4a4a2d-budget.bin",
+      "bytes": 49,
+      "sha256": "a404d7aa9df46126d5d6921bfbb86ccb409b1f27ad79366c50ff82c58401ac08"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-ufzg3kws/3e21c487c1a94c78bf8eb1220d4a4a2d-receipt.json",
+      "bytes": 1814,
+      "sha256": "61099535d41be299d4411d071127475512dce58ea01c1995d76bcb6c6a2c9b57"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-ufzg3kws/fd74ffd58f7641aa8e8f05dbe9f455e1-budget.bin",
+      "bytes": 49,
+      "sha256": "399783e12551227a75fa49136df145f60f4a69efa8fd10e5fe06ea19a8417fd8"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-ufzg3kws/fd74ffd58f7641aa8e8f05dbe9f455e1-receipt.json",
+      "bytes": 1813,
+      "sha256": "bc902fd0f5d9f72c9a29f1744927c237a5861c360d76327d7e382461afcdf686"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-w3z0jxdl/2861b239dab54c35a52214e58734d4f2-budget.bin",
+      "bytes": 49,
+      "sha256": "a4cbc9811a4d673c0a2e388aae05bfa26fbc575542640cc9414bdf60055096af"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-w3z0jxdl/2861b239dab54c35a52214e58734d4f2-receipt.json",
+      "bytes": 1721,
+      "sha256": "b890270c8f9c0fa91e2c1e29d08aaf8664ae27cde0dd7ab0a9190834d8051e81"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-x64xpj9o/4ebeaef6af5a46bb8cfbc0a034aff2bd-budget.bin",
+      "bytes": 49,
+      "sha256": "8d9f7cbe723209416762cd3a19dbad154e67c876b7f6c1111b6e40735dea8baf"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-x64xpj9o/4ebeaef6af5a46bb8cfbc0a034aff2bd-receipt.json",
+      "bytes": 1747,
+      "sha256": "1bed67ecd4444b92fa34635367a67b2c6df6590a6c1eb76390e9bd8996f4a75d"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-yp4tvvdu/aa3529f1bf5643ab95732e49acf4f7b0-budget.bin",
+      "bytes": 49,
+      "sha256": "a5613c854a13a90db7c671dc42d78ccd2e868abc30646c34e2048f1e4f371e50"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-yp4tvvdu/aa3529f1bf5643ab95732e49acf4f7b0-receipt.json",
+      "bytes": 1919,
+      "sha256": "ffc00b3b63e72bd608e7d90fa53edc796c5a806fe131fe6f0af12f04c9b15f93"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-zi76tpun/a569c63fc60c46aaa268d50baadf0acc-receipt.json",
+      "bytes": 2797995,
+      "sha256": "a29d71dc9eccfdf451c77d5466568c850b0d6dba64666505e517cc0d9766e236"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-zi76tpun/d4bf12d0491c4af296abae43e2edbc53-budget.bin",
+      "bytes": 49,
+      "sha256": "6c2cd2c842696e54cafbe372c22c3f12dcdb7b4e992db577227ef7fc5cc4dab2"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-zi76tpun/d4bf12d0491c4af296abae43e2edbc53-receipt.json",
+      "bytes": 1728,
+      "sha256": "0e06645c1395d554b0f0f3e32e6bddda6ec2e5460ec2c5bfb7850d40b67e6f49"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-zi76tpun/da0ba503ab2343b5a3424174bf2a5ce4-receipt.json",
+      "bytes": 4195865,
+      "sha256": "7b7a86b4612cae2add064e26a6ba3e6553a670bc6b0bd3733acbb2753e7422fa"
+    },
+    {
+      "path": "implementation-matrix314-v2/custody/gauntlet-owner-probe-zi76tpun/fbab654b2224456a9415d4123342a8a4-receipt.json",
+      "bytes": 4195865,
+      "sha256": "ebd7a1df6a157a3e72a4a47a734ce55ad76f1e99b0dbaf76454f4ccfb1c82181"
+    },
+    {
+      "path": "implementation-matrix314-v2/d8ee0dbb54ca4276958cb153ac7594e2-receipt.json",
+      "bytes": 1919,
+      "sha256": "36c703d325430768b1a161fa20747ce2bb9bb3d36efce66fd28a23911c3362c2"
+    },
+    {
+      "path": "implementation-matrix314-v2/e7657840f7354bd1a781458c6da96dee-receipt.json",
+      "bytes": 97279,
+      "sha256": "86cdfc1e4cb6ce994c1894caf63adaeb157502ba0d112fb1fb1b1d04c57333c0"
+    },
+    {
+      "path": "implementation-matrix314-v2/ee0481219745424bab7ad42b3b1fcee2-receipt.json",
+      "bytes": 2000,
+      "sha256": "2f622880e67cd6e7983f019659989419b3c22a0ce6cc6c244ef26a7d83d685db"
+    },
+    {
+      "path": "implementation-matrix314-v2/environment.json",
+      "bytes": 9077,
+      "sha256": "1942f3541e7f42c30601434c0d47272c2b8dc46ba869ac1d596e79d90377c173"
+    },
+    {
+      "path": "implementation-matrix314-v2/suite-results.json",
+      "bytes": 311,
+      "sha256": "2d57768e74fe75a2271fa38dc957c801cac367cc2728f08e98d56d73dcab826e"
+    },
+    {
+      "path": "implementation-matrix314-v3.log",
+      "bytes": 728,
+      "sha256": "8d2dbdad135202abed596e67ad65b41433fd0dcd1137a744fc46ef2d8db43ae7"
+    },
+    {
+      "path": "implementation-matrix314-v3/077993f9b8ad4f62be2525e00cf16e99-receipt.json",
+      "bytes": 77053,
+      "sha256": "e10ee69e28352d72e1a918da5f359e65d653607ec485bf5ee6c73044f478a080"
+    },
+    {
+      "path": "implementation-matrix314-v3/1e309dbf09d74210b6e9c38063161a9d-receipt.json",
+      "bytes": 1919,
+      "sha256": "b13e1d5d920e77f71e869f4893b17011882f649276be588e5ec5cbbbec259ff1"
+    },
+    {
+      "path": "implementation-matrix314-v3/26443a7654a04371b0eadbfd81b47dfa-receipt.json",
+      "bytes": 97278,
+      "sha256": "86539f96a8ef5bd2d3668b9c709fdb265fe64d4ef9c159ff53be80ffc65a12f3"
+    },
+    {
+      "path": "implementation-matrix314-v3/3575dd231c51479783a66c37418d2333-receipt.json",
+      "bytes": 1870,
+      "sha256": "3d964c23f5706ae73ffb8329db317bdc4573c6925dc6dbc28aad5fd554473b85"
+    },
+    {
+      "path": "implementation-matrix314-v3/6a30f7e854f1481ebd3c238b49ccab21-receipt.json",
+      "bytes": 1999,
+      "sha256": "fc4ce4f9cbd72f4009d4b707d5d2acccae89d33af136433d620b8fcbd37b8fbe"
+    },
+    {
+      "path": "implementation-matrix314-v3/7f8ca8a64b4c47a6a0d67e49a6a799e5-receipt.json",
+      "bytes": 12060,
+      "sha256": "6ee2746cbfdd4362af11164a1db254c81a404671e0a3188590f6678cbba44d13"
+    },
+    {
+      "path": "implementation-matrix314-v3/b3940c48847840f6a358cf589411d3c5-receipt.json",
+      "bytes": 1921,
+      "sha256": "8d451a0ac49dcb8bd0352161a08d3fca2da53e8599d319d553df64e9fdea8fdb"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody-probes.log",
+      "bytes": 4660,
+      "sha256": "89bae344c90ec321001aa015bdc0b5dc6f0ab5327e0b18726adc17779bdbd212"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody-results.json",
+      "bytes": 596,
+      "sha256": "5e9b2214d1de49ec80b3d1a955736fc12dc773f688a5baaa0a1e6798bfb09492"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-06s8g2sr/09b9d421846749a692b2e1db377a1c30-receipt.json",
+      "bytes": 2641,
+      "sha256": "389eee577e1b468c38842f1a0c817ce191bf6d28a958c526539a11a749a51c4a"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-06s8g2sr/6b41bdb22fe74890aa3f4a63294231a4-receipt.json",
+      "bytes": 2308,
+      "sha256": "dcdb5834c17c36f83386aa61ec87e25bcee2d3b161b7c4d9f07da92a1b4f99d1"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-06s8g2sr/ef4e2e00769c41bb8f280a099419331d-budget.bin",
+      "bytes": 49,
+      "sha256": "7efd2aa0377afa7e1084c41b18dd376496a6163a5700497f1ff3a62b3833326d"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-06s8g2sr/ef4e2e00769c41bb8f280a099419331d-receipt.json",
+      "bytes": 1661,
+      "sha256": "026bcb62a05ba51e2a90c269dcab5443c4a35b0b6bf62d7e23ec844518e96ec2"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-1qq9yk2h/67fcb8fc1d414606b9fc9a2cb9f3b7f4-receipt.json",
+      "bytes": 700752,
+      "sha256": "dfcb44c2e406c346e77ecbfee3df0aa071eb2e45bd2128a750c0d2d668d00fd3"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-1qq9yk2h/c332e3044128431dbf1f9ad5422e66e4-budget.bin",
+      "bytes": 49,
+      "sha256": "fa49ba35c5448e460af6d3e9aa547ed1e041716fcd4a564f77b9f2e3f9991ee4"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-1qq9yk2h/c332e3044128431dbf1f9ad5422e66e4-receipt.json",
+      "bytes": 1737,
+      "sha256": "10e26f2ae3025c5b8d1cba3e5c1f67a01736056fe35b122a10fc93050aea04d5"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-2nb0m2oo/85e41ccda5d0411b9b4246774938bb22-budget.bin",
+      "bytes": 49,
+      "sha256": "f4ee5a09f1ac560885511a2b8b48c061707ea1044226203df80bd2935af02d07"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-2nb0m2oo/85e41ccda5d0411b9b4246774938bb22-receipt.json",
+      "bytes": 1751,
+      "sha256": "09850eae225926c62d71278837e3546db1164a614d046b403cc878019b939448"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-2xoi1oyc/1e4d4e4bb09c42b08fa5345e97a32b58-budget.bin",
+      "bytes": 49,
+      "sha256": "a651f11d090f7feae66460715e8e4c2cc71f5946dcb2d4ba658b64b71e112813"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-2xoi1oyc/1e4d4e4bb09c42b08fa5345e97a32b58-receipt.json",
+      "bytes": 11181345,
+      "sha256": "bb12af14779bdc82a359eb88afa7bcbd3f71d2f6696c40b7ded1ffe0f3d3080d"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-3tdtidm1/f55e3d2d4cf1468090b9f308da112124-budget.bin",
+      "bytes": 49,
+      "sha256": "3fd0e586c35811f2ea29e8a84e81161689687d7f80e233314d2fb7c38e634f0c"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-3tdtidm1/f55e3d2d4cf1468090b9f308da112124-receipt.json",
+      "bytes": 1833,
+      "sha256": "4a67a226e94a08793bda174bfed8144fe1a6ae529435a81b83b5f8649848d002"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-464recha/c01c9c7135fa46109442c14e2af1443f-budget.bin",
+      "bytes": 49,
+      "sha256": "092ce057d7571db965b87b61d50abe34730120830a15e54a4cda836027290c0b"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-464recha/c01c9c7135fa46109442c14e2af1443f-receipt.json",
+      "bytes": 1622,
+      "sha256": "7808aaefa6bdbaf836f6c5347f2c5eeff12681fbc4d36c72200fcb63a79b2848"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-5umbtteh/021c571037bb4bc9b16a43c7ba86048b-budget.bin",
+      "bytes": 49,
+      "sha256": "7c5e6aad263a188cf98bceca39ddc1b9689cba2cd88558b7046a0426e1b53e6b"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-5umbtteh/021c571037bb4bc9b16a43c7ba86048b-receipt.json",
+      "bytes": 1738,
+      "sha256": "62c8a21d9460f0f31c3820e58708326199caa563a4add4bec43af9a4d933ced1"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-5umbtteh/0b77807bf19a4784b87aab15a6f8ccc3-budget.bin",
+      "bytes": 49,
+      "sha256": "850e932aedd29cf42180183cf05620b7995f0ca7459e2f0993490525f1fb3c52"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-5umbtteh/0b77807bf19a4784b87aab15a6f8ccc3-receipt.json",
+      "bytes": 1736,
+      "sha256": "1dcb6956768cbf786c56bb79aa834b23cd10936ca14278466fa88dc77122f540"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-5umbtteh/c987f9fee1684880857c3f9095d2c277-receipt.json",
+      "bytes": 1718,
+      "sha256": "abf30aa65166d6bacaecbb7110bc2486e272d7bc9df53f104e7f4f075b05c619"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-5umbtteh/d7da35a40290435ba820974dd84c83c7-receipt.json",
+      "bytes": 1715,
+      "sha256": "e745ba36b8eeda172d702e8e17a6cc4fc635a268e2b0bdc213232effa3398c47"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-6fr30wrf/542661843d15477a98ebc927cf88b41c-receipt.json",
+      "bytes": 1634,
+      "sha256": "86ed4aa43a0cc8209d224190dfaf3c861412a06ddc013b682952a70ca52762a9"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-6fr30wrf/8f8062bf7a3944689d0aa47cb0cce9c0-budget.bin",
+      "bytes": 49,
+      "sha256": "570fa17a995ddd8a6040fab0db7ac9b3e5cfe4bd6dab45cc89b3f83ef8e1c818"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-6fr30wrf/8f8062bf7a3944689d0aa47cb0cce9c0-receipt.json",
+      "bytes": 1729,
+      "sha256": "ba26e8d6ee5fcdceb94cc57af526c1aa94082f6e096acc8a830905445e5a632e"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-6fttwmq5/85bbf56cfad84cd0a1167749e132b543-budget.bin",
+      "bytes": 49,
+      "sha256": "686cad1f9c75c5202bc897b6665331dd00e2a20065f7ec7bbd1c64f31cdb7738"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-6fttwmq5/85bbf56cfad84cd0a1167749e132b543-receipt.json",
+      "bytes": 1651,
+      "sha256": "d89794782e5d32fe53ea6fff3a6150075ab2a03f93bf827797905b3d53a4795c"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-9xflic0b/299acc5faf0d416292aad214abc5d937-receipt.json",
+      "bytes": 2309,
+      "sha256": "f0cf10962071ee0f35dcd7a52d45a9a165685e9e1124aa4af2157fbbecbe1330"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-9xflic0b/f90fe952d24444f48151d2ce21981eba-budget.bin",
+      "bytes": 49,
+      "sha256": "5a866a650d0844c4892f9f9f46337f244e795fcd5a541a3d12b25fd93ff133fb"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-9xflic0b/f90fe952d24444f48151d2ce21981eba-receipt.json",
+      "bytes": 2097,
+      "sha256": "ab0ec7e0b59c66579492a85d63fa7c6bcaf1759c1091f0a693b3e5fab24a3a0e"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-c33nnn4c/45e6fd3ad41d494998a68f456e37e216-receipt.json",
+      "bytes": 4195865,
+      "sha256": "abd883ba4a4400eee8439165af0dcebad6ad4ff611c2a2bed21143822df14150"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-c33nnn4c/564cd8caa44342a4af882e3b556385a9-budget.bin",
+      "bytes": 49,
+      "sha256": "887e6daf6124678181686b3933e3b5216f7eb29250332f978b78b4fbf0bd89ef"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-c33nnn4c/564cd8caa44342a4af882e3b556385a9-receipt.json",
+      "bytes": 1728,
+      "sha256": "13d7affff66bf69a04eb25969d73e9fdcea292867ec3c3110e06b87a55d596da"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-c33nnn4c/79f7fbac9bcb487d91c816ec1973c450-receipt.json",
+      "bytes": 2797994,
+      "sha256": "3211b5fdcfc454e0b2d2a0589db0dd5729fcb832d3b5b0793aecdf4d74f1469e"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-c33nnn4c/829f924d1396436ca2af92241a5c934c-receipt.json",
+      "bytes": 4195865,
+      "sha256": "efdf97de78f186cce625f6a6c1a6e82e9cb6980c352a4d7cceb715793dd4641b"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-ej0klblu/3a3b460d748f4435bace2e7aca095521-budget.bin",
+      "bytes": 49,
+      "sha256": "74af5463e44ba6c071ba2d40136d892fb556fb95bebae9dab92e86475c774855"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-ej0klblu/3a3b460d748f4435bace2e7aca095521-receipt.json",
+      "bytes": 1919,
+      "sha256": "7cb6149d62c5f43be6acc99071299b8828301c734372792497c3891516f655a9"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-faxy_8v4/83460105b01544228cf4bf0ab6c489d3-budget.bin",
+      "bytes": 49,
+      "sha256": "22856bb0e1d029aa6c6f6d36d9f1c092bb8a926767133b96cf968bc9fa822815"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-faxy_8v4/83460105b01544228cf4bf0ab6c489d3-receipt.json",
+      "bytes": 1849,
+      "sha256": "0e86613662262e26f540c5c1f477ce5aa26ccbe57f5d52a79c2ed9f0c494a2b7"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-fih23n73/35b8ccc19eed4e7c9161c5bebea5849a-budget.bin",
+      "bytes": 49,
+      "sha256": "69e74276fc955da90072bfa8ff9d98f9b9eca9f14840778de042f68180484639"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-fih23n73/35b8ccc19eed4e7c9161c5bebea5849a-receipt.json",
+      "bytes": 1875,
+      "sha256": "78508f5b1a7ba812b25375431f3405ae8a2d39ae9f50a6e59fb277f41e0632e0"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-fih23n73/f4a3eef7d4994ebf8f2e4cc23ee0ff56-receipt.json",
+      "bytes": 2410,
+      "sha256": "9f732d31805da37b0bf593f4f948b1be22509c6746b3e1a03faca48f0698dcf2"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-gntc0l3a/dfd8ec2b8095468fb05d686576723a6a-budget.bin",
+      "bytes": 49,
+      "sha256": "481c7e6ca22b8d22b31d220a084a277fda77a0b5593bd96ca3d24dc3fac96bde"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-gntc0l3a/dfd8ec2b8095468fb05d686576723a6a-receipt.json",
+      "bytes": 1730,
+      "sha256": "8208d1236a0a3481830b5238a0604f68f3eaaa3d2a4cdbd44d6680cbaf913d44"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-hbutclbk/70b2ab6550744f0683defd101fae5908-budget.bin",
+      "bytes": 49,
+      "sha256": "5ce26ab2ed97a49360e7f2d0f259e6cfb92611f84f4bcecc241d94d872952e59"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-hbutclbk/70b2ab6550744f0683defd101fae5908-receipt.json",
+      "bytes": 5594260,
+      "sha256": "50689d2e31794c94e37462c558fcfbb41928b991fa5d49bcf4e46cb9264e2d4d"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-i03k3nkx/58c7974d0afb430e841bcfe7ceffd573-budget.bin",
+      "bytes": 49,
+      "sha256": "45463352bd4eaf2c84ae0da49fd85ab4bfce30443134eccc7a265ab3a6d9c0d3"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-i03k3nkx/58c7974d0afb430e841bcfe7ceffd573-receipt.json",
+      "bytes": 2099,
+      "sha256": "d0e25ac4bb46a1b5ba8d3296d41d3a5d25b6e017e74defd0cd185b24609c0f49"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-ieo7zl_y/92890ea0e649461c877392f6cd7de047-budget.bin",
+      "bytes": 49,
+      "sha256": "4834301d039ad5e79366d157568dadb983d5714ee6d68a4d7bb9908b133a8191"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-ieo7zl_y/92890ea0e649461c877392f6cd7de047-receipt.json",
+      "bytes": 1666,
+      "sha256": "b7ab22267923802d183659824d950f81071cda7c379bf9053badee0f25eedfe8"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-ieo7zl_y/real-expiry-1y9rt48q/state/collaborative-v1.sqlite3",
+      "bytes": 53248,
+      "sha256": "bf21b4d774532f6cd6bfcd788e05fbb217e9272c408254163b8ccade952896ed"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-p9pta6x7/09317e2acaa6441191d5588b8dcff563-budget.bin",
+      "bytes": 49,
+      "sha256": "c0c80f67d111de179f118c61dc33dc8bac3c49715864191ed1a649f2bd725142"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-p9pta6x7/09317e2acaa6441191d5588b8dcff563-receipt.json",
+      "bytes": 89100,
+      "sha256": "abf85002acb9e20fc071209b606f45f6922be91df3d3d685e7208bbecce2d7d8"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-qcj1_xda/5705b373c47646f9ac32cb22971c2bc2-budget.bin",
+      "bytes": 49,
+      "sha256": "ed7c907667a652a9233467b71a8174ca298fc718ed207408dfdada9a77380ee1"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-qcj1_xda/5705b373c47646f9ac32cb22971c2bc2-receipt.json",
+      "bytes": 1748,
+      "sha256": "8195b227eb9c42da1cf34c18ca2b99cf62d155957a6595315100ad390923b979"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-rdhk9syq/531832f33318443ab6787cfed45e2c76-budget.bin",
+      "bytes": 49,
+      "sha256": "826faaf83eb1231cab487908e7ab65c933f47bdd063467de16472180e9ed27a7"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-rdhk9syq/531832f33318443ab6787cfed45e2c76-receipt.json",
+      "bytes": 1732,
+      "sha256": "faa77be553265b9970aa09327e0a3bfdf70197142c095475dc0d3cda31698529"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-rdhk9syq/8503a62d096b4eceb910940f36b365e8-budget.bin",
+      "bytes": 49,
+      "sha256": "8459f1c9f82eb72bb9876ee0783c9fbb830801befb1ede923b74580b38c7d664"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-rdhk9syq/8503a62d096b4eceb910940f36b365e8-receipt.json",
+      "bytes": 1644,
+      "sha256": "2ff0e425273322ed163d25568cc7048073c7096ebf683692b941fd0db2f5999b"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-rjmar8d5/1f0456eaa6524d5b821b698facfd993d-budget.bin",
+      "bytes": 49,
+      "sha256": "8429d1756086126e683235cc21ded1ea8e17eb56603b509678d32319a37e1441"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-rjmar8d5/1f0456eaa6524d5b821b698facfd993d-receipt.json",
+      "bytes": 5594261,
+      "sha256": "aeaf417214cd245651df8c5029e71e4dbed60791c7e35d06fd26ae7b6262fd59"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-scw_tciz/290972146124436285781cb0b225f6a0-budget.bin",
+      "bytes": 49,
+      "sha256": "9733ae8f14482aa310859e74a1b09f8144472ebee72b7a122f48ceb3284665be"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-scw_tciz/290972146124436285781cb0b225f6a0-receipt.json",
+      "bytes": 1732,
+      "sha256": "6ec8981f9fd8554782426ea27a0a527fadc3e01f11c36123e237ff8cffdce6d0"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-scw_tciz/7500297fc1084102aae81fb2c761a62b-receipt.json",
+      "bytes": 3176,
+      "sha256": "b03a34e3ece7a264c6599d2584ed16da513de7ff2add4c7b917fb474019f09cd"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-scw_tciz/804b795561f14324900935236a6295e3-receipt.json",
+      "bytes": 2517,
+      "sha256": "6a81fb2241a1c1b7d53698065c5f3cd35d8abad5bd182cfafe13e328f7f6dcb7"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-scw_tciz/acbed6fa33c54060a3bda4a4278f9eb9-budget.bin",
+      "bytes": 49,
+      "sha256": "f3d88e33c5b3325681ddfa12413e470de0b5290cd2fa7a26696b215f3361395c"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-scw_tciz/acbed6fa33c54060a3bda4a4278f9eb9-receipt.json",
+      "bytes": 1843,
+      "sha256": "47dba0d62eae921d224c3e3cd23d6042eaf89767cd0ab21e1bc808ef53c9fd60"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-scw_tciz/afea508df90d443e97feb0daf39db47f-budget.bin",
+      "bytes": 49,
+      "sha256": "88561ef9f35fad7d6aaef9fa08e95530d8581ddd2f4275ec7b5edee7ae23a31b"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-scw_tciz/afea508df90d443e97feb0daf39db47f-receipt.json",
+      "bytes": 2568,
+      "sha256": "874de804d46a025b85e999e08452c89187866eb1c8ee9696b764081002a974ed"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-sr6gmai3/91e1c3a8dc2e410baabdb3c8f3711969-budget.bin",
+      "bytes": 49,
+      "sha256": "a408d6389a66803ade3df5964382be91f1a00cac5d59524cbb4283d884a4827c"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-sr6gmai3/91e1c3a8dc2e410baabdb3c8f3711969-receipt.json",
+      "bytes": 1721,
+      "sha256": "48d2faa8b7d8851fb0f8bb987bebd74d7611c70a1132bf8dc4f1162329949d15"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-tdma_kae/6cbc7a61150a4bd39e7b1392b90bd70c-budget.bin",
+      "bytes": 49,
+      "sha256": "92c0ffd92df4657f6344d5bf4d87905fb8657fa2280efa5e548ab97a4651c081"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-tdma_kae/6cbc7a61150a4bd39e7b1392b90bd70c-receipt.json",
+      "bytes": 1661,
+      "sha256": "2dd2908f795a6674b1aeb98a590862485737e7fe43d57f83308629db16b13078"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-ukb80v14/33f2cafa2b064edaa4249234918cc70f-budget.bin",
+      "bytes": 49,
+      "sha256": "cb0c6cd354e1a298dce4f98d3704f230875204f4d0cc5e5e55ac34b7a40d0aa5"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-ukb80v14/33f2cafa2b064edaa4249234918cc70f-receipt.json",
+      "bytes": 1813,
+      "sha256": "8f4dbadb5e62430b1939fb557e9e7beea2623bdab0f7f9127531f69aae1428b9"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-ukb80v14/ab288b0b650d46919727231b9fe9ad17-budget.bin",
+      "bytes": 49,
+      "sha256": "700eb5b09dab9499508bf55b34ded5f4b652a367d6a25e67ef2ef90d462bdb88"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-ukb80v14/ab288b0b650d46919727231b9fe9ad17-receipt.json",
+      "bytes": 1814,
+      "sha256": "31090f09c212d93dad19603fe5226d9df104b79f3d3609f2e6c0b5f61b6c8813"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-ukb80v14/ce5beb847dd84cb88507925acc7430b4-budget.bin",
+      "bytes": 49,
+      "sha256": "33530f1cd21fe9cbb6adc1a91696777b1074e8b5c28bad2db43a939c6c120a74"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-ukb80v14/ce5beb847dd84cb88507925acc7430b4-receipt.json",
+      "bytes": 1813,
+      "sha256": "7d2fd5df1cd44910432c711192799fdd39040183244b55c52be281bf3a67009a"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-vjsw5pne/84a2471bb89c441989ba91eb29f5f561-budget.bin",
+      "bytes": 49,
+      "sha256": "1579e78bd6a04b8d72f7ca4d1d43c89141de5da54ba615a2fc8acab5b8e03ca9"
+    },
+    {
+      "path": "implementation-matrix314-v3/custody/gauntlet-owner-probe-vjsw5pne/84a2471bb89c441989ba91eb29f5f561-receipt.json",
+      "bytes": 1689,
+      "sha256": "2df3a5ed35d1fa0a3f1cda3e0bac4f25e7d75b1d8de1aa1598e59abcd70c22c5"
+    },
+    {
+      "path": "implementation-matrix314-v3/d1a088c74daf4fd5927b8bdbe6eb2b9c-receipt.json",
+      "bytes": 18199,
+      "sha256": "6ad7daac10a95bb56a1d0ae01bbf17e6abc6a5ad27e073a8960df1f9bcd4153e"
+    },
+    {
+      "path": "implementation-matrix314-v3/e935ae0db9544f8681ef03dfc6f7eb96-budget.bin",
+      "bytes": 49,
+      "sha256": "6a17a4011e12e0ee87f8d2f25bd1b0e8c6146584f9165cb3d8b432e832664f89"
+    },
+    {
+      "path": "implementation-matrix314-v3/e935ae0db9544f8681ef03dfc6f7eb96-receipt.json",
+      "bytes": 2032,
+      "sha256": "71e360c36de50dceac1ea01eb19373afdb65fb11e7aab6914f57002e07f7217d"
+    },
+    {
+      "path": "implementation-matrix314-v3/ef4fdda1133e4fba8b3c2c2a9dfa0e2e-receipt.json",
+      "bytes": 1871,
+      "sha256": "b03259930983a0bdfd8d1034f240e1024608ce1664d6bbd6214898693d454eba"
+    },
+    {
+      "path": "implementation-matrix314-v3/environment.json",
+      "bytes": 9077,
+      "sha256": "1b6a3e4648597e00337baa7d50378f92876238165e7b6fee867f30803c36f266"
+    },
+    {
+      "path": "implementation-matrix314-v3/f12a9220f02444a3832239c6cf12043c-receipt.json",
+      "bytes": 1981,
+      "sha256": "fa177f061d0e26af7ebcfcf756f6bc95c88e61a3e80acea511b3cf9b69a6f65d"
+    },
+    {
+      "path": "implementation-matrix314-v3/fcbbe71c2cb94307aacc7fb1b7375c93-budget.bin",
+      "bytes": 49,
+      "sha256": "fb2e9537328ee08a0e03f4b49d9363a01e5717de2b569f509e6b0547f3004bfd"
+    },
+    {
+      "path": "implementation-matrix314-v3/fcbbe71c2cb94307aacc7fb1b7375c93-receipt.json",
+      "bytes": 1941,
+      "sha256": "d6b10bcf7dd8a9df2c1ea1a124434914edc9712afd24ab0287c36d611e454012"
+    },
+    {
+      "path": "implementation-matrix314-v3/ff30016bdc1b4edd92f2a23bda8e86e6-receipt.json",
+      "bytes": 2002,
+      "sha256": "9b5cd1e854ba23e1de91eb93488c53fafb7fa84ab39915df662e2b2b50c1fde7"
+    },
+    {
+      "path": "implementation-matrix314-v3/suite-results.json",
+      "bytes": 610,
+      "sha256": "8b7294be41eb6cbef3b3c488114ed69e8c0f3dbc4cd4afb19c34813c5d3579d8"
+    },
+    {
+      "path": "implementation-owner-all-v1.log",
+      "bytes": 133,
+      "sha256": "ce248d860c157f702fb7970c2d52c26e9c7fef8b84ada03dee1f0b6ace48dfed"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-_9pr5b3m/37206014f4ed4d44b1a3e897978a8d2f-receipt.json",
+      "bytes": 2300,
+      "sha256": "e2746bcc20bdaf38a5ca539ca590642ded6dc1a865d011ab94b707070bcaa7f4"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-_9pr5b3m/eaa4951dd5ee46cfb16e0e66f6707eab-budget.bin",
+      "bytes": 49,
+      "sha256": "6734bfac79fe1dce12cfdcd21dec18813bff767a156b9e8096e267d13ffa9cd0"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-_9pr5b3m/eaa4951dd5ee46cfb16e0e66f6707eab-receipt.json",
+      "bytes": 2088,
+      "sha256": "c4e245b21f2a7fa0aa25afcc4e8a053e18306f4c359f974da14a5c3f4643defd"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-_xti7o6n/bfa197ce0b614965b248b42c28155080-budget.bin",
+      "bytes": 49,
+      "sha256": "7791150fa639e185d41369cb244b029d062e79eb3bf6f63b1f6f78ec97c7a823"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-_xti7o6n/bfa197ce0b614965b248b42c28155080-receipt.json",
+      "bytes": 11181336,
+      "sha256": "ca0f101684ff0138fa92ae172715e914c53162d6719f2748b7ff91b5384bca2c"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-0j1r2bdn/91dc4c2e8ca243d6875918ec3ef48e0c-budget.bin",
+      "bytes": 49,
+      "sha256": "9f42357196a975dfc113ea1d8d4f5f9fad9350b159ac43bcbc128dad2ac0c4ea"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-0j1r2bdn/91dc4c2e8ca243d6875918ec3ef48e0c-receipt.json",
+      "bytes": 1653,
+      "sha256": "a96846cd083baac273b3034c205200c722c4eb393b3f35da922f445d7bfc5ce9"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-15ou2544/84a2a8bbe9204e3b96ee70c21f8898e7-budget.bin",
+      "bytes": 49,
+      "sha256": "b60ed521a572715276dc82996c726f686a411a3dd0c410fd5b7fcbdf503e72be"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-15ou2544/84a2a8bbe9204e3b96ee70c21f8898e7-receipt.json",
+      "bytes": 1727,
+      "sha256": "19fcfbb0418c683ea74970aa63ff6a6d4679d1ac196471d6b30af4cd19cc6801"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-15ou2544/a6565ac4d341441d8be5c77a4f8bdf1a-receipt.json",
+      "bytes": 1710,
+      "sha256": "84a55eb4a81250410f662c029fc1383ae24c7045e774fe757f6d9c18251f12fa"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-15ou2544/d0f84037e365403fb2f388cb2e4408c8-budget.bin",
+      "bytes": 49,
+      "sha256": "0243e65556c2958aeee08bc00dd207c64d06f89b22d258f70b7bb9b9c7919a76"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-15ou2544/d0f84037e365403fb2f388cb2e4408c8-receipt.json",
+      "bytes": 1729,
+      "sha256": "79dc83c65a1433fbfb1ec268c836c36ce39e4f3875b7f73e9c2406bd33db5c0d"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-15ou2544/f3f08b7f0b9c4a0e802bcfeb878a39eb-receipt.json",
+      "bytes": 1705,
+      "sha256": "e69153fbde15f4d8c5f1c064a625f4ed52304ab8f06e3cec539d66de2c06bcff"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-1wxa2zo7/5a6be77ade154a05bddb0cc5e13d1e78-budget.bin",
+      "bytes": 49,
+      "sha256": "6293109c36a50e3832b6ba0ea08afd34eb304239e3ca64453b1c0fd9e2b1c5f5"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-1wxa2zo7/5a6be77ade154a05bddb0cc5e13d1e78-receipt.json",
+      "bytes": 89092,
+      "sha256": "799ee4da0e58a522edf7491e6dcb1649128a334185b546274887c24a4d441377"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-2zlrq3fs/55be44557f0241e1add350e5404709ef-budget.bin",
+      "bytes": 49,
+      "sha256": "34cf292d960b7cf844db07c9d3910793ba7b75cf9ddec98eb121e64cc9b079e2"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-2zlrq3fs/55be44557f0241e1add350e5404709ef-receipt.json",
+      "bytes": 1719,
+      "sha256": "9e54abd8dafa193d0c86e7674dad685255782f5cf71d84787fa2bd804fffda06"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-2zlrq3fs/7fc540e74c65415e8dcda97b067b8289-receipt.json",
+      "bytes": 1624,
+      "sha256": "41103e01d3f90834ef6d1c50b83ad7d8c9cf843adfb7f53b25efaf0a1eae74c9"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-8vle8lct/7cc8f029754142b88df91862300d8a19-budget.bin",
+      "bytes": 49,
+      "sha256": "53bb5ebf885237feb2f09c9a66f2f5c06a1ff5fa62b96311fc2676f3f9db80f2"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-8vle8lct/7cc8f029754142b88df91862300d8a19-receipt.json",
+      "bytes": 1719,
+      "sha256": "9c069d6d1d8363f8cdb7e768d9ff577e4fe1b66334f842ecb02f07c3ff059f2c"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-8vle8lct/a66312a74f354adb8658951afad3e275-receipt.json",
+      "bytes": 4195856,
+      "sha256": "1b51d21d095e0698886c58d105523bc5c2983cce449b17cf6ff67ae93b8cdb07"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-8vle8lct/b2f9493cc59d46fa8449a62204bc870d-receipt.json",
+      "bytes": 4195856,
+      "sha256": "153daaddeed5605a99be2e6c82d9c863d6449f4f865aec9f1041e462fcecce1f"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-8vle8lct/f1d042122a494e71aa414252a005cbe2-receipt.json",
+      "bytes": 2797985,
+      "sha256": "7dcccefacb9d4ce1106b9ee357618f50fe97534719af27fda9b73fd1030e1367"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-8z7gbvwc/f1f85b8586be4c588605faa5437bb4ea-budget.bin",
+      "bytes": 49,
+      "sha256": "2354901575a997f8aa9a5e87aebc074d234a7ec370cb1c8d873b61217628ad98"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-8z7gbvwc/f1f85b8586be4c588605faa5437bb4ea-receipt.json",
+      "bytes": 1722,
+      "sha256": "d97904ad19a0106fe904de32c786f0517f547153b585b80be7dd32d25619c68c"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-a3w6h9c2/6ed05a331ac84a7da47c9b68004fd844-budget.bin",
+      "bytes": 49,
+      "sha256": "c5e93ef019e5250f90cb5ab57afb9cd1627220012acdc11e7f1863cf23899655"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-a3w6h9c2/6ed05a331ac84a7da47c9b68004fd844-receipt.json",
+      "bytes": 1668,
+      "sha256": "674a8dba7f707ebc257e87a99d9d9cd99603cee914c9c5cd8b86d1e7c8231e62"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-a61s4abi/586bfcac1e1347a6b4867c64647be7fc-budget.bin",
+      "bytes": 49,
+      "sha256": "e0f3e5670c81b96a93f9d87dacc49916844d15ba78e41c1beae6db0d03080615"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-a61s4abi/586bfcac1e1347a6b4867c64647be7fc-receipt.json",
+      "bytes": 1642,
+      "sha256": "3939bfb4ed6c39a0875fc5fa40c3209308cca397590456109b32eded7c66e558"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-afb0eajw/17fc0b5d3ebe471d8f030df77a7f13d4-budget.bin",
+      "bytes": 49,
+      "sha256": "37df3b42f0865ff46c08555feeefeed2bbfd7cea391ce7b9634bfbed2bbc2bc9"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-afb0eajw/17fc0b5d3ebe471d8f030df77a7f13d4-receipt.json",
+      "bytes": 1804,
+      "sha256": "a36e1d3aa96ba9f079db8ec57681ae78a9508e7bbe21186d4bc475e54a6d09c7"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-afb0eajw/2f87bf612921409182e0b67f15e60361-budget.bin",
+      "bytes": 49,
+      "sha256": "e50f6fdf1ebfd2c5ec1288d099050757d301129a34b337bdf3b26d3f9ac7b279"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-afb0eajw/2f87bf612921409182e0b67f15e60361-receipt.json",
+      "bytes": 1803,
+      "sha256": "f86d50fd5f83cae9e8ded054e16a3f9fcceb8da6f33dc2edc891bd7c0ae0fbdf"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-afb0eajw/df08dbab6b874c4d9fb0755e99958dcc-budget.bin",
+      "bytes": 49,
+      "sha256": "b5e7ea34a5873758e8c53fda42310a5cba6f364aa4593818e541ba4421513a15"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-afb0eajw/df08dbab6b874c4d9fb0755e99958dcc-receipt.json",
+      "bytes": 1802,
+      "sha256": "e7153bf85620a13c5013bb7c3f877b7b3d5cf5d58850c38a80b1256b0004de61"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-c8ony0vq/e9dd1a7a4ccc4f5f85623d7697176a56-budget.bin",
+      "bytes": 49,
+      "sha256": "a49e73e0a40512a410cb5caf1e9d0654d5012ecf00f244f50fdd4076a975b4b7"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-c8ony0vq/e9dd1a7a4ccc4f5f85623d7697176a56-receipt.json",
+      "bytes": 1909,
+      "sha256": "a3b0c63dabf7b3bd7bad86f8a69eefbce00147fdff1aaad6088ba3c3cc5da41e"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-d482nvhj/aaf7e8d4bc3241058d9fd664eb2ddffd-budget.bin",
+      "bytes": 49,
+      "sha256": "58fab947b13bd09a5e14c7cada2b62e70fd7a68c997df38814936bb35b4b3576"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-d482nvhj/aaf7e8d4bc3241058d9fd664eb2ddffd-receipt.json",
+      "bytes": 1724,
+      "sha256": "b03c285b2d87af109d9ad0ee33cda0d52f66fa576f1f3eb153b6de9751b7427f"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-d482nvhj/b4806b16d120409f9f42495539a5300d-budget.bin",
+      "bytes": 49,
+      "sha256": "26fc4724b583d9d855ee3ee9a17f0d427e56809c128620954bf8b2be1d375ea2"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-d482nvhj/b4806b16d120409f9f42495539a5300d-receipt.json",
+      "bytes": 1635,
+      "sha256": "ca3e6167121d8ac54f79b6adba4651e1e6acaa7221cc48e3f715fbbbdf2d3a85"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-eudovyhu/74adc6920db840e9973d7215cedf88d1-budget.bin",
+      "bytes": 49,
+      "sha256": "e6896148100bc016f6720157507b1f5e1c69f213248558e61dcb0ae5b7c15bfb"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-eudovyhu/74adc6920db840e9973d7215cedf88d1-receipt.json",
+      "bytes": 1823,
+      "sha256": "7b76813e7632457d5b716a7bb38cc15d333df427299bf344f89a1a4483c2a327"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-gie43ze0/30ee312db82141ccb062269468c7c417-budget.bin",
+      "bytes": 49,
+      "sha256": "5aa49a1412750268b934eef6c98e6cda7be0bb8934bde9141f4a06c03ab1df44"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-gie43ze0/30ee312db82141ccb062269468c7c417-receipt.json",
+      "bytes": 1738,
+      "sha256": "a3ed7f9ab5af5e989586cfda0d3ee9e614c285c7c338d2a0e82e464f83cd85ee"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-hs_8tfba/58371c7c68f1414ea114782d2e309efe-budget.bin",
+      "bytes": 49,
+      "sha256": "84cfc90627fec292fbe790ff8baa1e73056e2d9a5fae0fbb455e8e98fa820aae"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-hs_8tfba/58371c7c68f1414ea114782d2e309efe-receipt.json",
+      "bytes": 2089,
+      "sha256": "ed43bae1767fc83e2715dec9172c9e719e301a0a817036b812ea9e7db0fe6b5b"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-ih_bsgw7/5f9b054216e14dcba429942b6c36bb08-budget.bin",
+      "bytes": 49,
+      "sha256": "552f885e0ebfcf1a4fd84f8dca325a30c5b2772c4b3f953aa0295169b565807d"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-ih_bsgw7/5f9b054216e14dcba429942b6c36bb08-receipt.json",
+      "bytes": 1711,
+      "sha256": "de17a41520cdac875ee8e5e44b8ed5ebce8434701e46cae9772117a94f3ab1ce"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-qgiyj53y/593775bf4ef64c0ea2e083a518ed9ab1-receipt.json",
+      "bytes": 2377,
+      "sha256": "95fea26bbe3fe4c2c4faf5229ad902ea182b39a02897ee7477d061e6503a7743"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-qgiyj53y/b1d42c0c82d540f1931cde19ffb90fd5-budget.bin",
+      "bytes": 49,
+      "sha256": "33672c158a1fadd4c0644f24a616675e51a43961cbe015a96df4c038317f740d"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-qgiyj53y/b1d42c0c82d540f1931cde19ffb90fd5-receipt.json",
+      "bytes": 1866,
+      "sha256": "49a028bbae9943ac7bec26a5f3158475f9b2b197f9e14c5f47d02ba09e32478f"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-r6xets00/2dcb0a836e874b358cdcd64e35ba2f5d-receipt.json",
+      "bytes": 700742,
+      "sha256": "9e82155edbab4e726b614a24beeea7d0b432e8870dff24ea4d14a1380864128c"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-r6xets00/7a88569e9af94767b41b2bcaa9f26fc0-budget.bin",
+      "bytes": 49,
+      "sha256": "1eecfcfb9ec07cc7550a808f03162f9d225580a0d18617caad1283b809c0eac2"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-r6xets00/7a88569e9af94767b41b2bcaa9f26fc0-receipt.json",
+      "bytes": 1728,
+      "sha256": "23fcfe611be8b5b9c6d368c1bbd121a74b8cb328183bccf9b63dce52dfa2dbaf"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-tbjpy1ex/04731ebbe8cc422bb9303c4f26d7b34c-budget.bin",
+      "bytes": 49,
+      "sha256": "612c30a6a984cc007e570e96f3a4610d81c12b1cff7d473c79f296e806a3bd1a"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-tbjpy1ex/04731ebbe8cc422bb9303c4f26d7b34c-receipt.json",
+      "bytes": 1657,
+      "sha256": "c5962a66c77a74076af15176a580138d815ca46b7fceb3427350a8ddfbff1354"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-tbjpy1ex/real-expiry-89wq3hfh/state/collaborative-v1.sqlite3",
+      "bytes": 53248,
+      "sha256": "bf21b4d774532f6cd6bfcd788e05fbb217e9272c408254163b8ccade952896ed"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-tj2k2fai/ea657bfbb4184102bf2a9f24e9d0710e-budget.bin",
+      "bytes": 49,
+      "sha256": "7c67cd24af65505c17923c1c47b9ca5c3726760103a048e343068491de3ac234"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-tj2k2fai/ea657bfbb4184102bf2a9f24e9d0710e-receipt.json",
+      "bytes": 1612,
+      "sha256": "175409b66d606cfc7c19bbf89cebc3340440e4d76eb86da3495e7ba1a9fafa70"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-u7_7h6ss/9b069dade3de4ecc969b39154397fcd9-budget.bin",
+      "bytes": 49,
+      "sha256": "25622b0540e65a0b1de36c9601304509ced362f1fb8ef8498913f1f33cfd7afd"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-u7_7h6ss/9b069dade3de4ecc969b39154397fcd9-receipt.json",
+      "bytes": 5594252,
+      "sha256": "9ada3ba851893019b27759467b2dc57a55b72d6507d0ad0da00384fa1f98357f"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-wip7g5hh/fd8411291bc542aaa09b082cc70b26d3-budget.bin",
+      "bytes": 49,
+      "sha256": "20692477cabbc50b024eedcd5a934f70e435771df9c9a88d1d16199ff5a59ae2"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-wip7g5hh/fd8411291bc542aaa09b082cc70b26d3-receipt.json",
+      "bytes": 5594250,
+      "sha256": "f737b8a2bff31bc927d90b4d4c97c8ab0f0a650709474c55f66539060b92b4eb"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-wv3bwkx7/d3068e34826b4999a07ec3c1ac54ed1b-budget.bin",
+      "bytes": 49,
+      "sha256": "301ca95c48c401b121940119de7d7573f06ed3fa61da83118b7315377b9f84db"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-wv3bwkx7/d3068e34826b4999a07ec3c1ac54ed1b-receipt.json",
+      "bytes": 1739,
+      "sha256": "9be490429fbba927f5679f01ee9386bb17eb8ff1dbdd42857ac4f2cc2edacc7c"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-y1w6mxgj/7511e4635a434152b0d0a1d35e2ff5ee-receipt.json",
+      "bytes": 2632,
+      "sha256": "c07d87e8148ba2583e4f6c01b492359a8c1c455159ba93aa6a40bac7e7e23247"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-y1w6mxgj/85fc9d4dca874be39ffb63415bf857b9-receipt.json",
+      "bytes": 2299,
+      "sha256": "e821dc721f22775029976336f8fac1a3fea26e07636e6fdb1161b5490c0ac8c0"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-y1w6mxgj/ea6a4d7d5fd0459db515f3b3252e3c82-budget.bin",
+      "bytes": 49,
+      "sha256": "f40f563357a3f010fc5637b90613352da732c32ca10abe63a6f519db1035fbf6"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-y1w6mxgj/ea6a4d7d5fd0459db515f3b3252e3c82-receipt.json",
+      "bytes": 1652,
+      "sha256": "3619e3a07294591759b8ca8551502007bb9d086b45abd701ebac3a7ef1296163"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-ysfvhww9/1bc1266397614849b295e8c3eec8b4e5-budget.bin",
+      "bytes": 49,
+      "sha256": "eb905bcf4b751f5bfef9bbe02d4f425a9cb73549b7c70a72d5ef065531bc7b88"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-ysfvhww9/1bc1266397614849b295e8c3eec8b4e5-receipt.json",
+      "bytes": 2559,
+      "sha256": "9c8d2001959f2b2a4293571922d4955b3750e782fbab5d11e31f7db9265ff2cb"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-ysfvhww9/1e358535c632425b8933a4861968a69c-receipt.json",
+      "bytes": 3166,
+      "sha256": "c409b22e3817e7ceba3da4ac20cbeb7836adc07a4c50947914ae94a4af1af89f"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-ysfvhww9/5360731324624bae889bac86f9367293-budget.bin",
+      "bytes": 49,
+      "sha256": "9e211b245fef9465a364f1b629d2245b75f121fcf472e4785e20b042e735b22d"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-ysfvhww9/5360731324624bae889bac86f9367293-receipt.json",
+      "bytes": 1722,
+      "sha256": "58ce910de75b081f14696f0b79000f5a3284fc515d1aab0e525f920c0b6823d8"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-ysfvhww9/62943201ecb444b79153fb238d874d06-receipt.json",
+      "bytes": 2507,
+      "sha256": "4c6d5d5bbf1e7bb713208c4e64f4a891ca1764b04162565e9538f0baccfd4954"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-ysfvhww9/bf360790f22c4393a488f8f6d5a68b6a-budget.bin",
+      "bytes": 49,
+      "sha256": "b1440b10625f985669e8275f9673b95daca93e31d8cc659dc1fd623e9c2b6203"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-ysfvhww9/bf360790f22c4393a488f8f6d5a68b6a-receipt.json",
+      "bytes": 1834,
+      "sha256": "0623b4734b95430896a6af4f2bc1f30a0f8bdc2b40a9bde100406eb1e5c148a3"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-zopedlb6/5331de6f51ac4e19a71a077acd50751a-budget.bin",
+      "bytes": 49,
+      "sha256": "d7fe38b74e1014afc343ccddf49c844462e28b019d7f7b0b2166f0c472bfdb7a"
+    },
+    {
+      "path": "implementation-owner-all-v1/gauntlet-owner-probe-zopedlb6/5331de6f51ac4e19a71a077acd50751a-receipt.json",
+      "bytes": 1742,
+      "sha256": "2b0258b8d0556b69f9656c1f8a220f716e85cb85e74b4201728ce987595f4f9a"
+    },
+    {
+      "path": "implementation-owner-all-v2.log",
+      "bytes": 147,
+      "sha256": "cacae7635efdf2c0e6c162bf3fa92282e4e4eb2b7531bf6da1938382e4ff4728"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-2a9maz37/001979a61a78494489d1c8e688e47d4f-budget.bin",
+      "bytes": 49,
+      "sha256": "6fcbe9e1b2ec387204dc34c48e88f7cc823cfc7290a90f98ddb8dd86649638ed"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-2a9maz37/001979a61a78494489d1c8e688e47d4f-receipt.json",
+      "bytes": 1804,
+      "sha256": "811832dce914ee6380d2cfae3812919b0b02ba033be82512192309b4c08fa352"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-2a9maz37/0706e692373c4dc08a88f34e2175c801-budget.bin",
+      "bytes": 49,
+      "sha256": "ac51d7d432cc8e6e138813d5669e8a8fc303496ed820d84d41e01d5565772efe"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-2a9maz37/0706e692373c4dc08a88f34e2175c801-receipt.json",
+      "bytes": 1803,
+      "sha256": "10736c0f3ec4d5b21224fc538c79cad1c8592ed74c9dd258e4bf81d568924bde"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-2a9maz37/aebfe70f09e147879b4804ab46d97a2b-budget.bin",
+      "bytes": 49,
+      "sha256": "5ee7ae5680384afb57d34f406da8a456c13cf6f08bd7d68b10fadbb55cfa98a9"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-2a9maz37/aebfe70f09e147879b4804ab46d97a2b-receipt.json",
+      "bytes": 1804,
+      "sha256": "56351ebd09e256185d0e98abeee5182b5498214ca465e72c46a0b0bfa6842e6f"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-9f3p7kjg/32694cff4f7944148314513f812f80b8-budget.bin",
+      "bytes": 49,
+      "sha256": "b0c9fcb979ab725149c97e88869026179fc29fdc2787722c4058d556b74ef6ec"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-9f3p7kjg/32694cff4f7944148314513f812f80b8-receipt.json",
+      "bytes": 2089,
+      "sha256": "51274f85bcb36186329748cb5c70d71ad2c34d8ada82d117bd7f4975df80e697"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-9nibw2mh/81c234280ac043588529510c7b1a7168-budget.bin",
+      "bytes": 49,
+      "sha256": "5d75cdb6ac1f6cda8f810e1ce07ce32e1485de5b7a6f3539e5a07a9f64dbc9d9"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-9nibw2mh/81c234280ac043588529510c7b1a7168-receipt.json",
+      "bytes": 11181336,
+      "sha256": "bebe93b85c8d0ab93185279809f5ab31bcc0f0344501b05feb3ad18f1f40d927"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-9yxw_3ys/6030df55cbfd4a48a0a3d26db5cdf789-receipt.json",
+      "bytes": 1624,
+      "sha256": "9be98c3b6ea6e606d984738bb817195562c973cddb292a60e89080f2f7c23539"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-9yxw_3ys/66121a0750094bc2aaddfab810ab2d24-budget.bin",
+      "bytes": 49,
+      "sha256": "4f52bc91372ebe775bc53e0d6c10329cd186bf1c8b9f6ddcc46b75a7b3197d7a"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-9yxw_3ys/66121a0750094bc2aaddfab810ab2d24-receipt.json",
+      "bytes": 1721,
+      "sha256": "9250be984b935f34e2392ec1be0092129f514109853172c46bec4a22fdb66fa3"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-b2ko0xiv/fe34ed947e034f5ea10d32e681bfcf81-budget.bin",
+      "bytes": 49,
+      "sha256": "ce0ad142bfd0c97ddeb17a9926bff4b86f7681186f051c7ebc94dbc3fb5f6212"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-b2ko0xiv/fe34ed947e034f5ea10d32e681bfcf81-receipt.json",
+      "bytes": 5594251,
+      "sha256": "34ec9c5300e28713b96794b9be3372a437792e8d11606df05a7468069235ee2d"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-bbyug3ku/bbda86b8ae7f48cc9880dbc7a474fb71-receipt.json",
+      "bytes": 2299,
+      "sha256": "28eb6ee3ebc4e4881f7c2eda4abe622e005d5c58f18565a6f0b1716943ac3c87"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-bbyug3ku/d2b30026193740b8a961cb2d77527d93-receipt.json",
+      "bytes": 2631,
+      "sha256": "18192097653f1d852a55ad785123a9695db08dae5bda646640d4ac45df3b980a"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-bbyug3ku/d2cba9fff96e43b79146beff0286da89-budget.bin",
+      "bytes": 49,
+      "sha256": "7b5994147f464419c768f8038bb6cea2de3e994756d10aa2074d13bbd9032dad"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-bbyug3ku/d2cba9fff96e43b79146beff0286da89-receipt.json",
+      "bytes": 1652,
+      "sha256": "b2ee6ecc7d7768d8807085fe1ae6d6bfa1fee8c4b4d5524e29c82734f610618c"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-cawqjh3l/f824280958a2495a8385408c71aa022d-budget.bin",
+      "bytes": 49,
+      "sha256": "98c315a870cbdab87dce363393b3d8b8e64766e634913c904e8649c5c9b85c85"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-cawqjh3l/f824280958a2495a8385408c71aa022d-receipt.json",
+      "bytes": 1910,
+      "sha256": "007e22ce81cc539fdfe8f9c64053ff288782fbc9ed4d110774e211d5e6762706"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-djfi89bh/2089e937505844dea6711f493da89803-receipt.json",
+      "bytes": 4195855,
+      "sha256": "7427199875cfd8568930a6579e2764088109105ecba6e92998fd5033e7a47fc2"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-djfi89bh/653cf3e0a25945e183deef43607864aa-receipt.json",
+      "bytes": 4195856,
+      "sha256": "7d1d2f3084d52ad638140610916c539f8fb434805addbeed72ce1a0ccff922b7"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-djfi89bh/d662839b591a46d686837b880d5ccf36-receipt.json",
+      "bytes": 2797985,
+      "sha256": "ab8afb454b0864b20994db2d603d0e2d58e80be64b7e3ab92e4a39efbe96f12d"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-djfi89bh/e64b734834c84c8699ca4e1cea0ab1e0-budget.bin",
+      "bytes": 49,
+      "sha256": "efa530bc51fc90c562e1b44aef4a001039e5abd20af755f960c0f5b02486dee8"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-djfi89bh/e64b734834c84c8699ca4e1cea0ab1e0-receipt.json",
+      "bytes": 1717,
+      "sha256": "da635c0c108c136d52a2b9579a95216f1b0a27ed8958a4ed1184cfab6c56d9d4"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-femd123b/4e7c5a6182f4453e8eb2c358df079b4a-receipt.json",
+      "bytes": 3167,
+      "sha256": "e09eb542a4217fb0b34f2d06a11d256c3eacac3134ba164af8276f6b31fc4540"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-femd123b/b952487bb35147b5b93bcc1c41a32a41-budget.bin",
+      "bytes": 49,
+      "sha256": "22820bc09409f919910940aa4b6c21415a25887379649d986e405271f4299f01"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-femd123b/b952487bb35147b5b93bcc1c41a32a41-receipt.json",
+      "bytes": 1723,
+      "sha256": "5d6eb0405fab9e0964a56a9b98d9eb0f323b2b43bd9164f218e3a0ca51e20d25"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-femd123b/bb625d284d924322bfccd9f1c75d3dbd-budget.bin",
+      "bytes": 49,
+      "sha256": "15d5bdf04968a6975e05aed07dd9628a4cff5d1688f11edbc43baf3022d0aaac"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-femd123b/bb625d284d924322bfccd9f1c75d3dbd-receipt.json",
+      "bytes": 1834,
+      "sha256": "36daa1e48fc402e89d055b135a22b9571816bd089674a494d4f67c98570f8596"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-femd123b/bf7b6ba5aa8d4c23a65a8609d56cb4c9-receipt.json",
+      "bytes": 2507,
+      "sha256": "96bbd02b7ab2b77a283cae57fede1e503e46922aa5ed38103df3a33e7ce8009d"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-femd123b/ff60a99d09114235a19cdc1bb88b58c4-budget.bin",
+      "bytes": 49,
+      "sha256": "a4b9e8be8b1701496db9268a342908c79bf3e6931cf17dee42cf5ace1738d3ef"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-femd123b/ff60a99d09114235a19cdc1bb88b58c4-receipt.json",
+      "bytes": 2560,
+      "sha256": "5a1b70f5060bf3d08cf1f30f34ac2f92ec115e666352e272809adee45726886a"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-hd89ep2g/452c514f711a4ddab68be89105ed45da-budget.bin",
+      "bytes": 49,
+      "sha256": "60247341d42f1d753c778026053116bc36168cdbc544b20b87adf1240ec68eb1"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-hd89ep2g/452c514f711a4ddab68be89105ed45da-receipt.json",
+      "bytes": 1722,
+      "sha256": "93078e32f0fa370a1a28a9d780f1a3158060782cb10e42e74c13298a441799d1"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-hq2ckixs/cf340a10ca584453b173a83a5e200ce7-budget.bin",
+      "bytes": 49,
+      "sha256": "702c817c34744e75f8ff373fd9cccfb8d68eb35dfa24d8343f378978209b429e"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-hq2ckixs/cf340a10ca584453b173a83a5e200ce7-receipt.json",
+      "bytes": 2089,
+      "sha256": "99e2d3cd50df10ee7917cd9f65be25390949fb69d9c202835dbf85ea96fe54eb"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-hq2ckixs/f49ff578f23f4e519f914f494872d017-receipt.json",
+      "bytes": 2300,
+      "sha256": "3e500f5ba570f3152f54bc3ae205ada6c222b8fa845595f14a020bfc8c3fbf51"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-i6guq866/ad4d540474674a4b8023ebde182951dc-budget.bin",
+      "bytes": 49,
+      "sha256": "556f2cbabbf0cb17de2b133b5893bac1c8179c1df3001feb62d375de02706cd8"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-i6guq866/ad4d540474674a4b8023ebde182951dc-receipt.json",
+      "bytes": 1612,
+      "sha256": "6a65336f07d539c1c62961e27b45bacda62f482ab52db7e861aed5e4e083ed0e"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-l2w1mh_2/9a5decda17aa41afa26efed9f9d992bf-budget.bin",
+      "bytes": 49,
+      "sha256": "c9f35af56ede236ef5b89169d85a2d54dd02d890309be450f8e6e5e70f5df84f"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-l2w1mh_2/9a5decda17aa41afa26efed9f9d992bf-receipt.json",
+      "bytes": 1657,
+      "sha256": "6965a5e0eea835927e3d2d3f0b0876c133b2c29042e9016873beb723b19e0f44"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-l2w1mh_2/real-expiry-im3gqva5/state/collaborative-v1.sqlite3",
+      "bytes": 53248,
+      "sha256": "bf21b4d774532f6cd6bfcd788e05fbb217e9272c408254163b8ccade952896ed"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-l8jb6anm/95428e45de9146ddb4b7b9c128fcef20-budget.bin",
+      "bytes": 49,
+      "sha256": "d9c9781b393a9693d6fb92dbfbd25ddda66b0603ca58f5f4689c17a0e9311155"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-l8jb6anm/95428e45de9146ddb4b7b9c128fcef20-receipt.json",
+      "bytes": 1825,
+      "sha256": "db41ffd83d1b272ae1e42d1d1a2fad9c4900561e306f18a672ca75020f62c46f"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-m9tazs3u/121abaefde0646c38b3bfb86593f9b13-budget.bin",
+      "bytes": 49,
+      "sha256": "7595ec5cf20a32d02ad5d8e62d13e89db9d784774cfbbe3b0d7438b725b87dc4"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-m9tazs3u/121abaefde0646c38b3bfb86593f9b13-receipt.json",
+      "bytes": 1636,
+      "sha256": "e8a4a056083c60ae76364bae1f1973effc50a7f1641ea1d27741433c7b1a5a1b"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-m9tazs3u/b9370eabeec6493097548a4e04b93100-budget.bin",
+      "bytes": 49,
+      "sha256": "305eaf26e84a472322445e2899552c8655799ffbadf35808a63aeb5673c402e6"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-m9tazs3u/b9370eabeec6493097548a4e04b93100-receipt.json",
+      "bytes": 1725,
+      "sha256": "cca2cc7ab828d36ac081987d851bcbd08d4560b3efcd852ceeae1d427e3b5436"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-odk7ynek/f24581c0fefb4c2e9774431792fd6cb8-budget.bin",
+      "bytes": 49,
+      "sha256": "f9679383641d233f4d95af359dae50302207988c537eda12e9301104d9309a8d"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-odk7ynek/f24581c0fefb4c2e9774431792fd6cb8-receipt.json",
+      "bytes": 1739,
+      "sha256": "2335fa724b8c58d115e88e7fa5d08fb56ae5c8935f86e810602fd2fa346e1bce"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-pl9dozs0/6a18b49fb2d940df8a2d08e66d9c885a-budget.bin",
+      "bytes": 49,
+      "sha256": "7faf7445074170d720034cb88b59851cc37f300de63a26f125650747d480030e"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-pl9dozs0/6a18b49fb2d940df8a2d08e66d9c885a-receipt.json",
+      "bytes": 1712,
+      "sha256": "46e4d0828a49c42756d3b96b407b21a5a99c0c946b430d8dcf96c1f621949dea"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-r6flbsho/aba4f1cdef08407fa8cbe6c7bcfad226-budget.bin",
+      "bytes": 49,
+      "sha256": "6bf27395fb7366d2b39b8ff52f99fe5189f08b6bb4ed814bef0619dce0788f61"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-r6flbsho/aba4f1cdef08407fa8cbe6c7bcfad226-receipt.json",
+      "bytes": 1641,
+      "sha256": "82e6dfbaa52915c725daf49b862715ab268b3a105a5701f5a7ae82bd0ef5f9d8"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-raqjcqpe/9858455cbaf14417b3d0b20fdfdeefd7-budget.bin",
+      "bytes": 49,
+      "sha256": "3cf88c838da6300e8ec6514926148c68f70c95f9a586bb744450f31459935262"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-raqjcqpe/9858455cbaf14417b3d0b20fdfdeefd7-receipt.json",
+      "bytes": 87944,
+      "sha256": "6417a80d5922515c5b3b60df00e80227507062f04b72666c682244317aa474b8"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-rd801h51/396495fb496a4728a221a7bb39c21e6c-budget.bin",
+      "bytes": 49,
+      "sha256": "8d4a7e2254f097e61d4c92e1904fe9ab6414b4a30655842206bbbe1b0c8100be"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-rd801h51/396495fb496a4728a221a7bb39c21e6c-receipt.json",
+      "bytes": 1729,
+      "sha256": "49411f941993f849c626843a3687dc6d5b7552ff235a1794c78d158f683e6362"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-rd801h51/435215a93e2e4d83bd94de928d25807a-receipt.json",
+      "bytes": 1710,
+      "sha256": "19d58419ddabfd3db9ca31679db88177ca02c618adc1458e44d30fcc373b780f"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-rd801h51/cdb992b0b374443fb560bf41ab295125-budget.bin",
+      "bytes": 49,
+      "sha256": "18c895edf64259a239c010a3ec2becc4bd640cda466d8a197cd7cf7b7339bd4f"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-rd801h51/cdb992b0b374443fb560bf41ab295125-receipt.json",
+      "bytes": 1726,
+      "sha256": "65ef41fc1a72a94cd608275d8f01e866c099053da411e6cf2ad4f130bb506cc3"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-rd801h51/fd6cf1737f8945dfa39e454c534de5c5-receipt.json",
+      "bytes": 1705,
+      "sha256": "8d5aca92eaf82a04840338061f93904b12842e418111689b89f8f662af6a8ccf"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-tc9h1xyw/52a376be09fe404ba9c19c210fd69330-budget.bin",
+      "bytes": 49,
+      "sha256": "11a7fac131343300bb13a07664b5dab02f336bab6579f7d772518ebd33f761ff"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-tc9h1xyw/52a376be09fe404ba9c19c210fd69330-receipt.json",
+      "bytes": 1743,
+      "sha256": "e524252bcafa34a77b75db19fb83c8ee5c3f6f79d22642837aba91bda7c1000e"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-uuqh9bz_/0ffd8e49b2ed4e91b805be88922de081-budget.bin",
+      "bytes": 49,
+      "sha256": "875779b9ee83227906062fc55afff5ccd0595d61b3969e461f524ddd8ef79f23"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-uuqh9bz_/0ffd8e49b2ed4e91b805be88922de081-receipt.json",
+      "bytes": 1840,
+      "sha256": "9fb3902556bf72a4d78b6c1192edd3de994b1ec5c80f1fc42c3ebe7f15d3edb3"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-w6_czw9l/10066c7e05fd4636a0f9577faa752dda-budget.bin",
+      "bytes": 49,
+      "sha256": "fe1483669c25ccbdfb4a1c5bff75f5b20247bd127b8cb1d424de74749b053d86"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-w6_czw9l/10066c7e05fd4636a0f9577faa752dda-receipt.json",
+      "bytes": 1655,
+      "sha256": "82039fbd92909a2df97d05c4c10356bec683db993e3c561432641787323652c6"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-wgf_yjmi/bdeb593df2ca4726be5db7a22d662749-budget.bin",
+      "bytes": 49,
+      "sha256": "07d3e67ded9092bf423c5a2a6401f5358b7d710e0c9fe08d330e33245180e14e"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-wgf_yjmi/bdeb593df2ca4726be5db7a22d662749-receipt.json",
+      "bytes": 1865,
+      "sha256": "7bdd1490b66c96221c476ac60cadb67d9f60b374b2587c10c1c634f69c7bc9d8"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-wgf_yjmi/c789b6fc19e44b0cabec067eef7fcbdc-receipt.json",
+      "bytes": 2376,
+      "sha256": "db3011b97a092757bb7876d83ef5c645045c8609c4863d1a16c2b5ab36450805"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-x6bo9ixv/6b59cb42f2f1451d8f6874e40facff8b-budget.bin",
+      "bytes": 49,
+      "sha256": "e9db014006b795f4d1d32efa4f9f7d5d48e5155e09e7f1fec1820aefa245f936"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-x6bo9ixv/6b59cb42f2f1451d8f6874e40facff8b-receipt.json",
+      "bytes": 1671,
+      "sha256": "87931fc040753daefa9fe04b6149a7f6ffd22ae145711d42f93f3b76b2ddf678"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-x6war_vq/80f80e43c91e43a08a260c112a5c14ca-budget.bin",
+      "bytes": 49,
+      "sha256": "ba8e6266048306e7f31133746652d3765ae355a334b60436ebd7cbfd8c0d447f"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-x6war_vq/80f80e43c91e43a08a260c112a5c14ca-receipt.json",
+      "bytes": 5594250,
+      "sha256": "8dd8b1e4dd91144f47d00b8350525b58adbf952621c5bff403803696e0fa82fe"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-xf8lj4ou/0a9a479af384449b86600aa71cf74e3b-receipt.json",
+      "bytes": 700743,
+      "sha256": "9b40be266754fae78b015cf33a51009af33661ddcd0f6d544818b60710e377ba"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-xf8lj4ou/7c55af34700242f9b5c4475b84d9d5f7-budget.bin",
+      "bytes": 49,
+      "sha256": "3d919725549b52e16b4090f401fa49d61b360135ed3edd7865c8038d906929c0"
+    },
+    {
+      "path": "implementation-owner-all-v2/gauntlet-owner-probe-xf8lj4ou/7c55af34700242f9b5c4475b84d9d5f7-receipt.json",
+      "bytes": 1728,
+      "sha256": "a59be3cef82eefa71a2055b2e5dd1cbbbf5140ba024e1f3c1efbcd4660d5481e"
+    },
+    {
+      "path": "implementation-owner-green-v1.log",
+      "bytes": 108,
+      "sha256": "0e32d33ec31369afa4f72ccbaedc108b10cb17ecb52de9b0b7a1c58b3b9129b3"
+    },
+    {
+      "path": "implementation-owner-green-v1/gauntlet-owner-probe-b7w6xku7/1594ccd9b11548fbb6aef96f50eaf250-receipt.json",
+      "bytes": 3097,
+      "sha256": "90edda4ce8aec1182737d5bde793c799a1269f0a7715e37002788de7d78a6cd6"
+    },
+    {
+      "path": "implementation-owner-green-v1/gauntlet-owner-probe-b7w6xku7/367cc75597494f259ac50fb671a70433-receipt.json",
+      "bytes": 2434,
+      "sha256": "38f678323bdc92e0b78ad0cdc9d344a1485520d66ed29f4ec77ef855cd5fc429"
+    },
+    {
+      "path": "implementation-owner-green-v1/gauntlet-owner-probe-b7w6xku7/4ac6e0de8f0444e0a2c61aa3954e76d8-budget.bin",
+      "bytes": 49,
+      "sha256": "751c10f9fa93882593becc35e741d45bfbffab5d4e1c0840400348a8213bdadc"
+    },
+    {
+      "path": "implementation-owner-green-v1/gauntlet-owner-probe-b7w6xku7/4ac6e0de8f0444e0a2c61aa3954e76d8-receipt.json",
+      "bytes": 1761,
+      "sha256": "bef0fb6d6cc52e665cc89c1b01bba59031bcacf2c429c620e2229adf97675b4a"
+    },
+    {
+      "path": "implementation-owner-green-v1/gauntlet-owner-probe-b7w6xku7/99928983a0d9408d952fe6d00e14c59e-budget.bin",
+      "bytes": 49,
+      "sha256": "da6f215f64d7bf9e116343ca9bd9bc7cd7a117705a947a36c6f9fadd75216cf9"
+    },
+    {
+      "path": "implementation-owner-green-v1/gauntlet-owner-probe-b7w6xku7/99928983a0d9408d952fe6d00e14c59e-receipt.json",
+      "bytes": 1649,
+      "sha256": "5804432a0b49fc23a7d94d29366bf2426c1d8455f77537860cbbe84c5ac1cfee"
+    },
+    {
+      "path": "implementation-owner-green-v1/gauntlet-owner-probe-b7w6xku7/e34d1a8ba2b942de83406a022eeb86dc-budget.bin",
+      "bytes": 49,
+      "sha256": "d85d39b01f6588a2326282979dee0e95def30e360b92d205b38fdae2062f0dbe"
+    },
+    {
+      "path": "implementation-owner-green-v1/gauntlet-owner-probe-b7w6xku7/e34d1a8ba2b942de83406a022eeb86dc-receipt.json",
+      "bytes": 2486,
+      "sha256": "0e863363262ba52fb5a8ac9374c95db6a09f1272aa8af8871df9917a9736d8f9"
+    },
+    {
+      "path": "implementation-owner-green-v1/gauntlet-owner-probe-c2z4z94b/81ba366edc5841ed8f65ac73c61d52d4-budget.bin",
+      "bytes": 49,
+      "sha256": "127d2a1fdc0ef8a06891ed97e25c63bb47fac1302bfd9b9807064ec2ad8e2360"
+    },
+    {
+      "path": "implementation-owner-green-v1/gauntlet-owner-probe-c2z4z94b/81ba366edc5841ed8f65ac73c61d52d4-receipt.json",
+      "bytes": 1752,
+      "sha256": "db9f49975449effc2c719a85041ec983dd09b2ee962bf015ab5aff3112b25397"
+    },
+    {
+      "path": "implementation-owner-green-v1/gauntlet-owner-probe-x1jaevc5/fb7d374431fe4d5caeebab1acf758fe6-budget.bin",
+      "bytes": 49,
+      "sha256": "bc4fc16cc0edc449f48b395a1ca769c2e0ce10c1382b66409ad4a5cc33f283bf"
+    },
+    {
+      "path": "implementation-owner-green-v1/gauntlet-owner-probe-x1jaevc5/fb7d374431fe4d5caeebab1acf758fe6-receipt.json",
+      "bytes": 2016,
+      "sha256": "9a79f40ca9ad8a92681ca7f3c4706de268c6ad40be7ffb28569cc035e17a2d80"
+    },
+    {
+      "path": "implementation-owner-red-v1.log",
+      "bytes": 6018,
+      "sha256": "537189072f25a9eddfec0d5c3a49c1b3c3fd0cb4019169e4051414bbac37a643"
+    },
+    {
+      "path": "implementation-owner-red-v1/gauntlet-owner-probe-hypvwr_p/43297da0b55d4b9abc6a4e6881ca84c0-budget.bin",
+      "bytes": 49,
+      "sha256": "4a00888850c80731735770ecfc820fd4725149af25088efcb0e11d5c73b6c6ba"
+    },
+    {
+      "path": "implementation-owner-red-v1/gauntlet-owner-probe-hypvwr_p/43297da0b55d4b9abc6a4e6881ca84c0-receipt.json",
+      "bytes": 1560,
+      "sha256": "88910b5dda267a5131e7963f162e1c82fe5037e934ccb0ef58b2c8250bc93c97"
+    },
+    {
+      "path": "implementation-owner-red-v1/gauntlet-owner-probe-hypvwr_p/a64be37494f64fee930abe38086cd015-budget.bin",
+      "bytes": 49,
+      "sha256": "844ffe00f4513d7d8e6e246be3afe3ca4c42d0fa8dd3fb46a93eb0db553e8a0d"
+    },
+    {
+      "path": "implementation-owner-red-v1/gauntlet-owner-probe-hypvwr_p/a64be37494f64fee930abe38086cd015-receipt.json",
+      "bytes": 1559,
+      "sha256": "79605cb02d7bfb6a2a09c2a653c1ffdf3850c7761a81cc8114ff548f7a03a335"
+    },
+    {
+      "path": "implementation-owner-red-v1/gauntlet-owner-probe-hypvwr_p/c07589c5eb8e477a9a4bdede1adde955-budget.bin",
+      "bytes": 49,
+      "sha256": "a8d8c2424b3bb94c670d8b5524665c035d9f6d1dfafc22c898a0a63f39efbd15"
+    },
+    {
+      "path": "implementation-owner-red-v1/gauntlet-owner-probe-hypvwr_p/c07589c5eb8e477a9a4bdede1adde955-receipt.json",
+      "bytes": 1559,
+      "sha256": "3cbdc3f47e49b39c36e728ad3ef089c50a1c39210f3fd468aa62d1fe8e72a9e9"
+    },
+    {
+      "path": "implementation-owner-red-v1/gauntlet-owner-probe-ob06zy_6/268c968b3c2b4d81936a27dcd32dac9a-budget.bin",
+      "bytes": 49,
+      "sha256": "3c1f6b48d48a21629225029185de4cd96e6959b8ff0dc1571028b0a65c2e276b"
+    },
+    {
+      "path": "implementation-owner-red-v1/gauntlet-owner-probe-ob06zy_6/268c968b3c2b4d81936a27dcd32dac9a-receipt.json",
+      "bytes": 1566,
+      "sha256": "bff05d88873838fd9e0d1d83a1b579af14d4ae70b4d33c4e74167d6551a970aa"
+    },
+    {
+      "path": "implementation-owner-red-v1/gauntlet-owner-probe-qvvi1zzw/aaa4f04a24134b3e8d6b903c0fd303dd-budget.bin",
+      "bytes": 49,
+      "sha256": "77a41122e0f378807f1b1ec03d7a58792bf4554c4e14266d4437bdcff11af736"
+    },
+    {
+      "path": "implementation-production-green-v1/719a528927924c4ab8913755fc9804ed-budget.bin",
+      "bytes": 49,
+      "sha256": "dd5a1362e65230fa75c81d069120acbea2d9ab439fc02a41b360c53d849d0152"
+    },
+    {
+      "path": "implementation-production-green-v1/719a528927924c4ab8913755fc9804ed-receipt.json",
+      "bytes": 5142,
+      "sha256": "7399d981d53d977ab2335d5df3312e1fe9868a973f8241e98f7ed8a280c3a99b"
+    },
+    {
+      "path": "implementation-production-green-v2/96284a49436b49c3a66a2a278b3bafcf-budget.bin",
+      "bytes": 49,
+      "sha256": "d4e5f53149a934d5d246b6beae7aaab9e2403497052560b7f503533d0ac8f5df"
+    },
+    {
+      "path": "implementation-production-green-v2/96284a49436b49c3a66a2a278b3bafcf-receipt.json",
+      "bytes": 1714,
+      "sha256": "41008d23df263af1fb86a9664893342101c5e98cf3d0087441d9a8ce80b3c97d"
+    },
+    {
+      "path": "implementation-regressions-red-v1/5f5828a64d89408db5558600658b1582-budget.bin",
+      "bytes": 49,
+      "sha256": "fcee3a4712e23bc55f7482df96db242b8f56fa524d91876edcb278fd9fb62732"
+    },
+    {
+      "path": "implementation-regressions-red-v1/5f5828a64d89408db5558600658b1582-receipt.json",
+      "bytes": 15808,
+      "sha256": "554b46544a5b1ca0ac9112acc1be0c5ba0ef9a5f7014dff9fd36f877a22521e1"
+    },
+    {
+      "path": "implementation-source-red-v2/28fcd81a73894a0682153cbe99e714db-budget.bin",
+      "bytes": 49,
+      "sha256": "787699882c1cfd5026b73db2c6b528f86f90ad61f122ad6624d3a4640899ae7a"
+    },
+    {
+      "path": "implementation-source-red-v2/28fcd81a73894a0682153cbe99e714db-receipt.json",
+      "bytes": 4199,
+      "sha256": "3e36a3d7d893f0d669885911282b85031f05cfa5f4417bca07b40dc1bed5b42f"
+    },
+    {
+      "path": "implementation-stale-red-v1/a479609f2cb2440584fb8e12740b4ad1-budget.bin",
+      "bytes": 49,
+      "sha256": "3fb6278af831cac13cc567b7726ab73ee2b2681611298e154a8ea07eeec61679"
+    },
+    {
+      "path": "implementation-stale-red-v1/a479609f2cb2440584fb8e12740b4ad1-receipt.json",
+      "bytes": 7033,
+      "sha256": "004d49ced9247ebf8573c61135b92751a182c97e5a8f4f7879e975ae83afae89"
+    },
+    {
+      "path": "native-pinned-codex-mcp-capability-v1/a8c61ce0beff4de48e7cabd9ad39688a-budget.bin",
+      "bytes": 49,
+      "sha256": "098f71fc56a05ff2ce85a4bdbb80be545378e7f2594388f479c5a047328c2a10"
+    },
+    {
+      "path": "native-pinned-codex-mcp-capability-v1/a8c61ce0beff4de48e7cabd9ad39688a-receipt.json",
+      "bytes": 1534,
+      "sha256": "3a782ac07d2bc69db4dd15c26eb4ac5f89d2746031e8e0996970ef790f7e38a8"
+    },
+    {
+      "path": "native-pinned-codex-version-v1/f5edaf0fed82490e9718c0925798b9dc-budget.bin",
+      "bytes": 49,
+      "sha256": "af19c25d6d6e350f80f360eabec81d5135ff57e4eb9b0762a27bbef77181d6ea"
+    },
+    {
+      "path": "native-pinned-codex-version-v1/f5edaf0fed82490e9718c0925798b9dc-receipt.json",
+      "bytes": 1351,
+      "sha256": "5e7a0be574434551e97001b41be3e96ea43bea38a8b969ed532d7b928b5f175f"
+    },
+    {
+      "path": "prehardening-d06c1df/conformance.md",
+      "bytes": 12897,
+      "sha256": "878ccfb4fe10ddcd7e77198c155c3de965b48f1f89ab7f57a428869b4d50933d"
+    },
+    {
+      "path": "prehardening-d06c1df/errors.md",
+      "bytes": 5359,
+      "sha256": "cee18a3064b41b24cabdcda088f14a3c83a1c9ddde78253d1bd761df4e010cc7"
+    },
+    {
+      "path": "prehardening-d06c1df/failclosed.md",
+      "bytes": 4500,
+      "sha256": "7b169405c6bf615aff9f952ab07b817db133937b3ce3fc6eae8cfd4b97805e8a"
+    },
+    {
+      "path": "prehardening-d06c1df/filesystem.md",
+      "bytes": 6333,
+      "sha256": "2c7c1627505492ea9cb1ea557bb6cdb5d1f6cb39349ce45952ffad94ed6664d3"
+    },
+    {
+      "path": "prehardening-d06c1df/parity.md",
+      "bytes": 9936,
+      "sha256": "6ab106f4162b9a3b4385db3149fde48b2a767bea48bd4c0314c0480b972a1527"
+    },
+    {
+      "path": "prehardening-d06c1df/resources.md",
+      "bytes": 7462,
+      "sha256": "b4802d4c6fd3344a1cd6331c0c688b82c880d3654a02992e43874438ea692c03"
+    },
+    {
+      "path": "task7-task-done-v1.log",
+      "bytes": 312,
+      "sha256": "04a8a1d62c3bc8686c4698d6eeb35000cc9a18578d85de1e5ce7d0a81f829ba9"
+    },
+    {
+      "path": "task7-task-done-v1/499ca898d56a4948b03e3bc0ea253c1a-receipt.json",
+      "bytes": 1914,
+      "sha256": "36cead6b8f569017a148d42d7a57f3d7b8a34b7f42af968c1910fbe273ac3232"
+    },
+    {
+      "path": "task7-task-done-v1/7e2396dfd066400ba3fc19df04d23469-receipt.json",
+      "bytes": 1834,
+      "sha256": "7601211de75046a7003c41ec6d3fa201bb7d5447707f8840021b11df2b141310"
+    },
+    {
+      "path": "task7-task-done-v1/8e98d54755014ab4896124f5772aad4f-receipt.json",
+      "bytes": 1896,
+      "sha256": "db0514f5fbbda64ddd33825e49135d563a855ee44e8a830788c0b271921539f2"
+    },
+    {
+      "path": "task7-task-done-v1/ae4a7fddd9ee477094af4d440ecc065d-receipt.json",
+      "bytes": 11976,
+      "sha256": "572a2d968088dad6ae293d3b7aea487037172705c3d4b59a9dde17f3e7d0da17"
+    },
+    {
+      "path": "task7-task-done-v1/aeb533d1a11649ac80931cd7586fe6ff-receipt.json",
+      "bytes": 97194,
+      "sha256": "30566d61672d6c4e098d353f437b90f596edabee36693f3d354d3d4a6aeb273b"
+    },
+    {
+      "path": "task7-task-done-v1/bc298167d3f54ecfbde3841fe6a0c208-receipt.json",
+      "bytes": 1834,
+      "sha256": "46c6cdf5fdcccb4a884ede33f9fa85924e764bbd448a23b14b84e73b69ab464f"
+    },
+    {
+      "path": "task7-task-done-v1/bc57a318fcfc42d98a7d2ba2c6a9e119-receipt.json",
+      "bytes": 1785,
+      "sha256": "b4f6c5936886492ab2a15744e1d556cb3e262e517d9e3982ce45b2fc229e580b"
+    },
+    {
+      "path": "task7-task-done-v1/bcae120419a34297968731ae12720492-receipt.json",
+      "bytes": 1918,
+      "sha256": "ce7a4f5f043d45d3d9ab448ebbaeebc07378b9cf96a4cce6422dd73e9922d5f7"
+    },
+    {
+      "path": "task7-task-done-v1/c978bbd89fa84edd9f8ddfff6c386442-receipt.json",
+      "bytes": 1786,
+      "sha256": "71492181cbde05d28df1675a9b5189d26e6cc1a8704f05a4d6d39fc97627884a"
+    },
+    {
+      "path": "task7-task-done-v1/f891c9dae151401f902ead75dda2fd0d-budget.bin",
+      "bytes": 49,
+      "sha256": "2dc8344c7c804f4a524925e4c729187d679eb62e39dbb14a9a9960fa6a458129"
+    },
+    {
+      "path": "task7-task-done-v1/f891c9dae151401f902ead75dda2fd0d-receipt.json",
+      "bytes": 1715,
+      "sha256": "13542055f6e849469e6c09e172d6237c8d82c702c7a0bf982e3b1813be471d62"
+    },
+    {
+      "path": "task7-task-done-v1/fb9d2a8340e74e1babe1381ec3708099-receipt.json",
+      "bytes": 18114,
+      "sha256": "1bc3a99fd782273e1cd12ea66af3358db97a2b218673abf341b173262a6773ab"
+    },
+    {
+      "path": "task7-task-done-v1/fe0a0ac9e6e7433c9e397bf7464bdc65-receipt.json",
+      "bytes": 76969,
+      "sha256": "c6818cca9c2bbc5576f1b5c9978164aa62ee32c157c7006849fde1b0480740ce"
+    },
+    {
+      "path": "task8-functional-source-v1.json",
+      "bytes": 29922,
+      "sha256": "ea19f759a5de5bb45b03ecb12eda9ff24d7fa133055d2fb2d34f8c65db76f8a4"
+    },
+    {
+      "path": "task8-powershell-v1/6231a56093594c3bb5a362cefa38b1f6-budget.bin",
+      "bytes": 49,
+      "sha256": "0ec71dd7ea71f4da61d7bd1c5079beda172eb0cedcd1934130fbf5322e2f8300"
+    },
+    {
+      "path": "task8-powershell-v1/6231a56093594c3bb5a362cefa38b1f6-receipt.json",
+      "bytes": 444988,
+      "sha256": "0005f40e9fb6dae7360fa9c9b6e16acb983d3ccacda03ca19df4b11a1584206d"
+    }
+  ]
+}

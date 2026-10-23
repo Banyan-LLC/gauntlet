@@ -1,0 +1,1122 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-10-22T13:10:06.8743039Z",
+  "archive_root": "C:/Users/geoff/Documents/Projects/Banyan/gauntlet/.git/info/reduced-mcp-core/20261021-execution",
+  "prior_manifests": [
+    "execution-evidence-migration-plan.json",
+    "execution-evidence-task0.json",
+    "execution-evidence-task1.json",
+    "execution-evidence-task10.json",
+    "execution-evidence-task11-live1-fix.json",
+    "execution-evidence-task11-prelive.json",
+    "execution-evidence-task11-success.json",
+    "execution-evidence-task12-gate-hold.json",
+    "execution-evidence-task12-review-fixes.json",
+    "execution-evidence-task2.json",
+    "execution-evidence-task3.json",
+    "execution-evidence-task4.json",
+    "execution-evidence-task5.json",
+    "execution-evidence-task6.json",
+    "execution-evidence-task7.json",
+    "execution-evidence-task8-finalfix.json",
+    "execution-evidence-task8.json",
+    "execution-evidence-task9.json"
+  ],
+  "files": [
+    {
+      "path": "app-server-migration/collaborative-gate-state-pre-local04/collaborative-v1.sqlite3",
+      "bytes": 356352,
+      "sha256": "1befc9ca530eb314026f2397bf9403dc1e737d996cff13cbbcc0b7610ef7c462"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-01-console.log",
+      "bytes": 2108,
+      "sha256": "ed355c27945595b9df1c03e4d8c48ff40444cf7735166e9e9445612cdd18ea91"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-01/closure.json",
+      "bytes": 4806,
+      "sha256": "a5fad606a8b7e8b21ba4f4df71818b3333ec4cb6ee9fa1156d97f846dd9e96e2"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-01/input.json",
+      "bytes": 431,
+      "sha256": "4faa5c03a1e945eafb9212f2ebe80b4a4e3d53920421b6b734df872461512518"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-01/native/9a8d0687711a4d4392e3d2569b7040a0-budget.bin",
+      "bytes": 49,
+      "sha256": "47962a3fad696653960e573982381c5837bf8f41be9057f7c4c24479b951280d"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-01/native/9a8d0687711a4d4392e3d2569b7040a0-receipt.json",
+      "bytes": 4512,
+      "sha256": "6f4a27922bbd55711da7d74a05469e410c8d88fde1f9b9f5261cd0f21bd87642"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-02-console.log",
+      "bytes": 1747,
+      "sha256": "9e7953d5b409b1c659ed0e66a050ec69e5dc8aca8c70835b83f7b0361a37efb5"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-02/bridge-close.json",
+      "bytes": 49,
+      "sha256": "d8e3e3ae1ea8551c84e0e44e7f10d7dbd52e9468b5e834668dda4de2e84e93c6"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-02/closure.json",
+      "bytes": 4339,
+      "sha256": "e12a6ee56d4229c15881d0edaa02d4291ead3008a384d8dfc04bb157b1ae63c5"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-02/input.json",
+      "bytes": 353,
+      "sha256": "e74ce27c72d19f6b9075987bb80f262d4f9de4915b16e6b9e520811b86248068"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-02/native-codex-transcript.jsonl",
+      "bytes": 6347393,
+      "sha256": "c4192e1153eef4897294718d6cc6fcdb4f5218bd1c304a70d9f86d362014ded8"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-02/native/eac0848b68384b9fb5dc67be18ea1da6-budget.bin",
+      "bytes": 49,
+      "sha256": "62ea63caf1a6b834b759bf1711086122817c9d4a7347ca77f1caa311b620461b"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-02/native/eac0848b68384b9fb5dc67be18ea1da6-receipt.json",
+      "bytes": 4045,
+      "sha256": "76d2ccd68444babba097179753212898b8b9b7d392129cd3f296a83128ec8a71"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-02/opened.json",
+      "bytes": 933,
+      "sha256": "e37078991e19acd3758d8e5546d7f23726ee5191ab9da03886925c5f7afe1fb8"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-02/peer-history.json",
+      "bytes": 6250417,
+      "sha256": "38e1797d7104f92c03bdee4145cd6de8b527a45046b75883c85ec3191b7e9aa6"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-02/pre-review-state.json",
+      "bytes": 145186,
+      "sha256": "fcd3f3a3ae69886945de9bae07424561ae9b776d477c9a04c3724b0377f33359"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-02/prompt-00.json",
+      "bytes": 32074,
+      "sha256": "b032e800b19e856622fcde6b95f1fe649044c308e7d349d1aadde5e5f569c54b"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-02/read-plan.json",
+      "bytes": 149964,
+      "sha256": "2752518e3dd11555c37e4fba11eb5bed828533cc6d715e73296211cad7c62ce3"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-02/recorded-evidence.json",
+      "bytes": 1146,
+      "sha256": "27651fdb19bd9534aaab3f1627cba178b2d65abd960b35ec6be20b91e6022b0a"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-02/reply-00.json",
+      "bytes": 467,
+      "sha256": "b09649cd2eddd9eebda512383c8dd8f44063cd17e75db2fb3deae1bdb500ca49"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-02/runtime.json",
+      "bytes": 262,
+      "sha256": "495f223603643f69e9e75d59b7e96dfb809e81b3ea125e6348fc94b71b0179d3"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03-console.log",
+      "bytes": 878,
+      "sha256": "2f1b620387bc19ae2b1189aa62c11f453b968fce69e94c27189a4f7fa9194c15"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/closure.json",
+      "bytes": 3190,
+      "sha256": "34b109edf63be8090e09d32db177a3dc85a20a948c0fb672beb5c2fc2120b1e7"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/input.json",
+      "bytes": 353,
+      "sha256": "1d2eae2e74673396d860aba1bc0f5f48df03cccc59a57974115da7e9f45a8fa4"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/native-codex-transcript.jsonl",
+      "bytes": 17225418,
+      "sha256": "17ca4e6876c6063a13debb317c9b93520f6afc558cec36d632f4d130a2352c4d"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/native/70d0bd91277d47efb8cec1daa78d261f-budget.bin",
+      "bytes": 49,
+      "sha256": "5990c68bbe29d00bf1a1c0554203ece024c44cdf7345d463d4552db5303a1df9"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/native/70d0bd91277d47efb8cec1daa78d261f-receipt.json",
+      "bytes": 2896,
+      "sha256": "4952877f8bc6968cd7b9d1e0e4669351c768b2f59cfb393542524c85ae33908c"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/opened.json",
+      "bytes": 933,
+      "sha256": "f0990592fe879b99998894d5fe3f74839951f91ab3dcc145d4339d54ab27ee1b"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/peer-history.json",
+      "bytes": 13243892,
+      "sha256": "b251d4207396312029ca7f656fc64c1d7de6aa2414d60e5dc1b5fda0675dd2c6"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/pre-review-state.json",
+      "bytes": 289611,
+      "sha256": "1636771848da00a1f7bb9510c5ecfdffb8e186af244bdf6051819e46e6c925a7"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/prompt-00.json",
+      "bytes": 32767,
+      "sha256": "f861653bd91b115e58abd5f70e022d8c609a972f07093e31b26a71da6cc4822b"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/prompt-01.json",
+      "bytes": 11255,
+      "sha256": "89c2ff42736414ec9c0a27a6059d538b7a0608587157a6e65bd21c65480b88e0"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/prompt-02.json",
+      "bytes": 8032,
+      "sha256": "3dca7eb9717b091fbb39194f6bbc3c45e415b7cbf97b6804c7214e1198346eb0"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/prompt-03.json",
+      "bytes": 47515,
+      "sha256": "10dc6b1e736a7ef4fc5fbf6eeeda4e4cee346e7a3ecb0a3288ac48f69313db37"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/prompt-04.json",
+      "bytes": 26107,
+      "sha256": "935339c7006d2b7ef8ece626bafa5d95b7f67f3873ccca6fb99ef6733db892dc"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/prompt-05.json",
+      "bytes": 7371,
+      "sha256": "27d493de1105511b8d2a8aa4ccf345e520772b9934d558bc3b071e0cef10df60"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/prompt-06.json",
+      "bytes": 15100,
+      "sha256": "71e287daa34596ca3e22f8ef0876254306097fa8f80cc646fb60c5650278efd7"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/prompt-07.json",
+      "bytes": 7848,
+      "sha256": "7e723d066db6abb3d5f0dc38e42468707351a36e9c2f5f261b4cf97b26113f11"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/prompt-08.json",
+      "bytes": 19082,
+      "sha256": "7c72b0e8a2d4ee30a503eac60ca3868614601c0c75a4381d10c99b379cd2a9ee"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/prompt-09.json",
+      "bytes": 12529,
+      "sha256": "b4c49075c22fcdcaad71a4a4b0bf2fe680df48d4f10146143afec761ce04b659"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/prompt-10.json",
+      "bytes": 7682,
+      "sha256": "3fecee8389ae2fb1a9251d0c41c242e40ca07e63883edc6bbd2fc2ebff6b753a"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/prompt-11.json",
+      "bytes": 12100,
+      "sha256": "32d895669ed0f129c41ddb933970a602b31b8a29ca927609dc19eeab52946e37"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/read-plan.json",
+      "bytes": 149964,
+      "sha256": "a55b2a9018e5573adc17d339f9c2af5f72be198c7484c3e4e322812da9618ac9"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/recorded-evidence.json",
+      "bytes": 1146,
+      "sha256": "c5b55d1a921a9d14012e4db78a65edc56284f466838af1abf27bf4021560333b"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/reply-00.json",
+      "bytes": 651,
+      "sha256": "56e530fcc7d80ed4ab6025b54cae8561ad8ac61e0c2a6e62d3dbfab3f69ac248"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/reply-01.json",
+      "bytes": 742,
+      "sha256": "b23a7156f67d6801610924ce9149daffc353d53b1d022a2ec7e8b2fd7b13e4d8"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/reply-02.json",
+      "bytes": 681,
+      "sha256": "baceb76d8aa364d0bff1ca70702d0b70d602224c7a475396378bb838f586947c"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/reply-03.json",
+      "bytes": 688,
+      "sha256": "eb8730a1c73dc03bac297c6c306b0716852b3228775aecb71966428777923952"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/reply-04.json",
+      "bytes": 1662,
+      "sha256": "2d011798b0ec3de577070110111c70bf0c7d13ae123a281965e281168ee89712"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/reply-05.json",
+      "bytes": 1166,
+      "sha256": "116ad883657ab5f6861273f146a1ef3b95434eaca8f43b7895dd20a1e585d9be"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/reply-06.json",
+      "bytes": 1141,
+      "sha256": "1db4de039527d753d2a9d978b1def310916b042daf518a50c1f8ef4b712001e7"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/reply-07.json",
+      "bytes": 1139,
+      "sha256": "9d5b325c1f7738686f53dfb0f7cc5d0d3c667e0ca88811ebbf3e299490d6d147"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/reply-08.json",
+      "bytes": 1254,
+      "sha256": "af6a7d9994b1f6c7d91454442572595069ae6dfd7e2ee6cc29c8d05167cd625b"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/reply-09.json",
+      "bytes": 1053,
+      "sha256": "d6a9bd677d04800d5dd51bfb5791e366fa0f331f2078c52dfc74f2f5750eeb9c"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/reply-10.json",
+      "bytes": 1072,
+      "sha256": "95c20e71dafcd979158a54b63c96c5fef8a85a06f9709efc37468e86a9306ab2"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-03/runtime.json",
+      "bytes": 262,
+      "sha256": "495f223603643f69e9e75d59b7e96dfb809e81b3ea125e6348fc94b71b0179d3"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-evidence-v1.json",
+      "bytes": 48795,
+      "sha256": "3c6545c8c69f5ef97df2f92a6d94c4cbf0b6c31800d202a51275ad9878fa48fd"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-evidence-v2.json",
+      "bytes": 54319,
+      "sha256": "193a692d304b8a696cc9c393e239dbd4baa0637765b2499ddef8585a413fb55a"
+    },
+    {
+      "path": "app-server-migration/collaborative-local-evidence-v3.json",
+      "bytes": 58034,
+      "sha256": "1191467aa16ea43ed50b4626ea977695e63a123fda0a19dc692e526066824d42"
+    },
+    {
+      "path": "app-server-migration/local-review-findings-green-native-v1/a1388462a9984e248be8186a9d7802f1-budget.bin",
+      "bytes": 49,
+      "sha256": "158d9cc2b6a11f206fef5bf5adc9c36bfe1450466d6861f6aa3be6ba95247121"
+    },
+    {
+      "path": "app-server-migration/local-review-findings-green-native-v1/a1388462a9984e248be8186a9d7802f1-receipt.json",
+      "bytes": 2188,
+      "sha256": "e1fd25bb93df1fd634dcce87287ee812b3dffc1a845f7f4e3be018db52c38629"
+    },
+    {
+      "path": "app-server-migration/local-review-findings-green-v1.log",
+      "bytes": 351,
+      "sha256": "2008ffa7e239b08fff0c1e1ca90e9d5d9e2be57b34fbc841fcb2321ad2c339df"
+    },
+    {
+      "path": "app-server-migration/local-review-findings-red-native-v1/c19d5193ae2d4496acc1ef45a0ded2f5-budget.bin",
+      "bytes": 49,
+      "sha256": "4352eecc737bb0f1940a88f51ebc57c72ecbee2867b966cda5be04b16334ec66"
+    },
+    {
+      "path": "app-server-migration/local-review-findings-red-native-v1/c19d5193ae2d4496acc1ef45a0ded2f5-receipt.json",
+      "bytes": 9823,
+      "sha256": "9ec486e182be127bf7dbb15910cd0a9a8bb7dba902e54e2aed7364f3a9ca8cd7"
+    },
+    {
+      "path": "app-server-migration/local-review-findings-red-v1.log",
+      "bytes": 6077,
+      "sha256": "a0587cade81ff0f722dc828171e140f0220577059f234a859361ce3e8cca34c9"
+    },
+    {
+      "path": "app-server-migration/local-review-focused-native-v1/0b237faebce54e87a7548898c52f477b-receipt.json",
+      "bytes": 1934,
+      "sha256": "6743cfabb885905970fb3acd236264589910674fad41e6315952bb2888c03f97"
+    },
+    {
+      "path": "app-server-migration/local-review-focused-native-v1/272f54b994774a1d822b6b5b270a95a6-receipt.json",
+      "bytes": 6181,
+      "sha256": "08a39a6c30283b2724e1895061e08ae2268b1429f21cd55f146bce5378434628"
+    },
+    {
+      "path": "app-server-migration/local-review-focused-native-v1/2744d73c0db94baab776cc2423273572-budget.bin",
+      "bytes": 49,
+      "sha256": "57939eac10c5791474ceea7407f4274eabc3a5b8cc38e9caf6384a2325978086"
+    },
+    {
+      "path": "app-server-migration/local-review-focused-native-v1/2744d73c0db94baab776cc2423273572-receipt.json",
+      "bytes": 2751,
+      "sha256": "471124ccd26ec6a7b6a3bdf900cd91da516bb46b9335a5ddf1d9c830fda70cf5"
+    },
+    {
+      "path": "app-server-migration/local-review-focused-native-v1/3b8a8c6469074d55bfbb3e60aeaa42a4-receipt.json",
+      "bytes": 4183,
+      "sha256": "ab9437c95f379cae8de061e3c7829decb0ca273a10b770cdd2e4da00b5ffa77d"
+    },
+    {
+      "path": "app-server-migration/local-review-focused-native-v1/5121e0188d23474babc77d9bc01d99df-receipt.json",
+      "bytes": 3113,
+      "sha256": "5e1312b19ad6bd4e5f8ac7ee8dc150ce51c924bc0026b08e62f81ceaee73e8e4"
+    },
+    {
+      "path": "app-server-migration/local-review-focused-native-v1/9dc8189585b4472a8aa2637b4e358dac-receipt.json",
+      "bytes": 2316,
+      "sha256": "25dc9953bb9b30688a09f200ed4ee8a8e59e3173844e32d836e9db33e9636a69"
+    },
+    {
+      "path": "app-server-migration/local-review-focused-native-v1/ea0ceb3250364d49adcb28a4f8bd1a77-receipt.json",
+      "bytes": 2351,
+      "sha256": "081e56a2153f37b144f87c9ef128044c8104a127747c62152ef39f2640d7c40c"
+    },
+    {
+      "path": "app-server-migration/local-review-focused-v1.log",
+      "bytes": 1090,
+      "sha256": "48d6c67cc9fb6e8b2965bd8a0368fa6cf2c2898f9e98aa392cf59323cf60ba48"
+    },
+    {
+      "path": "app-server-migration/local03-receipt-inspection-v1.json",
+      "bytes": 5340,
+      "sha256": "af842fd5a4e3107a3b6c9c968f2472e54728135a15d131efdf5ae078d0a81382"
+    },
+    {
+      "path": "app-server-migration/local03-receipt-trace-v1.json",
+      "bytes": 2323,
+      "sha256": "463cd032a931db7c567b0d07e1b1906ad5da9fbb7b987edfe470453cf80eec2b"
+    },
+    {
+      "path": "app-server-migration/local03-recovery-native-v1/c84cc28417e64b79bb3eda377a431549-budget.bin",
+      "bytes": 49,
+      "sha256": "8b10759673e17e16f700afc7bdb345fe6f575073be180c74652bc705cccb71d6"
+    },
+    {
+      "path": "app-server-migration/local03-recovery-native-v1/c84cc28417e64b79bb3eda377a431549-receipt.json",
+      "bytes": 4592,
+      "sha256": "94ae675d019704d76a439c0d7949996c71f52ddafc8ffaf441bf3debf3d67a9f"
+    },
+    {
+      "path": "app-server-migration/local03-recovery-v1.log",
+      "bytes": 2408,
+      "sha256": "148a37597f23ccb6859904ab8959c0815ac2cfcef8862e40bebf831e84424781"
+    },
+    {
+      "path": "app-server-migration/local04-six-lens-hardening.json",
+      "bytes": 3057,
+      "sha256": "2b08c576dde1f1a11e3dc7832ebde71249bd904dfb0aac80804c7c53b50eb8e5"
+    },
+    {
+      "path": "app-server-migration/native-direct-pages-probe-owner-v1/e6fca56b6fd442368024db5f70dcecc1-budget.bin",
+      "bytes": 49,
+      "sha256": "33db15501b4790f80afcaa3703b75ebbf89a3079f8197acaf9bd48bba982a070"
+    },
+    {
+      "path": "app-server-migration/native-direct-pages-probe-owner-v1/e6fca56b6fd442368024db5f70dcecc1-receipt.json",
+      "bytes": 5544,
+      "sha256": "ebfb7100ed0d437536ca1808b6d4ad2b9df855d076388356057b66b9cd489b22"
+    },
+    {
+      "path": "app-server-migration/native-direct-pages-probe-v1.log",
+      "bytes": 3030,
+      "sha256": "d2e0f09a27e087873f583ded7de399b499a30b811e55c6441d89a35436653b4c"
+    },
+    {
+      "path": "app-server-migration/native-direct-pages-probe-v1/close.json",
+      "bytes": 45,
+      "sha256": "407ba61fd8201295964b656b77b9d82e75b2b60b9e58ec67bde82410c3006236"
+    },
+    {
+      "path": "app-server-migration/native-direct-pages-probe-v1/peer-history.json",
+      "bytes": 205405,
+      "sha256": "0e1fddd8d8e123bb216605ff1e22ce62ef283f3b1cb3859b8a9dfd55ee1c1d2c"
+    },
+    {
+      "path": "app-server-migration/native-direct-pages-probe-v1/reply.json",
+      "bytes": 195,
+      "sha256": "455bdd81ac57f4206247a88d011328ca8c989056a8af119371e602399e7fcf1e"
+    },
+    {
+      "path": "app-server-migration/native-direct-pages-probe-v1/requests.json",
+      "bytes": 868,
+      "sha256": "6bf648612162e402e60f9455b1fef41e573c515c41202d36ae983cfd579e8b19"
+    },
+    {
+      "path": "app-server-migration/native-direct-pages-probe-v1/runtime.json",
+      "bytes": 262,
+      "sha256": "495f223603643f69e9e75d59b7e96dfb809e81b3ea125e6348fc94b71b0179d3"
+    },
+    {
+      "path": "app-server-migration/native-gate-operator-v1.py",
+      "bytes": 15373,
+      "sha256": "8bd63d7a38f394706bb16eb007d708b54dec94ca2f242ff389647206436b65ab"
+    },
+    {
+      "path": "app-server-migration/native-gate-operator-v2.py",
+      "bytes": 16364,
+      "sha256": "1c83c422e9601c500291ea7aef4e4e396ce3951c31416d0d55ffabba5381016e"
+    },
+    {
+      "path": "app-server-migration/native-gate-operator-v3.py",
+      "bytes": 18849,
+      "sha256": "7fa88d7f88305a93c63cdd2d4acc1d750239d60f374e785379621b57efaff813"
+    },
+    {
+      "path": "app-server-migration/native-small-pages-probe-owner-v1/810af8a549f34e40bb8425aef441b07a-budget.bin",
+      "bytes": 49,
+      "sha256": "bf3f29c30798d96133047a45f35f14bd4b5c6c7b9f2b9441080961c1e002d100"
+    },
+    {
+      "path": "app-server-migration/native-small-pages-probe-owner-v1/810af8a549f34e40bb8425aef441b07a-receipt.json",
+      "bytes": 2093,
+      "sha256": "4767b7ea9631fcf5894f2e90a022fff58c47109793b9a651f132c29e02be1b45"
+    },
+    {
+      "path": "app-server-migration/native-small-pages-probe-v1.log",
+      "bytes": 450,
+      "sha256": "8fa1181842312c093319bedd2b0af98e3034f243d74237360b401b3540e87168"
+    },
+    {
+      "path": "app-server-migration/native-small-pages-probe-v1/acceptance.json",
+      "bytes": 219,
+      "sha256": "9bb44c81d85e982dc091c6bc11441ee77e5ba1975751ed0d2f8a5887aac84263"
+    },
+    {
+      "path": "app-server-migration/native-small-pages-probe-v1/close.json",
+      "bytes": 45,
+      "sha256": "407ba61fd8201295964b656b77b9d82e75b2b60b9e58ec67bde82410c3006236"
+    },
+    {
+      "path": "app-server-migration/native-small-pages-probe-v1/peer-history.json",
+      "bytes": 39817,
+      "sha256": "172b0ee6610036e1b6d5717dcc0ea4b87d56055e02e05bf1bb15044936cf5a11"
+    },
+    {
+      "path": "app-server-migration/native-small-pages-probe-v1/reply.json",
+      "bytes": 331,
+      "sha256": "329c7d500b3d88e42ce8cd096bfaecf95cdbe8c8d50947fbbd227eeeea41372d"
+    },
+    {
+      "path": "app-server-migration/native-small-pages-probe-v1/requests.json",
+      "bytes": 863,
+      "sha256": "9fca7e11c84c718f982260d283f151233b1e805d1e7ff95e665f2e017d8d33a7"
+    },
+    {
+      "path": "app-server-migration/native-small-pages-probe-v1/runtime.json",
+      "bytes": 262,
+      "sha256": "495f223603643f69e9e75d59b7e96dfb809e81b3ea125e6348fc94b71b0179d3"
+    },
+    {
+      "path": "app-server-migration/probe-native-pages-operator-v2.py",
+      "bytes": 3257,
+      "sha256": "325a9637bd10b173a228b5c08377593fe3f1eef0950ee4fd516f190c82cb7763"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-focused313-native-v1/06595d8d04514c989e21ffb29e62cd02-budget.bin",
+      "bytes": 49,
+      "sha256": "ba03390168f38e5946673bb2c1d4c3173dacf987e1be2072f6bfd2e8fa74ee4a"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-focused313-native-v1/06595d8d04514c989e21ffb29e62cd02-receipt.json",
+      "bytes": 1974,
+      "sha256": "d37f9978e536e33bc41415b2e2d6fcebde1609a33f878d5992423bb0e558c4dd"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-focused313-v1.log",
+      "bytes": 367,
+      "sha256": "1bf04068f7b5130a3660a9cfd21e22262d559c7796cd0aaca09fb1f8564a385e"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1.log",
+      "bytes": 971,
+      "sha256": "86d94a343b3be94670c2b021c1ed0ee168825c7a81d2b40909a9a886bce33d5b"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/05dab8bcbd06445690ae09822dc7d008-receipt.json",
+      "bytes": 1896,
+      "sha256": "2cb34c7ff908b8522afac6fba4b5ba811a2166ffa95dbdfce6b22d6b1e542638"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/380a305fa08d43f49cf7047b578ec524-budget.bin",
+      "bytes": 49,
+      "sha256": "5871eaf29a41bfd681aa8b424144fd250af2ec4ddc58832e0d20d865618475c8"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/380a305fa08d43f49cf7047b578ec524-receipt.json",
+      "bytes": 1993,
+      "sha256": "a0a0e8c063fed3246ca3d5c342fdd861bb46014d15aee0b4abc43307bf5ba9a4"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/43cdbf41f85f48ed978d586a768e6037-receipt.json",
+      "bytes": 4182,
+      "sha256": "645945dcbc7b7bf35096b702353ee2574010e8694605653fbb0119f27598b85f"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/4d4f77bd20184b04b2f7d460fd7797ec-receipt.json",
+      "bytes": 12085,
+      "sha256": "170c5b2833a263ccd8f33ce31a321853cf2709207c478a0050120ca74509b9ee"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/6f563a4081a340d49a8e880249eb28a3-receipt.json",
+      "bytes": 1947,
+      "sha256": "3374ec2d2f7bfe42614bcf1eb95a5a67378c2343de95473c4fd18996272cd633"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/8aca3d5a68334c07b2b2bbb8e854520a-receipt.json",
+      "bytes": 2349,
+      "sha256": "720af5b0bb3e51ae62f94005f67e83fcc9d55942c93d9e2c6b907e437d4a694c"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/933f9fe70ebf4182bbc8075a1d77895a-receipt.json",
+      "bytes": 3112,
+      "sha256": "df07b8efe3ed589d4eff809ad70f4adadaabc74b28185b03732138058a429357"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/96e377f4f45e43f9bdacdee479646e11-budget.bin",
+      "bytes": 49,
+      "sha256": "8413b721f6a1a660f2079cf6ccf4c9f6295c8bb86a22f81231ccd62abd6b30fe"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/96e377f4f45e43f9bdacdee479646e11-receipt.json",
+      "bytes": 1838,
+      "sha256": "c41a83ea5b4c10d505d37ad82b86f8e433c847656d368ad086f0f1e7630acdb6"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/993d06f7a6c948988299af36163f9dcc-receipt.json",
+      "bytes": 1897,
+      "sha256": "58dec692e18f2ac2541ae77d3c7b8ddf08d480f1c0bc492e0c7539a8c95d0376"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/abcf2b874cae4487b9dad6e993c70708-receipt.json",
+      "bytes": 77081,
+      "sha256": "16a25826849d4781118dfcac11989634c06aecb722d334d2a9aeb2bed19a3bd4"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/ada09e1f831149278c3d50114796d54d-receipt.json",
+      "bytes": 1944,
+      "sha256": "fce3642da6bd1ceddbfa780750e71659ac0433f4414bfc229863b88b131fa791"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/b17bbbaf22cc4d95b7a7b66c0b2e2b4a-receipt.json",
+      "bytes": 6180,
+      "sha256": "f73f48b42e58e0fef9c46700f4e1fc69b18df26dbeae433e037cf22f3c0ff22f"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/bd2667138550445db0a06037bd35d89a-receipt.json",
+      "bytes": 97305,
+      "sha256": "cd35771ebbfe2c453bb1f490cec0f3782af096e9ef97c3099944151864ff5881"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/be693ac8b73b4023bc06951926c8b16b-budget.bin",
+      "bytes": 49,
+      "sha256": "305bee9f636164e733bc00ff0f15b1de3c26ded3db4612cadf7fca6231543f78"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/be693ac8b73b4023bc06951926c8b16b-receipt.json",
+      "bytes": 2056,
+      "sha256": "f2cbed174af48f1461d2be794bc2c3c5cac686f752be1968ed5b05b57b88e32d"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/c02b5490eff241aa8e6cd9d0f009c1da-receipt.json",
+      "bytes": 2028,
+      "sha256": "3232cd0f202e5736cde2fd24b25375981148e7516d54f1d756dc352f960a2f4e"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody-probes.log",
+      "bytes": 5325,
+      "sha256": "460f0e951da1d771e10f0e361cf672e54cef48deb16723704aabf0617578399d"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody-results.json",
+      "bytes": 843,
+      "sha256": "d195cd4a35be340ab99fc9590500a2a98da16075d3e893d13921a6fd95881859"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-_ieeor9s/7a05b014091845bbb3552494ab391d0a-budget.bin",
+      "bytes": 49,
+      "sha256": "09f6696407030cf160bce2c0bf2a4d4e85d5c4f8bec01597162a775d439f6425"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-_ieeor9s/7a05b014091845bbb3552494ab391d0a-receipt.json",
+      "bytes": 11181368,
+      "sha256": "ad0199e1bb3692be96a4f7c3a0386684343c98d91cb6b2bc86fbb1cc078e1183"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-0q90_3j_/55059526f0fa4a04a51ef2c8d7e9953c-budget.bin",
+      "bytes": 49,
+      "sha256": "b8de2433247b01cd2cdf8b543111f1d77e26065897bd4ca4de4b9b38aa20c0d5"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-0q90_3j_/55059526f0fa4a04a51ef2c8d7e9953c-receipt.json",
+      "bytes": 1836,
+      "sha256": "6407810478002d5bea3252dede3afd09d70f74c5ddde51087690b15d829c69bf"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-0q90_3j_/5c4bb6f5dda045abbc2cf5cd354c8204-budget.bin",
+      "bytes": 49,
+      "sha256": "7b2f0a02a67d2f110b57cb52dc7f619e80eaae90556f3007ba887873709d3381"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-0q90_3j_/5c4bb6f5dda045abbc2cf5cd354c8204-receipt.json",
+      "bytes": 1838,
+      "sha256": "9b4850a3e36a5f083742b4f360e98d321c82d861a354dc0c631cd20f79597a1d"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-0q90_3j_/b2e8da617dd24dc6bcc94f74f3460dd6-budget.bin",
+      "bytes": 49,
+      "sha256": "b8dc9302bd9689ffc267d7705169a56d8bf224d16791bd8acba16cbedd1b672c"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-0q90_3j_/b2e8da617dd24dc6bcc94f74f3460dd6-receipt.json",
+      "bytes": 1838,
+      "sha256": "6c96d3b9d6ae71c1289631093b3552ca6d9aa1376b8a9fae834bae6a01c1acca"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-0zwzc191/a413044331144b359426fa5862a8a088-budget.bin",
+      "bytes": 49,
+      "sha256": "fc9e473b27dff2de0178b3922b6e15fe4c9e69ac92678b75a809e9babbe113de"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-0zwzc191/a413044331144b359426fa5862a8a088-receipt.json",
+      "bytes": 5594285,
+      "sha256": "80df01011c94bb51a209b54fc1209b6e55461724ed30849cf7ec53f137841aee"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-106dca2d/8f75d1d7263f48e09837210683f29fc6-budget.bin",
+      "bytes": 49,
+      "sha256": "9608bb0e5fe7111607f9e44ba3c296518029b1d44c181c56747ca0059bf4fbe0"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-106dca2d/8f75d1d7263f48e09837210683f29fc6-receipt.json",
+      "bytes": 89125,
+      "sha256": "98c7ae01d25bae60cf3518557ec265c9464ce983c96266f7e37db31d47999c52"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-1gjvj36n/d73377e095424a3193245e5dab83a0c8-budget.bin",
+      "bytes": 49,
+      "sha256": "3be1b566df63cbcc5d799a4765248b89ff679c64b88e0503ff00a7881d844460"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-1gjvj36n/d73377e095424a3193245e5dab83a0c8-receipt.json",
+      "bytes": 1646,
+      "sha256": "44bd4add974e639d7c7f0aa85f88f628840c102a757202e564aa9930caff4b55"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-2pcyrtdc/d270fdc3c78c4ed6a43d3d3e0dcc2853-budget.bin",
+      "bytes": 49,
+      "sha256": "a5186e31f67b30aabf6c9368322d4720147238ba761906e18b9ec5c1b801c301"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-2pcyrtdc/d270fdc3c78c4ed6a43d3d3e0dcc2853-receipt.json",
+      "bytes": 1899,
+      "sha256": "7b0798a210aabb9b832ea920565d72360a99f4f9b040aaa061d6adcd5a0a6131"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-2pcyrtdc/f66b8303521a408fbcb7542f296dcb18-receipt.json",
+      "bytes": 2497,
+      "sha256": "94e6be605907969012410790541305caa2b6b15876f4aacab02063da883bf28f"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-3gyurahh/45be82d3624647aab2ebce6f8682d4e8-budget.bin",
+      "bytes": 49,
+      "sha256": "a68ceda2eb8616b895bcad182c0fb58d2edb73234368a0ea35aadbb9f82f8be3"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-3gyurahh/45be82d3624647aab2ebce6f8682d4e8-receipt.json",
+      "bytes": 2123,
+      "sha256": "b9a42bb28139b71652c8ac94dd80ef876b95e12a262dd5084f9933a81ecf97a4"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-3x_upv9c/da14dd62b18a40be844cfe081e9437f5-budget.bin",
+      "bytes": 49,
+      "sha256": "f92ff6dfbd710cb5716d91ae404d2cd77c154c2037155e5623b32b4ad50bcab8"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-3x_upv9c/da14dd62b18a40be844cfe081e9437f5-receipt.json",
+      "bytes": 1943,
+      "sha256": "a8adc3fcd582153c4931ac1c579bdfebe9ce4240aad26503430b66bddd89e093"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-81sqoa51/6c04cab59c544ef8a171c6298b35f2ce-budget.bin",
+      "bytes": 49,
+      "sha256": "5023499ce5dc6c1c70ef03e0d9c165c0ef983b3bc851a78855db948814b504b5"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-81sqoa51/6c04cab59c544ef8a171c6298b35f2ce-receipt.json",
+      "bytes": 1760,
+      "sha256": "8ff8039b6341336408a7aeb03feb2ff2d189f7edfd56c5ffd1405409bbefc7af"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-81sqoa51/8fc0bd1597874b37928d4337b8710890-budget.bin",
+      "bytes": 49,
+      "sha256": "24607423493bcb8a17a105e0f82ecf64d99107dab75d63d02989e3d2dc8a7976"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-81sqoa51/8fc0bd1597874b37928d4337b8710890-receipt.json",
+      "bytes": 1762,
+      "sha256": "26c1f8dd36e901896addf0a256bc992a4fc3be8c60fb9b5219ce7385c4200850"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-81sqoa51/e3da4255838b47bebe0d0f15da0e5c3f-receipt.json",
+      "bytes": 1742,
+      "sha256": "7159a8e0d9696783c091eb1699241663eb1f65faf3a505861d882c03e56f6744"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-81sqoa51/f051f7946db24bd0ab418ff3f38d6f1f-receipt.json",
+      "bytes": 1738,
+      "sha256": "843c46b726679f28a42ddb96d69eeb3efd6f499872c7c367117228bc9bc4b0f0"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-85vqfo3w/not-directory",
+      "bytes": 8,
+      "sha256": "0682c5f2076f099c34cfdd15a9e063849ed437a49677e6fcc5b4198c76575be5"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-8hid5b50/17f7b56bbb8f47b5b58d4ac55fdd0f1a-receipt.json",
+      "bytes": 2333,
+      "sha256": "97ffbe6145bc41f6966e2f154092cebff13f475bb5debcb977b04444296635b9"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-8hid5b50/2c7b61893dc24a01b48459811f9ac404-budget.bin",
+      "bytes": 49,
+      "sha256": "73f3231fe0c690f9ee518ac35cf48d0896177cb379709479722cb1b851c2362a"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-8hid5b50/2c7b61893dc24a01b48459811f9ac404-receipt.json",
+      "bytes": 1685,
+      "sha256": "1bf97fabb2587b6728117f4078143a8046d0d38328e4460441e66205a6983f0b"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-8hid5b50/eb2a75f5c6f34fe5aa86ad263709e444-receipt.json",
+      "bytes": 2665,
+      "sha256": "e7e3920671899577f2d14fd0ede6914032d68b5606278d77b643596846995391"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-b1tih2yr/c528763380d8462997b4db6f8cdfef2a-budget.bin",
+      "bytes": 49,
+      "sha256": "8060f4feb75a3f2ac2bd8c511e934d8a48e00b8404762e900580bcb21a13fd8c"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-b1tih2yr/c528763380d8462997b4db6f8cdfef2a-receipt.json",
+      "bytes": 1744,
+      "sha256": "c897f10c6c6768b592cb60f8c66dfbab3f2566c4391fa24abd97a287d3331eb6"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-dgbu5pxm/f288b6388c42495493f868170ead182e-budget.bin",
+      "bytes": 49,
+      "sha256": "579087543d4b25bca7a7aaec823d1b5f0f61b62489199ea3869dcfa2775cf43a"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-dgbu5pxm/f288b6388c42495493f868170ead182e-receipt.json",
+      "bytes": 1690,
+      "sha256": "4e00b1107a2a9675a3099f0e2eb1598c9cfeb9ee72a4bad7ea48a8ba08aab309"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-dgbu5pxm/real-expiry-i07w2m2o/state/collaborative-v1.sqlite3",
+      "bytes": 53248,
+      "sha256": "bf21b4d774532f6cd6bfcd788e05fbb217e9272c408254163b8ccade952896ed"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-dyuf3uga/0bfa7e6fd7ff49f79369ee8b84e8ceb7-receipt.json",
+      "bytes": 2541,
+      "sha256": "9b2d55e6b18ed526f28580801c277be2a07926936bdad21908272379a7d53bd3"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-dyuf3uga/1cb6626c29954d7ab4cd7ed9784754f1-budget.bin",
+      "bytes": 49,
+      "sha256": "c8a7e43d6ecbbce7717133a49dda05754143bae298607a4afda5b78213f4adae"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-dyuf3uga/1cb6626c29954d7ab4cd7ed9784754f1-receipt.json",
+      "bytes": 1756,
+      "sha256": "186d8407a136ddf48c0b9e5b9283cd830008b4a6859a635b98c9ac298a0a9378"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-dyuf3uga/1ec9c3a26cb24352ad77684a08999fa1-budget.bin",
+      "bytes": 49,
+      "sha256": "19053a0621fd5efd152ea4834cfc51c3ecc0abcbc6ba6e01fe022721a805af0e"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-dyuf3uga/1ec9c3a26cb24352ad77684a08999fa1-receipt.json",
+      "bytes": 2591,
+      "sha256": "9a3feb5ff5159ac7e4cd0fa85c86b37f53433eb54378a7fa44920c368896e31f"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-dyuf3uga/908e8d69eca3483b8a0ec2bc63cb007e-budget.bin",
+      "bytes": 49,
+      "sha256": "1ee9289301dfe4faa1490469e28bac7f9643e3307866194f2621ce5cd676b09a"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-dyuf3uga/908e8d69eca3483b8a0ec2bc63cb007e-receipt.json",
+      "bytes": 1867,
+      "sha256": "5d4449d45c9dbdc8c54ec4b5c608c8044a510d380abe9950cbe7d8f0f057148b"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-dyuf3uga/bb156de7e1a54e22855a6f890e09280a-receipt.json",
+      "bytes": 3204,
+      "sha256": "ff15a446c3ff7f961ce6ae5010ed9718e29fe88e7cf98421e9d63b619f0b0d04"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-dzjb35ra/3bb9bb0d9a524c6fbe61f7e31dae6b0b-receipt.json",
+      "bytes": 4195889,
+      "sha256": "3df43a0e5c961f939010fb7d7720f1d16b0660222d6e24a9520d505d41358739"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-dzjb35ra/73219e0081d74cdaabe36a948f3f0b2f-budget.bin",
+      "bytes": 49,
+      "sha256": "53e693140e5748287608f80cf8b78db96d89702b5ae44391c1f24e02c8f3177b"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-dzjb35ra/73219e0081d74cdaabe36a948f3f0b2f-receipt.json",
+      "bytes": 1752,
+      "sha256": "c485e1f25ff17bae923e3108ed6aaa369efe0c66db4da96c99140a89a322add3"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-dzjb35ra/a50e7122b15549f5b0a6e011cfeaf20e-receipt.json",
+      "bytes": 2798019,
+      "sha256": "03cdde588bc779ede73bfb5425ad54a8c7be9cda1228f97ab42fbe93bb0eef9d"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-dzjb35ra/b0350e27cce149989ed4a036dd093dee-receipt.json",
+      "bytes": 4195889,
+      "sha256": "f2067be953e5abac86185a8fd2ec98996e428636347b19f97f4f76a567525261"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-f6zyznri/72fa88058cc6427487d7b29f53311df0-receipt.json",
+      "bytes": 1658,
+      "sha256": "cf6bc2417e71b80e10f7581609bec4014d47895d4e2e1d1d0fb78d1e3250e3f4"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-f6zyznri/f39b764c003848668a2d78f1258d06d8-budget.bin",
+      "bytes": 49,
+      "sha256": "5d90343dc2d3d770190b241caf4a3555d00f82bc8d76ce05a8d300fa1fc48fbb"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-f6zyznri/f39b764c003848668a2d78f1258d06d8-receipt.json",
+      "bytes": 1753,
+      "sha256": "af0b5455fd82d52222df62cf0d472da5cd7c4fa10e9bb4f7c6e5d4e42d930355"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-ft9tc49m/03d77830926a4928a8725592425d73ea-budget.bin",
+      "bytes": 49,
+      "sha256": "d02246704aa3cf389bc2428847b0a12cbdf06a171b3f4a489c6e1826ed833995"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-ft9tc49m/03d77830926a4928a8725592425d73ea-receipt.json",
+      "bytes": 1858,
+      "sha256": "427fdc2ef3ce3ba4f6070664dbdeb96020bef555786b5cb55be8cb322734ce40"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-hfpf62o8/e4207ec737304b5c85f53133b0ce461f-budget.bin",
+      "bytes": 49,
+      "sha256": "6530146f4203d03511cd824c1cd7d06b8c3badc682549a9eb1c43524b1e762ee"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-hfpf62o8/e4207ec737304b5c85f53133b0ce461f-receipt.json",
+      "bytes": 1773,
+      "sha256": "e4dc3194e17cf84ac378340e032d4955a9b0e3d63bd704474a036096feef6c05"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-hfpf62o8/sdk-expiry-p8_cqx0d/state/collaborative-v1.sqlite3",
+      "bytes": 53248,
+      "sha256": "bf21b4d774532f6cd6bfcd788e05fbb217e9272c408254163b8ccade952896ed"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-li5z_uoa/a3d3f1f3d33e41f49fe620c73cecf2cd-receipt.json",
+      "bytes": 2333,
+      "sha256": "74291b7f43e5781d552ddbc3c0d8b7d3f93412422bbeaa07022a3d7efaaa79e7"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-li5z_uoa/c7aea091ed9b469f94a459e836d9e75d-budget.bin",
+      "bytes": 49,
+      "sha256": "1ecaa1064a62bd1e1be09cd1426771490609cb104b8a311675a196e5b81d0b4a"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-li5z_uoa/c7aea091ed9b469f94a459e836d9e75d-receipt.json",
+      "bytes": 2121,
+      "sha256": "3c5fed6c1a3d4e08f571fff8d75ee16694baa0fcee2cc2d17e559c582ff054c6"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-n4hd2hic/f22d1692ed404034b989e275dfa4343a-budget.bin",
+      "bytes": 49,
+      "sha256": "c258e0b5f0872c4699bba76f404431a670ac3d14e0efba257c6ced5cab040800"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-n4hd2hic/f22d1692ed404034b989e275dfa4343a-receipt.json",
+      "bytes": 1754,
+      "sha256": "a90e796172a26843cba5e76a99da3440373b97e66decc576f2e349ef8280531c"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-nnb7sknw/f074fd6fcc2247aa89b8008c13a5a284-budget.bin",
+      "bytes": 49,
+      "sha256": "12551721c2960795ea955ff945efc891d57952f9e7131ab63e584e11a5a40367"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-nnb7sknw/f074fd6fcc2247aa89b8008c13a5a284-receipt.json",
+      "bytes": 1686,
+      "sha256": "4e5674b0bd846f2449bf5fee269b1dfff9431bb414357bdb8b109034f7eac727"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-raa94r0g/a8dee162fdfd4784a7dafe9d46dad4ae-budget.bin",
+      "bytes": 49,
+      "sha256": "51ea9e3bba7caee657a6b8bb67dc6c1977490f940b6d1955165cc41bbda2d360"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-raa94r0g/a8dee162fdfd4784a7dafe9d46dad4ae-receipt.json",
+      "bytes": 1675,
+      "sha256": "f2104cec4ad634b63e92f8a56d751dc0f18877c67e56a6feefa878f2e1d17f43"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-sl6jyd_l/a309f710e99d4b61b4100feca2bdce26-budget.bin",
+      "bytes": 49,
+      "sha256": "8b7d1618853275fd80da69cb6cfaf30d39ae5c2fa16fd182022ea1eb596c0b13"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-sl6jyd_l/a309f710e99d4b61b4100feca2bdce26-receipt.json",
+      "bytes": 2895,
+      "sha256": "5aeb7c1bdf982dddfe34f3c55d8c878a647dee3291926cee7a4b4e1ca73fa170"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-sl6jyd_l/blocked-receipts",
+      "bytes": 15,
+      "sha256": "3b2a43e3a5b13459006960eac2534b6a71bf7170ea998dc49b1990f23508a6d6"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-t_ecif8v/1d8b2ff204c44e96b6bd07562f26b3fa-budget.bin",
+      "bytes": 49,
+      "sha256": "c63d595f1d01f33a148ceb21318132418089c57a44bed78d1a635ec8acade8d5"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-t_ecif8v/1d8b2ff204c44e96b6bd07562f26b3fa-receipt.json",
+      "bytes": 1757,
+      "sha256": "db1efc25099b094caf8dd7cfca65d2faaef1559fff18919dcfc5f3444a631bba"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-t_ecif8v/c5320ecf0ebd434983323970ef3e96e7-budget.bin",
+      "bytes": 49,
+      "sha256": "cc570d195cfb046974c777f83bb05534ca28225071c88beadfd380f835701a88"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-t_ecif8v/c5320ecf0ebd434983323970ef3e96e7-receipt.json",
+      "bytes": 1667,
+      "sha256": "9e9eb1097eb64f203577e7d2f81c449ff26d7a85c38044aa4c57e367015e7647"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-uzimk8ye/84c207b305484e348379a6f3919453ea-budget.bin",
+      "bytes": 49,
+      "sha256": "7d31ebd3dd9587c76de15283407e5a62b1cbe9a6e33c74d05af8d72cc6c2f975"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-uzimk8ye/84c207b305484e348379a6f3919453ea-receipt.json",
+      "bytes": 1770,
+      "sha256": "6729e669e27cb50ad5fe2bdb5634f990829f8dd5bc9927e3176d1ac0e7fae9ea"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-vr3z398n/387847c156594a10b1f8a9955481d7fd-budget.bin",
+      "bytes": 49,
+      "sha256": "fe085af0507bf5e0dfeca915258eff60058c15352a771d0fa0a396816e3f2bba"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-vr3z398n/387847c156594a10b1f8a9955481d7fd-receipt.json",
+      "bytes": 1776,
+      "sha256": "d0098705e4fa89c666e9b91add75190f5a74871cbb952769eb412857f21a6966"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-y2n3urp5/cabb04215c0b4b47a0677dfcf813a7d2-budget.bin",
+      "bytes": 49,
+      "sha256": "01c5dcce9bf3b7f79b87f5712de1624066e57155f6840ccc921ba37521ec58b0"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-y2n3urp5/cabb04215c0b4b47a0677dfcf813a7d2-receipt.json",
+      "bytes": 1736,
+      "sha256": "87aa54722b56110f188bbc6c9d31d54b95261df7579389868fe7c152869f3941"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-y6krqpkn/eae952185d474b92b50a4be541b87672-budget.bin",
+      "bytes": 49,
+      "sha256": "9a465323f63cd84ae1b1523d5bf82c6272bbce9e0f34b930d514a11ad0bb3e58"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-y6krqpkn/eae952185d474b92b50a4be541b87672-receipt.json",
+      "bytes": 1873,
+      "sha256": "8f543154fb27d0f9f79672f6b7e2dc2c689eee413f16ba38dbe7acfbf61d6f8e"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-ynz8ck_n/0af2f529d8644e9bbb1cf656a436791c-budget.bin",
+      "bytes": 49,
+      "sha256": "74acc9f31b5482684d8d84aa0845729f5e96742d974640da8fb13fe34be6834c"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-ynz8ck_n/0af2f529d8644e9bbb1cf656a436791c-receipt.json",
+      "bytes": 1760,
+      "sha256": "2c3265c031fc360d2a20bcb30b474b17f706b625934f1452bb5ff36f364f2229"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-ynz8ck_n/2ee04e688cca494897f4e22863709689-receipt.json",
+      "bytes": 700776,
+      "sha256": "11ebbdc6b0855b46741e49e995cc509ad7508683af9dc89a1866d0746d07bcec"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-z2watx7l/98edaba55c754d89821ae7c533291b92-budget.bin",
+      "bytes": 49,
+      "sha256": "18d6cff89b8b4bc396488c2c935e971184f8d762e5c29cbcae12f89bdae3e77f"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/custody/gauntlet-owner-probe-z2watx7l/98edaba55c754d89821ae7c533291b92-receipt.json",
+      "bytes": 5594285,
+      "sha256": "a106d96e3d15e4fe4c7fe2dca18fa5dcc779393c7d193a649988dee31286e58c"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/e299ed1cf52d4266aea70a2cb6a7cdf2-receipt.json",
+      "bytes": 2316,
+      "sha256": "1dc2b8ff8175ba0f23ef2736b67913bfdda895d84f01aa74cf8208ec5f2445dd"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/e41980e8796749ba8ac28bad5dba2cc9-receipt.json",
+      "bytes": 18223,
+      "sha256": "c798f4a223cfce29d580c71b8d18d75b671f78e5e46645e7698fdf718cf5a61c"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/environment.json",
+      "bytes": 11122,
+      "sha256": "cc3cd6a982e432cbfde8fe0fd368a8666ce0517021049f71b698c27d4550bfe2"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/f44baedbe2a948e3896b17e0e50c14ae-receipt.json",
+      "bytes": 2027,
+      "sha256": "ac84db7ddae1f94d864cf9545f42c0a48fb682eceb6ce292cf2709e8e6a4d042"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/fde8583ec1754a019727a2af8e2c92cb-receipt.json",
+      "bytes": 2008,
+      "sha256": "3ae10566af65fb5a61d0356bfcb2cc08852de2a8e8fa31db224a1803e781f447"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/fff19cc759ff4000a239e93ebde03d8d-receipt.json",
+      "bytes": 1934,
+      "sha256": "0c85f19da08a0c7c675a1aaba371ef0993c5253c4e897beff7b103c188a79fb9"
+    },
+    {
+      "path": "app-server-migration/task12-mcp-fixes-matrix314-v1/suite-results.json",
+      "bytes": 988,
+      "sha256": "2b0cea5a884d857aa09f3f935d1206f5bdd7a079e0cef9402823f5ba1d04ff34"
+    }
+  ]
+}

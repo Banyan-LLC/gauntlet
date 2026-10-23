@@ -1,0 +1,14 @@
+{
+  "round": 4,
+  "attempt": 1,
+  "timestamp": "2026-10-21T23:14:27.1373393Z",
+  "prompt_sha256": "b93c4b98c424b8e8fa5cc546c1f44d0aa29609362fd249fcb2f54da9625b2186",
+  "cli_sha256": "f6dbf48cb70f62649c645f26c87dc9bf84cc36986202dfad8e12fb5b8ca70312",
+  "cli_version": "0.163.0-alpha.10.2",
+  "ExitCode": 0,
+  "StartFailed": false,
+  "TimedOut": false,
+  "ErrorMessage": null,
+  "StderrText": "2026-10-21T23:13:09.180631Z ERROR codex_models_manager::manager: failed to refresh available models: request timed out\n",
+  "ProcessTreeRetired": false
+}

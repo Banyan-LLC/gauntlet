@@ -1,0 +1,14 @@
+{
+  "round": 3,
+  "attempt": 1,
+  "timestamp": "2026-10-21T22:57:15.0082737Z",
+  "prompt_sha256": "2e64b261dfc1477ed6b5481f02ccefd88f21421ed53a5e206d52c0f8cda41268",
+  "cli_sha256": "f6dbf48cb70f62649c645f26c87dc9bf84cc36986202dfad8e12fb5b8ca70312",
+  "cli_version": "0.163.0-alpha.10.2",
+  "ExitCode": 0,
+  "StartFailed": false,
+  "TimedOut": false,
+  "ErrorMessage": null,
+  "StderrText": "",
+  "ProcessTreeRetired": false
+}

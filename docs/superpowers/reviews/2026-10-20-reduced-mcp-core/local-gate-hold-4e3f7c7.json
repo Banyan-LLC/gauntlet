@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "source_head": "4e3f7c7da9c88927a7a2cb5f5eb00270d2e0145a",
+  "base_oid": "ca0ff39c8dbae4b9cd998c9a2dcf3ca0a952a688",
+  "tested_source_hashes_match": true,
+  "tested_source_entries": 75,
+  "legacy_local_gate": {
+    "status": "preflight_refused",
+    "reported_characters": 2342493,
+    "fixed_limit": 1048576,
+    "wrapper_exit": 10,
+    "model_attempt_ran": false,
+    "receipt": "app-server-migration/local-preflight-native-v2/27ca5edef5fc4f4397c3007607286115-receipt.json",
+    "native_tree_retired": true
+  },
+  "replacement_route_authorized": false,
+  "publication_held": true,
+  "ready_pr_body_prepared": true,
+  "approval_or_merge_performed": false
+}

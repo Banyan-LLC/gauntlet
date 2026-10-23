@@ -1,0 +1,262 @@
+"""Owned scenarios and fault checkpoints; never installed with the product."""
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+
+def main():
+    from collaborative_process import ExpectedExit, checkpoint, owner_context, run_case
+    scenario = sys.argv[1]
+    if scenario.startswith("cutoff-"):
+        from collaborative_cutoff import probe
+        probe(scenario.removeprefix("cutoff-"))
+        return
+    if scenario=="nested-mkdir-failure":
+        blocked=Path(os.environ["GAUNTLET_TEST_RECEIPTS"])/"blocked-receipts"
+        with blocked.open("xb") as stream:
+            stream.write(b"not a directory")
+        try:
+            run_case([],cwd=Path(__file__).parent,
+                environment=dict(os.environ,GAUNTLET_TEST_RECEIPTS=str(blocked)),deadline_seconds=5)
+        except BaseException:
+            print("continued",flush=True)
+        return
+    if scenario=="nested-save-failure":
+        import collaborative_process as api
+        def broken(*args):
+            raise OSError("injected receipt failure")
+        api._save=broken
+        try:
+            run_case([],cwd=Path(__file__).parent,environment=dict(os.environ),deadline_seconds=5)
+        except BaseException:
+            print("continued",flush=True)
+        return
+    if scenario == "success":
+        os.write(1, b"hello\x00\xff\n")
+        os.write(2, b"diagnostic\n")
+    elif scenario.startswith("crash"):
+        if scenario == "crash":
+            checkpoint("before-commit")
+        os._exit(73)
+    elif scenario == "sleep":
+        time.sleep(120)
+    elif scenario in {"stdout-overflow", "stderr-overflow", "control-overflow", "combined-overflow"}:
+        if scenario == "control-overflow":
+            for _ in range(300):
+                checkpoint("x" * 800)
+        elif scenario == "combined-overflow":
+            os.write(1, b"a" * (4 * 1024 * 1024))
+            os.write(2, b"b" * (4 * 1024 * 1024))
+            checkpoint("over-combined-limit")
+        else:
+            fd = 1 if scenario.startswith("stdout") else 2
+            for _ in range(2048):
+                os.write(fd, b"x" * 4096)
+    elif scenario.startswith("descendant-"):
+        channel = scenario.split("-", 1)[1]
+        kwargs = {name: (None if name == channel else subprocess.DEVNULL)
+                  for name in ("stdin", "stdout", "stderr")}
+        subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"], **kwargs)
+    elif scenario == "stdin-closed":
+        os.close(0)
+        checkpoint("stdin-closed")
+        time.sleep(0.2)
+    elif scenario == "changed-group":
+        # Codex's native MCP launcher uses a new group in the same session.
+        # Close every inherited pipe so EOF cannot accidentally detect it.
+        pids=Path(os.environ["GAUNTLET_TEST_RECEIPTS"])/"changed-group-pids.json"
+        child=subprocess.Popen([sys.executable,"-c",
+            "import subprocess,sys,time; child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(120)']); "
+            "open(sys.argv[1],'x').write(str(child.pid)); time.sleep(120)",str(pids)],
+            process_group=0,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        while not pids.exists():
+            if time.monotonic()>=owner_context()["execution_deadline"]:
+                raise TimeoutError("changed-group descendant did not start")
+            time.sleep(.005)
+        checkpoint("changed-group-ready",pids=[child.pid,int(pids.read_text())],
+            group=os.getpgid(child.pid),session=os.getsid(child.pid))
+    elif scenario=="legacy-session-expiry":
+        from collaborative_legacy import track_sessions
+        from gauntlet_review.bounded import run_bounded
+        subprocess.Popen=track_sessions(subprocess.Popen)
+        run_bounded([sys.executable,"-c",
+            "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c','import time; time.sleep(120)']); time.sleep(120)"],timeout_sec=120)
+    elif scenario=="legacy-pending":
+        import uuid
+        checkpoint("session-begin",session=uuid.uuid4().hex,parent=os.getpid())
+        os._exit(74)
+    elif scenario == "context":
+        print(json.dumps(owner_context()))
+    elif scenario.startswith("nested-"):
+        parent = owner_context()
+        environment = dict(os.environ)
+        if scenario == "nested-fresh-session":
+            environment["GAUNTLET_TEST_FRESH_SESSION"] = "1"
+        elif scenario == "nested-context-mismatch":
+            environment["GAUNTLET_TEST_OWNER"] = "{}"
+        elif scenario == "nested-budget":
+            for _ in range(3):
+                run_case([sys.executable, "-c", "import os; os.write(1,b'x'*(3*1024*1024))"],
+                         cwd=Path(__file__).parent, environment=environment,
+                         deadline_seconds=999, expected=ExpectedExit())
+            print("continued")
+            return
+        command = "context" if scenario == "nested-success" else "crash-no-checkpoint"
+        outcome = run_case([sys.executable, __file__, command], cwd=Path(__file__).parent,
+                           environment=environment, deadline_seconds=999,
+                           expected=ExpectedExit())
+        child = json.loads(outcome.stdout.prefix)
+        print(json.dumps({"token": parent["token"], "child_token": child["token"],
+                          "deadline": parent["deadline"], "child_deadline": child["deadline"],
+                          "fresh_owner": outcome.fresh_owner}))
+        if scenario == "nested-failure":
+            print("continued")
+    elif scenario == "matrix-expiry":
+        for _ in range(2):
+            subprocess.Popen([sys.executable, "-c",
+                              "import os,subprocess,sys,time; "
+                              "subprocess.Popen([sys.executable,'-c','import time; time.sleep(120)']); "
+                              "os.write(1,b'host-ready\\n'); time.sleep(120)"])
+        time.sleep(120)
+    elif scenario=="sdk-real-expiry":
+        import asyncio
+        import tempfile
+        from dulwich.repo import Repo
+        from gauntlet_review.collaborative.contracts import OperatorConfig
+        from collaborative_sdk_smoke import probe
+        root=Path(tempfile.mkdtemp(prefix="sdk-expiry-",dir=owner_context()["receipts"]))
+        repo,state=root/"repo",root/"state"
+        repo.mkdir(); state.mkdir(mode=0o700)
+        Repo.init(str(repo)).close()
+        config=OperatorConfig(repo,state,"fixture",b"refs/heads/topic",b"refs/heads/main","peer","reviewer")
+        asyncio.run(probe(config,"expiry"))
+    elif scenario.startswith("mcp-"):
+        import anyio
+        from mcp import Client
+        from collaborative_process import OwnedTransport
+
+        async def exercise():
+            if scenario=="mcp-teardown-deadline":
+                import collaborative_process as api
+                children=[]
+                initialize=api.NativeChild.__init__
+                def observe_child(self,*args,**kwargs):
+                    initialize(self,*args,**kwargs)
+                    children.append(self)
+                api.NativeChild.__init__=observe_child
+                transport=OwnedTransport([sys.executable,"-c","pass"],cwd=Path(__file__).parent)
+                async with transport as (read,write):
+                    try:
+                        await read.receive()
+                    except anyio.EndOfStream:
+                        pass
+                    while children[0].poll() is None or children[0].active():
+                        await anyio.sleep(.002)
+                    await anyio.sleep(0)
+                    scope=anyio.CancelScope
+                    def expire_teardown(*args,**kwargs):
+                        if kwargs.get("shield") and kwargs.get("deadline")==owner_context()["execution_deadline"]:
+                            kwargs["deadline"]=anyio.current_time()-1
+                            checkpoint("teardown-deadline-injected")
+                        return scope(*args,**kwargs)
+                    anyio.CancelScope=expire_teardown
+                print("continued",flush=True)
+                return
+            if scenario.startswith("mcp-fatal-"):
+                import collaborative_process as api
+                failure=scenario.rsplit("-",1)[1]
+                if failure=="save":
+                    def broken(*args):
+                        raise OSError("injected receipt failure")
+                    api._save=broken
+                elif failure=="poll":
+                    def broken(*args):
+                        raise OSError("injected observation failure")
+                    api.NativeChild.poll=broken
+                else:
+                    original=api.RawPipe.close_parent
+                    calls=0
+                    def broken(self):
+                        nonlocal calls
+                        calls+=1
+                        if calls==3:
+                            raise OSError("injected final pipe close failure")
+                        original(self)
+                    api.RawPipe.close_parent=broken
+                    close=api.NativeChild.close
+                    def observed_close(self):
+                        checkpoint("handle-close-attempt")
+                        close(self)
+                    api.NativeChild.close=observed_close
+                try:
+                    argv=[sys.executable,str(Path(__file__).with_name("collaborative_echo.py"))]
+                    async with Client(OwnedTransport(argv,cwd=Path(__file__).parent)) as client:
+                        await client.list_tools()
+                        if failure!="close":
+                            raise RuntimeError("initiating transport failure")
+                except BaseException:
+                    print("continued",flush=True)
+                return
+            if scenario == "mcp-real-expiry":
+                import tempfile
+                from dulwich.repo import Repo
+                from gauntlet_review.collaborative.contracts import OperatorConfig
+                from collaborative_scenario import server_args
+                root=Path(tempfile.mkdtemp(prefix="real-expiry-",dir=owner_context()["receipts"]))
+                repo,state=root/"repo",root/"state"
+                repo.mkdir(); state.mkdir(mode=0o700)
+                Repo.init(str(repo)).close()
+                config=OperatorConfig(repo,state,"expiry",b"refs/heads/topic",b"refs/heads/main","author","author")
+                async with Client(OwnedTransport([sys.executable,*server_args(config,"author")],cwd=root)) as first:
+                    await first.list_tools()
+                    os.write(1,b"host-ready\n")
+                    async with Client(OwnedTransport([sys.executable,*server_args(config,"reviewer")],cwd=root)) as second:
+                        await second.list_tools()
+                        os.write(1,b"host-ready\n")
+                        # Deliberate pipe-holding descendants remain inside the
+                        # same native owner; production peers spawn no children.
+                        subprocess.Popen([sys.executable,"-c",
+                            "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c','import time; time.sleep(120)']); time.sleep(120)"])
+                        await anyio.sleep(120)
+                return
+            if scenario == "mcp-sibling-closure":
+                first_ready, second_ready, first_closed = (anyio.Event() for _ in range(3))
+                argv = [sys.executable, str(Path(__file__).with_name("collaborative_echo.py"))]
+                async def first():
+                    async with Client(OwnedTransport(argv, cwd=Path(__file__).parent)) as client:
+                        await client.list_tools()
+                        first_ready.set()
+                        await second_ready.wait()
+                    first_closed.set()
+                async def second():
+                    await first_ready.wait()
+                    async with Client(OwnedTransport(argv, cwd=Path(__file__).parent)) as client:
+                        await client.list_tools()
+                        second_ready.set()
+                        await first_closed.wait()
+                        assert (await client.list_tools()).tools[0].name == "probe-tool"
+                async with anyio.create_task_group() as group:
+                    group.start_soon(first)
+                    group.start_soon(second)
+                print("both-peers-closed")
+                return
+            if scenario == "mcp-frame-overflow":
+                argv = [sys.executable, "-c", "import os; os.write(1,b'x'*(512*1024+1)+b'\\n')"]
+            else:
+                argv = [sys.executable, str(Path(__file__).with_name("collaborative_echo.py"))]
+            async with Client(OwnedTransport(argv, cwd=Path(__file__).parent),
+                              raise_exceptions=True) as client:
+                result = await client.list_tools()
+                print(result.model_dump_json(by_alias=True))
+        anyio.run(exercise)
+    else:
+        raise ValueError(scenario)
+
+
+if __name__ == "__main__":
+    main()

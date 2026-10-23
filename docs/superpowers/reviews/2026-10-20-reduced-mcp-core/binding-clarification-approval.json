@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-22",
+  "question_call_id": "call_2e6a7310778644bfaf2d8491f95785b2",
+  "question": "The peer still disputes two spec interpretations. Should I clarify the spec to retain the existing bindings—coverage hashes the full manifest plus repository/ref/policy context, and finding identity is (review_id, local finding_id)—or implement a separate manifest-only hash and review-prefixed IDs with compatibility handling? Original findings and history stay preserved; I’m fixing the separate SDK cleanup defect meanwhile.",
+  "answer": "Clarify spec; retain existing bindings (Recommended)",
+  "original_approved_spec_blob": "f9b94a453e2c6248dd80c3f6d31be8178c7237e4",
+  "original_approved_plan_blob": "1b5365c4a920a5eaaaa975e24ef4cb17ae5aa4bc",
+  "clarifications": [
+    "Coverage attests the complete canonical manifest plus repository/ref/OID/versioned-policy header using the returned snapshot/manifest digest; no separate manifest-only digest.",
+    "Finding identity is the scoped (review_id, local finding_id) pair; retain the existing legacy local-ID generation and format, immutable review-bound records/digests and cross-review rejection."
+  ],
+  "runtime_or_persistence_migration": false,
+  "original_findings_preserved": true,
+  "peer_disposition_required": true,
+  "additional_assurance_exception": false,
+  "approval_authorized": false,
+  "merge_authorized": false,
+  "clarified_spec_blob": "b10d077a3f694a7be587657ace86bbfc6905c0d9"
+}

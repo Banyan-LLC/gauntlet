@@ -1,0 +1,362 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-10-22T00:15:26.6360644Z",
+  "archive_root": "C:/Users/geoff/Documents/Projects/Banyan/gauntlet/.git/info/reduced-mcp-core/20261021-execution",
+  "prior_manifests": [
+    "execution-evidence-migration-plan.json",
+    "execution-evidence-task0.json",
+    "execution-evidence-task1.json",
+    "execution-evidence-task10.json",
+    "execution-evidence-task2.json",
+    "execution-evidence-task3.json",
+    "execution-evidence-task4.json",
+    "execution-evidence-task5.json",
+    "execution-evidence-task6.json",
+    "execution-evidence-task7.json",
+    "execution-evidence-task8-finalfix.json",
+    "execution-evidence-task8.json",
+    "execution-evidence-task9.json"
+  ],
+  "files": [
+    {
+      "path": "app-server-migration/task10-task-done-v1/0a320aeff5784ed3ab4b8ff68198f676-receipt.json",
+      "bytes": 6170,
+      "sha256": "714f9a7aaf9521471455ca277a56244e28d941e7dbd2490302c56eaade1ac73d"
+    },
+    {
+      "path": "app-server-migration/task10-task-done-v1/4849897692b94910ba6035f5ea159f1c-receipt.json",
+      "bytes": 2339,
+      "sha256": "26418bdb5c8f68ce1834f66aa522c1ba81546a1265eb55432548b5bf6e533ab6"
+    },
+    {
+      "path": "app-server-migration/task10-task-done-v1/aff9b2ae2cfb4441ad7a36d9b09bb28d-budget.bin",
+      "bytes": 49,
+      "sha256": "6f729c6a380bcf839a4e444ca313da568044ce4fb32bbb45b028e8f728487deb"
+    },
+    {
+      "path": "app-server-migration/task10-task-done-v1/aff9b2ae2cfb4441ad7a36d9b09bb28d-receipt.json",
+      "bytes": 1721,
+      "sha256": "40578364a13da652a30b6eec25fcbeb336ad4691794dc153e74edaf044673231"
+    },
+    {
+      "path": "app-server-migration/task10-task-done-v1/cca1c5e55dab48a4a1838531c3a45720-receipt.json",
+      "bytes": 2305,
+      "sha256": "380b2a6c1ad6536e7d42726379704dd41b07849226fa7dda6cd5637d6e3406c0"
+    },
+    {
+      "path": "app-server-migration/task10-task-done-v1/f6333b90c1a74688b56b28a02ed6756d-receipt.json",
+      "bytes": 1924,
+      "sha256": "7ba02d9cf93ad9b47c0f49860d46ed9c47927084b548071fba1d38ae54d24fda"
+    },
+    {
+      "path": "app-server-migration/task11-claude-auth-v1.log",
+      "bytes": 605,
+      "sha256": "43542e5d3d453a59b1d8e918b89e82e5958e71f5912d7cf1a61f975fb18101e1"
+    },
+    {
+      "path": "app-server-migration/task11-claude-auth-v1/0d79055dddd0439a98554807454403f4-budget.bin",
+      "bytes": 49,
+      "sha256": "a4b5415bd5f1d8f9d661bf4bbc0cc98e223f42f61204b2f1a51439dd3e549ec2"
+    },
+    {
+      "path": "app-server-migration/task11-claude-auth-v1/0d79055dddd0439a98554807454403f4-receipt.json",
+      "bytes": 1850,
+      "sha256": "036294db2aa07fb2cef834cf1996b896ae68e57149dc27ba733ceb1e9461f6eb"
+    },
+    {
+      "path": "app-server-migration/task11-codex-auth-v1.log",
+      "bytes": 260,
+      "sha256": "5f4ce02445883113dd851128ce547e55ccb3a05a676e9ef72a9b717dafdacc02"
+    },
+    {
+      "path": "app-server-migration/task11-codex-auth-v1/f88eeafc29f1422b8f6bafd8ba66362f-budget.bin",
+      "bytes": 49,
+      "sha256": "a885a13030bf805f858709f6447db87bf77c1a94665e41b3c1bcf850dabcbfe0"
+    },
+    {
+      "path": "app-server-migration/task11-codex-auth-v1/f88eeafc29f1422b8f6bafd8ba66362f-receipt.json",
+      "bytes": 1816,
+      "sha256": "43bef0375882663f00bd192168dc46f3842cba2190ee0e48dd1bbad727d3cc28"
+    },
+    {
+      "path": "app-server-migration/task11-driver-final-v1.log",
+      "bytes": 335,
+      "sha256": "8bba0b66fc4eb11c26478279429211045d7bbd9801d4f2aef2d3494a8babfa23"
+    },
+    {
+      "path": "app-server-migration/task11-driver-final-v1/60cc36101da04e88ae9c1558f52d5d3f-receipt.json",
+      "bytes": 3106,
+      "sha256": "6cdc113ada69f72f51c70a895fc521725ac0cfcc0aab850de5fa6fee84d617a7"
+    },
+    {
+      "path": "app-server-migration/task11-driver-final-v1/95067f282dc44b239e1bd3aef02854c0-budget.bin",
+      "bytes": 49,
+      "sha256": "5645bb7fb4debedff81404ce1a1a1a8f9f6c0fabc7dffc06de59aa3f8e49eb26"
+    },
+    {
+      "path": "app-server-migration/task11-driver-final-v1/95067f282dc44b239e1bd3aef02854c0-receipt.json",
+      "bytes": 1707,
+      "sha256": "7a4418221d2530cdb722f2a2edadb035deb9c20b43fcf714eaf1334326a116fa"
+    },
+    {
+      "path": "app-server-migration/task11-driver-final-v1/e963f4a5bef34847a82d24b689ff3077-receipt.json",
+      "bytes": 4175,
+      "sha256": "a0d15b75d2b5c5fe1a6449c87cf2e88c1bdc9942f27a15488103e92d54272eea"
+    },
+    {
+      "path": "app-server-migration/task11-driver-green-v1.log",
+      "bytes": 1772,
+      "sha256": "40485c1ff53cb5ec2cea004e2b1c62388c9605d4630193f34ac1d87c39a4c56c"
+    },
+    {
+      "path": "app-server-migration/task11-driver-green-v1/0e679d43e42542c480270f883004840e-budget.bin",
+      "bytes": 49,
+      "sha256": "ea6455d6cf539891bdf7afa3943f28d2c7cb7960e26eadcb5e864e8105c89bac"
+    },
+    {
+      "path": "app-server-migration/task11-driver-green-v1/0e679d43e42542c480270f883004840e-receipt.json",
+      "bytes": 3618,
+      "sha256": "82d9449b5bab4e71020c1c5f4c33010778d9257fca3233375206b3c6c7d48ce5"
+    },
+    {
+      "path": "app-server-migration/task11-driver-green-v2.log",
+      "bytes": 1890,
+      "sha256": "25fdd97e9504bc3de803c37785ae1439035c2f1ed26b6282453460ad4c4b1171"
+    },
+    {
+      "path": "app-server-migration/task11-driver-green-v2/54f45211139b4179ba4f80da7f6a2708-budget.bin",
+      "bytes": 49,
+      "sha256": "0e2f3677216befb9defff9031e01d1c8bf81d9a64f1b182be5abc58ca9f77dfa"
+    },
+    {
+      "path": "app-server-migration/task11-driver-green-v2/54f45211139b4179ba4f80da7f6a2708-receipt.json",
+      "bytes": 3779,
+      "sha256": "f5f7d34fa8a14fb105c6dbff94be7c10364a066512f61e15fa85c114fe3cb408"
+    },
+    {
+      "path": "app-server-migration/task11-driver-green-v3.log",
+      "bytes": 335,
+      "sha256": "0f457b8ebcc47fc9fdda71fb51b4f726c83c0c2579a64737fd90a3b39b9d030a"
+    },
+    {
+      "path": "app-server-migration/task11-driver-green-v3/c0f17f6227744d2da9f83d2f4afaf0a9-receipt.json",
+      "bytes": 4175,
+      "sha256": "c10a58c4650856232c66f63654205a2d81e46c0aeab18174941965384202d4f8"
+    },
+    {
+      "path": "app-server-migration/task11-driver-green-v3/d405b9ab5fa349029d66231aa8bd693e-budget.bin",
+      "bytes": 49,
+      "sha256": "d97144ef16b197b609aa0298602d2d1db34685cb6d8970fbc3f4a933a1352ae7"
+    },
+    {
+      "path": "app-server-migration/task11-driver-green-v3/d405b9ab5fa349029d66231aa8bd693e-receipt.json",
+      "bytes": 1707,
+      "sha256": "247ed52d8431ea4b51cbb8cccf97a2d9bef995d5a926efadcfae8f827e83ec02"
+    },
+    {
+      "path": "app-server-migration/task11-driver-red-v1.log",
+      "bytes": 3392,
+      "sha256": "4326124ea53e5252118dd1fbaf1f5afc533e828fa77d83a832c81fbbac72482f"
+    },
+    {
+      "path": "app-server-migration/task11-driver-red-v1/a0e807b6af1f44cb83aa129b063abede-budget.bin",
+      "bytes": 49,
+      "sha256": "6820cc5d14eefc6be02ebdc02ff77f90ce2fafa5df00167486ae63d41d78e581"
+    },
+    {
+      "path": "app-server-migration/task11-driver-red-v1/a0e807b6af1f44cb83aa129b063abede-receipt.json",
+      "bytes": 5781,
+      "sha256": "c418ba7d2176fc557900ba56e3e67c65c7ae33a790d75291a8d48fcd1bed4e6d"
+    },
+    {
+      "path": "app-server-migration/task11-final-verifier-driver-v1.log",
+      "bytes": 346,
+      "sha256": "577fbca8a37d8656572aaa6623d0f51fd00417b135a60686c9a3234cc1713f17"
+    },
+    {
+      "path": "app-server-migration/task11-final-verifier-driver-v1/1680a5829db844c7a10d4cb7413752f1-receipt.json",
+      "bytes": 4184,
+      "sha256": "112b9e56377349f60fd8eb195944a8fb522936cb8e00589b860baf5531fb3a4d"
+    },
+    {
+      "path": "app-server-migration/task11-final-verifier-driver-v1/4b07115eed21441c908641226ade326b-budget.bin",
+      "bytes": 49,
+      "sha256": "a0fe4325568cae77b444a7765dbe421b52ce78b86fd47cf3e2134f0aeb5d014c"
+    },
+    {
+      "path": "app-server-migration/task11-final-verifier-driver-v1/4b07115eed21441c908641226ade326b-receipt.json",
+      "bytes": 1756,
+      "sha256": "b47cda2f432075b4cf6ef5ba074a9c5b2fdf8a55f091dadae53195b78414f485"
+    },
+    {
+      "path": "app-server-migration/task11-prelive-full-suite-v1.log",
+      "bytes": 852,
+      "sha256": "0e2465f793470e08e28c63da70d48e0fc9d8a24f4965dc2ad36229dfade73c18"
+    },
+    {
+      "path": "app-server-migration/task11-prelive-full-suite-v1/0d0ed02928ca4708bccf34128853365a-receipt.json",
+      "bytes": 1945,
+      "sha256": "5b11971a4a27484c86d257a6c581f82d5802986352b12f8823777b52201961f8"
+    },
+    {
+      "path": "app-server-migration/task11-prelive-full-suite-v1/1a574636224346d0863d17c76931b97a-receipt.json",
+      "bytes": 1942,
+      "sha256": "3e46633531bb646dee4bec106a6f4fa7ec2436d45d6762972532a1768aa7fc74"
+    },
+    {
+      "path": "app-server-migration/task11-prelive-full-suite-v1/1bc8ddaebd80407b94f796cd330ee780-receipt.json",
+      "bytes": 97303,
+      "sha256": "31f69dc2a6c09c35ac82e1e3f409329540034a84a87d023d9228897df2ed33e3"
+    },
+    {
+      "path": "app-server-migration/task11-prelive-full-suite-v1/30a04f5dc13a42369c20a07b60826361-receipt.json",
+      "bytes": 2348,
+      "sha256": "13ce5a585c5f064fff494332f8a3aea737a3d105751cc6124746caf881ffcb51"
+    },
+    {
+      "path": "app-server-migration/task11-prelive-full-suite-v1/321223ec69a249b19c49db95d35f27a7-receipt.json",
+      "bytes": 4180,
+      "sha256": "de32a826d08019f7f67f30b1a74f40d6733bf913f8b916c1df4b3d142d88751f"
+    },
+    {
+      "path": "app-server-migration/task11-prelive-full-suite-v1/4cb7204aa29c4396a1e3e14e3c1c2f48-receipt.json",
+      "bytes": 1895,
+      "sha256": "b1b0893da80399d2940cb57a31f348c0ab1e439bc8ca44c2d08f8f38240d7cf0"
+    },
+    {
+      "path": "app-server-migration/task11-prelive-full-suite-v1/72eca16a96f34298bddce237a17196c4-budget.bin",
+      "bytes": 49,
+      "sha256": "4e470d235eb4867277fc7c3312a994337f367c3a6e7dab77f0300875fd1170a3"
+    },
+    {
+      "path": "app-server-migration/task11-prelive-full-suite-v1/72eca16a96f34298bddce237a17196c4-receipt.json",
+      "bytes": 2353,
+      "sha256": "76bb9e8e2e1fba9d8fa4b1b93132da25f94f8b87634ba19802724fe50eb6e426"
+    },
+    {
+      "path": "app-server-migration/task11-prelive-full-suite-v1/81dc9d5ef5354fbba4395fef5d040437-receipt.json",
+      "bytes": 18223,
+      "sha256": "233a647eb158b8c8942df8b0f2b37a5d8c3ac62d4cd9acf3104b669e03013591"
+    },
+    {
+      "path": "app-server-migration/task11-prelive-full-suite-v1/9d57de62bf6942fea616ee49518b64c0-receipt.json",
+      "bytes": 2006,
+      "sha256": "3e61e09b92ee569fc5f1b84867bfc932eba55fe398bf8216ca3efe59f59df248"
+    },
+    {
+      "path": "app-server-migration/task11-prelive-full-suite-v1/b77789bce8094e91b9254a3a49852426-receipt.json",
+      "bytes": 12086,
+      "sha256": "f0ee3fd2da52723c6cbea6a56892ba44496c7458c73971327b2ab2b46077917e"
+    },
+    {
+      "path": "app-server-migration/task11-prelive-full-suite-v1/b83be24fbd4b4d3f99d44183d4eb350d-receipt.json",
+      "bytes": 1933,
+      "sha256": "1f5eb43f803497cbf05fb3df6beb1c9f8fc8ffaa785d7a0e7a0e0471844a26ae"
+    },
+    {
+      "path": "app-server-migration/task11-prelive-full-suite-v1/ca0cd7735a4f40e0b73f5b23266337fa-receipt.json",
+      "bytes": 2315,
+      "sha256": "c717abf6fc26cc1cf2a3e1837ddcbced07d8dcd0855e4a5978706dabcdb91fed"
+    },
+    {
+      "path": "app-server-migration/task11-prelive-full-suite-v1/de715c66ae814a408f1cc679b4cb9dd5-receipt.json",
+      "bytes": 77080,
+      "sha256": "979d0c77ce9dc48a504a954fa55625b8233ac2e9b66b13516cb4488e3f601ecd"
+    },
+    {
+      "path": "app-server-migration/task11-prelive-full-suite-v1/e0fb350e993b44a9becf669ba4c6cd9c-receipt.json",
+      "bytes": 2026,
+      "sha256": "a483b6b8b9f4993a8cb3584f7d7d3431def2d98252b019c49f36b86839ee2773"
+    },
+    {
+      "path": "app-server-migration/task11-prelive-full-suite-v1/e9761c2d077440b2bc1a524d658a3b12-receipt.json",
+      "bytes": 1897,
+      "sha256": "90b799aaba591f496376367493bfb5ce677b2c97fe4f78843f7c1c95ebbeaefa"
+    },
+    {
+      "path": "app-server-migration/task11-prelive-full-suite-v1/f3de4d0950dd4ed6a6d5c262e589273f-receipt.json",
+      "bytes": 6179,
+      "sha256": "eff5601689fb11edb4a27850c45a7da157482af7914d6c0cd6fc29e26c6cdbd1"
+    },
+    {
+      "path": "app-server-migration/task11-prelive-full-suite-v1/f811385491fd4b7eac4f92073402f3a3-receipt.json",
+      "bytes": 2028,
+      "sha256": "557a1b2dffee8cd9a06ff6994877935ef4ac23405cf35eddf91b29fe5002a837"
+    },
+    {
+      "path": "app-server-migration/task11-test-integrity-red-v1.log",
+      "bytes": 1885,
+      "sha256": "1f62d23017d9f2868a24802e2e23db2be006685854034eaee4a5bf8fc1d6022f"
+    },
+    {
+      "path": "app-server-migration/task11-test-integrity-red-v1/26193b7db35745278ac17e9e3cae1714-budget.bin",
+      "bytes": 49,
+      "sha256": "bc1c9dadc283756574a045e0819ef4b4598e5989f1dfff8bb6e0c394d7e51529"
+    },
+    {
+      "path": "app-server-migration/task11-test-integrity-red-v1/26193b7db35745278ac17e9e3cae1714-receipt.json",
+      "bytes": 3836,
+      "sha256": "56b6eb91b0365f14a79c74fb5035833cf0508f4e9aaec7347f17bd92097e4a85"
+    },
+    {
+      "path": "app-server-migration/task11-verifier-green-v1.log",
+      "bytes": 339,
+      "sha256": "5b1b09d8a5b85f83fc976f5e1b4ccfdf5b2298013229c31de4d0b7e6054c851a"
+    },
+    {
+      "path": "app-server-migration/task11-verifier-green-v1/6d4e57cf12f348b3abfb0ee2e343c6b2-budget.bin",
+      "bytes": 49,
+      "sha256": "0440771c83fc4d3b24c51a43b81f930c0cb5ab28be0bb83e43b783e0b58bad89"
+    },
+    {
+      "path": "app-server-migration/task11-verifier-green-v1/6d4e57cf12f348b3abfb0ee2e343c6b2-receipt.json",
+      "bytes": 1709,
+      "sha256": "7e2c21e6bde10614a1ebd285380d94e260f782c85f8770e70dafb7950a302864"
+    },
+    {
+      "path": "app-server-migration/task11-verifier-green-v2.log",
+      "bytes": 339,
+      "sha256": "e639a1eeed92545210cfa64cb972b3193322fdebd57810f574ad6f41648aaaff"
+    },
+    {
+      "path": "app-server-migration/task11-verifier-green-v2/4ec32729fb404b46abd3681abe211f3b-budget.bin",
+      "bytes": 49,
+      "sha256": "5260ec23e82e9369777bcd482a70e1ae7c8d7bb0f415646cb454cf8162f071d1"
+    },
+    {
+      "path": "app-server-migration/task11-verifier-green-v2/4ec32729fb404b46abd3681abe211f3b-receipt.json",
+      "bytes": 1708,
+      "sha256": "d29b53f2de66102e289f1f45b992f8262025a09351079d289219b6a726b5b5f8"
+    },
+    {
+      "path": "app-server-migration/task11-verifier-hardening-red-v1.log",
+      "bytes": 4205,
+      "sha256": "1a17bdaf0ac6ab0f5fe69b4581cf8db204525bb4c638dfb07e746dde044cf6a7"
+    },
+    {
+      "path": "app-server-migration/task11-verifier-hardening-red-v1/434b635789ec42eabb56e58432dfe055-budget.bin",
+      "bytes": 49,
+      "sha256": "559afc35a5d940e823d6493e4934828f3d85783d4a9bbb4d1386701f33481e14"
+    },
+    {
+      "path": "app-server-migration/task11-verifier-hardening-red-v1/434b635789ec42eabb56e58432dfe055-receipt.json",
+      "bytes": 6937,
+      "sha256": "4beca118cd488cf2cc8425eb23e31e43fa70778b1de2054c329bbdb6fabf562a"
+    },
+    {
+      "path": "app-server-migration/task11-verifier-red-v1.log",
+      "bytes": 1282,
+      "sha256": "455bd6affc7f9702c3cea989e71c5ceff88637bb12fecd74872661c1d286ed71"
+    },
+    {
+      "path": "app-server-migration/task11-verifier-red-v1/2a89dce063054342922995e168d50b5b-budget.bin",
+      "bytes": 49,
+      "sha256": "c6c41ed53604f104350fe1ed13f6af832b7717232913118a939afe6dea0f85f7"
+    },
+    {
+      "path": "app-server-migration/task11-verifier-red-v1/2a89dce063054342922995e168d50b5b-receipt.json",
+      "bytes": 2968,
+      "sha256": "3770267fc0feef343974d94bd5c381bbec700e307260cbb5e24f3b889b662fa7"
+    }
+  ]
+}

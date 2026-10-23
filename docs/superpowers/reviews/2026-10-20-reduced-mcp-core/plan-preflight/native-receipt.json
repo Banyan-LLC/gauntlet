@@ -1,0 +1,17 @@
+{
+  "ExitCode": 0,
+  "StartFailed": false,
+  "TimedOut": false,
+  "ProcessTreeRetired": true,
+  "ErrorMessage": null,
+  "NativeProcessResult": {
+    "ErrorMessage": null,
+    "StartFailed": false,
+    "TimedOut": false,
+    "ProcessTreeRetired": true,
+    "StderrText": "",
+    "ExitCode": 0
+  },
+  "Failure": null,
+  "CleanupFailures": []
+}

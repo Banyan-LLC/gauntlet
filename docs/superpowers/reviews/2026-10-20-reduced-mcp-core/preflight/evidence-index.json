@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "preserved_evidence_root": "C:/Users/geoff/Documents/Projects/Banyan/gauntlet/.git/info/reduced-mcp-core/20261020-v1",
+  "files": [
+    {
+      "path": "preflight-arguments.json",
+      "bytes": 154,
+      "sha256": "09247945c8a42bffa763f8ff94a3c37e84d8093a91d36c8f9c6c22fdf53f8e8b"
+    },
+    {
+      "path": "preflight-v1/completion.json",
+      "bytes": 173,
+      "sha256": "3e63ca8b48048f15f16e1bd4f3800be4f0ec36b4aa17dfb3561f60bbc22715ec"
+    },
+    {
+      "path": "preflight-v1/driver-source.ps1",
+      "bytes": 4520,
+      "sha256": "4bd23292922706ef9f1eec87bd74232b3ad84c9b2a221c9e991a0e48c0754ccc"
+    },
+    {
+      "path": "preflight-v1/native-receipt.json",
+      "bytes": 359,
+      "sha256": "fe2b8d1f3261d67098b56dc612b51b9474ad7b179a56308d95b2cc8b76c75633"
+    },
+    {
+      "path": "preflight-v1/source-after.json",
+      "bytes": 20803,
+      "sha256": "dd04f18cccdf3094d8f8e0f2908e7da3dfd77cc729eeb54a75551397de28e220"
+    },
+    {
+      "path": "preflight-v1/source-before.json",
+      "bytes": 20803,
+      "sha256": "dd04f18cccdf3094d8f8e0f2908e7da3dfd77cc729eeb54a75551397de28e220"
+    },
+    {
+      "path": "preflight-v1/start.json",
+      "bytes": 561,
+      "sha256": "a117a234936e61efd9b60c9e3df3b8c8feb19fafabc4a54dc60c0112989a8580"
+    },
+    {
+      "path": "preflight-v1/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "preflight-v1/stdout.log",
+      "bytes": 562,
+      "sha256": "18646b69382b86028ac6d48a16a5e7dc2ca5666610780a1d937d446a1f36d88f"
+    },
+    {
+      "path": "preflight-v2-arguments.json",
+      "bytes": 157,
+      "sha256": "e34341e55f4abf0c0cdc4fbf6847ed4e3c43d3c065d19c205d39b22a2902a609"
+    },
+    {
+      "path": "preflight-v2.ps1",
+      "bytes": 819,
+      "sha256": "68085ace5e407829355367897fe7bcaf0d61105419b29e69cfd7ff9199bbb1f6"
+    },
+    {
+      "path": "preflight-v2/completion.json",
+      "bytes": 172,
+      "sha256": "b97e8735bcad1f20b2f38366f701d8dde050ebf28d4b6fcf4598536b0929f7d2"
+    },
+    {
+      "path": "preflight-v2/driver-source.ps1",
+      "bytes": 4520,
+      "sha256": "4bd23292922706ef9f1eec87bd74232b3ad84c9b2a221c9e991a0e48c0754ccc"
+    },
+    {
+      "path": "preflight-v2/native-receipt.json",
+      "bytes": 357,
+      "sha256": "1d458323a5d301983d92a4217df8c5e681ee88d01f2d41ed1bbc1edf9be56c52"
+    },
+    {
+      "path": "preflight-v2/source-after.json",
+      "bytes": 20803,
+      "sha256": "dd04f18cccdf3094d8f8e0f2908e7da3dfd77cc729eeb54a75551397de28e220"
+    },
+    {
+      "path": "preflight-v2/source-before.json",
+      "bytes": 20803,
+      "sha256": "dd04f18cccdf3094d8f8e0f2908e7da3dfd77cc729eeb54a75551397de28e220"
+    },
+    {
+      "path": "preflight-v2/start.json",
+      "bytes": 564,
+      "sha256": "2b2c55e12a984a6cac1aba79a0d534bfaa7543cc3d2c0e8812d813fbdd3d1873"
+    },
+    {
+      "path": "preflight-v2/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "preflight-v2/stdout.log",
+      "bytes": 367,
+      "sha256": "e578466cb52778c3381240206c13e203e0ab16e0183234b24d37edcdcb2d6497"
+    },
+    {
+      "path": "preflight.ps1",
+      "bytes": 793,
+      "sha256": "00516c0b31f48b4ca5119912f0696aec6f1dd9c59a9e74cb3e26e781121b5ef7"
+    },
+    {
+      "path": "spec-round1-input.json",
+      "bytes": 424,
+      "sha256": "ce720c3a0b5d59b28b714cfdc4d8a7be8c99fe326635f14008bf540131d64a24"
+    },
+    {
+      "path": "spec-round1-prompt.txt",
+      "bytes": 21284,
+      "sha256": "3bcf5c5acd3cb8889a04120b339d72cf633d6b8d9b84eb900ea3efa7794b8a37"
+    }
+  ],
+  "first_probe": "Refused path string mismatch; no live round consumed. Original exit12, retired=true, source stable.",
+  "second_probe": "Exact manifest path used; full premise gate valid. Original exit0, retired=true, source stable."
+}

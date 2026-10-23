@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "client_date": "2026-10-20",
+  "approval": "Spec approved. Continue with the implementation plan for the reduced MCP core.",
+  "scope": "Written spec approval and implementation planning only; product implementation still awaits reviewed plan and execution-method choice.",
+  "artifact": "docs/superpowers/specs/2026-10-20-reduced-mcp-core-design.md",
+  "artifact_commit": "5c93d6b29d507ace5e7ad901e75a188924204ba2",
+  "artifact_blob": "b3326f11143be16b0f7a4a674f0c2492a6bd26d1",
+  "review_evidence_commit": "05e6699"
+}

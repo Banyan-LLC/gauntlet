@@ -1,0 +1,719 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-10-21T23:23:37.2733147Z",
+  "archive_root": "C:/Users/geoff/Documents/Projects/Banyan/gauntlet/.git/info/reduced-mcp-core/20261021-execution",
+  "prior_manifests": [
+    "execution-evidence-task0.json",
+    "execution-evidence-task1.json",
+    "execution-evidence-task2.json",
+    "execution-evidence-task3.json",
+    "execution-evidence-task4.json",
+    "execution-evidence-task5.json",
+    "execution-evidence-task6.json",
+    "execution-evidence-task7.json",
+    "execution-evidence-task8-finalfix.json",
+    "execution-evidence-task8.json"
+  ],
+  "files": [
+    {
+      "path": "app-server-migration/fetch-wheels-v1.log",
+      "bytes": 460,
+      "sha256": "4b021b0384bd0b8dc04e90e29b0744ff085d928e62d1c9f3371333f9862e2ff5"
+    },
+    {
+      "path": "app-server-migration/fetch-wheels-v1.py",
+      "bytes": 1867,
+      "sha256": "6d67a2fe671997abcb4295813e024bf105b8f987ca1277e114c5e6d0313fd679"
+    },
+    {
+      "path": "app-server-migration/lens-conformance-v1.md",
+      "bytes": 1151,
+      "sha256": "99fa15f50159d0f09b4469dea15eb3a40a19457afeb6103c23a35b0214061060"
+    },
+    {
+      "path": "app-server-migration/lens-errors-v1.md",
+      "bytes": 363,
+      "sha256": "ddfdb54ebdc8c097cd6b07c3534e7cabad2ef590fabbf9db865ca500d96b84d4"
+    },
+    {
+      "path": "app-server-migration/lens-failclosed-v1.md",
+      "bytes": 522,
+      "sha256": "ce40608865d4febe02d0b29fc76475619286c3cfcd1e75888bc7fca037312444"
+    },
+    {
+      "path": "app-server-migration/lens-parity-v1.md",
+      "bytes": 421,
+      "sha256": "f9bd4004ffc23cdb8637933319930d0f48fe305694f7c825d86886918680cd95"
+    },
+    {
+      "path": "app-server-migration/lens-paths-v1.md",
+      "bytes": 489,
+      "sha256": "e6c2a16f6eb6217d4853ef31ad52a5e9424eb0097bf856dcb1e357d24656f27a"
+    },
+    {
+      "path": "app-server-migration/lens-resources-v1.md",
+      "bytes": 482,
+      "sha256": "da013d61c2437dcac22961845288f9bd4369798b0f59fc0615226b7bc2ea5623"
+    },
+    {
+      "path": "app-server-migration/openai_codex-0.163.0-py3-none-any.whl",
+      "bytes": 99039,
+      "sha256": "d151e3ff8188bc2c07a962855d598b93bf87a49ec3440810e45a5f2e1167d99e"
+    },
+    {
+      "path": "app-server-migration/original-approved-spec.md",
+      "bytes": 19020,
+      "sha256": "c876b394ffff4f9dc017b2b69bb737ce528bf55c08a06ee0c8b389de192e0708"
+    },
+    {
+      "path": "app-server-migration/original-pre-migration-plan.md",
+      "bytes": 61356,
+      "sha256": "96e7af8b11ae39fe612070cd41615ab925dfa67fe0a22faa209dd59dc5c85eee"
+    },
+    {
+      "path": "app-server-migration/plan-draft-v1.md",
+      "bytes": 71797,
+      "sha256": "95ebbc24707917040a7e13a6c46aa6706b203c13e6ed1677c5e6b230f27fc80f"
+    },
+    {
+      "path": "app-server-migration/plan-round3-attempt1-advisory.json",
+      "bytes": 3456,
+      "sha256": "33d851b260f195671bb6b6ef08e5b6a3ee16c8f6f9be8f5171be02ed0f6d9220"
+    },
+    {
+      "path": "app-server-migration/plan-round3-attempt1-originals/round-3-attempt-1-carryover.json",
+      "bytes": 6596,
+      "sha256": "64e80b8c565c7866fed34d2cd39b7c000f31f9946db46ef33a28ed7a06ae1167"
+    },
+    {
+      "path": "app-server-migration/plan-round3-attempt1-originals/round-3-attempt-1-carryover.txt",
+      "bytes": 6335,
+      "sha256": "e3a8e67c2e711e5869c1640ad7bd17a8bd5f91cae48381a35c9984a4bffe85ca"
+    },
+    {
+      "path": "app-server-migration/plan-round3-attempt1-originals/round-3-attempt-1-events.jsonl",
+      "bytes": 6194,
+      "sha256": "2b6062521d07839084a5d99b0ba9d01e60196e3bd41f884384479f5a20e46221"
+    },
+    {
+      "path": "app-server-migration/plan-round3-attempt1-originals/round-3-attempt-1-meta.json",
+      "bytes": 4347,
+      "sha256": "c4f678a124b0ff6defc18220a226feb1ed468586cd19d0d635c281236147d5dc"
+    },
+    {
+      "path": "app-server-migration/plan-round3-attempt1-originals/round-3-attempt-1-process.json",
+      "bytes": 643,
+      "sha256": "91e39b567d82086eb7fd18d3e663da837db436189781cc86a589c6cb499ae91b"
+    },
+    {
+      "path": "app-server-migration/plan-round3-attempt2-originals/round-3-attempt-2-carryover.json",
+      "bytes": 6596,
+      "sha256": "64e80b8c565c7866fed34d2cd39b7c000f31f9946db46ef33a28ed7a06ae1167"
+    },
+    {
+      "path": "app-server-migration/plan-round3-attempt2-originals/round-3-attempt-2-carryover.txt",
+      "bytes": 6335,
+      "sha256": "e3a8e67c2e711e5869c1640ad7bd17a8bd5f91cae48381a35c9984a4bffe85ca"
+    },
+    {
+      "path": "app-server-migration/plan-round3-attempt2-originals/round-3-attempt-2-events.jsonl",
+      "bytes": 3806,
+      "sha256": "8191c9da79c9dc5693fa36cc7484124b87d10fb1812c2ec2d58979ae4f4fcf74"
+    },
+    {
+      "path": "app-server-migration/plan-round3-attempt2-originals/round-3-attempt-2-meta.json",
+      "bytes": 4522,
+      "sha256": "dd48af0d029512487b746dd1b4bdc979b8dc83aff9b0cb638705693220d3a85e"
+    },
+    {
+      "path": "app-server-migration/plan-round3-attempt2-originals/round-3-attempt-2-process.json",
+      "bytes": 439,
+      "sha256": "f93d2b22c7c08e8e96a198697ec7aea29e383b7f95f6e3b612f97c3ac3d9ff1b"
+    },
+    {
+      "path": "app-server-migration/plan-round3-attempt2-originals/round-3-attempt-2-usage.json",
+      "bytes": 260,
+      "sha256": "5441ec2335cc70c27bae3a9eeebe4785dc5fb8c4695fdef085c5213740f76569"
+    },
+    {
+      "path": "app-server-migration/plan-round3-attempt2-originals/round-3-attempt-2-verdict.raw.json",
+      "bytes": 1148,
+      "sha256": "5ac6b1c79a7ae1687ce8ead714af64e777b2715d2fd813c6132db03ab5315ffb"
+    },
+    {
+      "path": "app-server-migration/plan-round3-attempt2-originals/round-3-verdict.json",
+      "bytes": 1048,
+      "sha256": "fbf12007e4671d81bfedc849da0db1d466c6b831106001ac5f7a007cecd31d03"
+    },
+    {
+      "path": "app-server-migration/plan-round3-console-v1.log",
+      "bytes": 366,
+      "sha256": "09e3487fd586fbd81010850b1741dc55886db2b4ab7d581e9c71e1e28a033322"
+    },
+    {
+      "path": "app-server-migration/plan-round3-console-v2.log",
+      "bytes": 1279,
+      "sha256": "f8cb39cd1a8659a25425bf82f26c60a8d9cb86c088f271b325455f5300ced6bc"
+    },
+    {
+      "path": "app-server-migration/plan-round3-input-v1.json",
+      "bytes": 158,
+      "sha256": "72cb7fb9ff2b35f81b5804527c6c1d51f171ad7670b725f72061160c481faead"
+    },
+    {
+      "path": "app-server-migration/plan-round3-owner-v1/2c36866358ce44179b87483d815afc3b-budget.bin",
+      "bytes": 49,
+      "sha256": "380bc0318e4be3292e7258626e07c1356f9f2aa946d922043bb0e2da7be9b47f"
+    },
+    {
+      "path": "app-server-migration/plan-round3-owner-v1/2c36866358ce44179b87483d815afc3b-receipt.json",
+      "bytes": 2288,
+      "sha256": "1d839de535e3810ed3c664dd00cb885c56fa8e99cd835693d202630fae2d7c44"
+    },
+    {
+      "path": "app-server-migration/plan-round3-owner-v2/e2b6d6281bca4776be5e1130d4e1d8e7-budget.bin",
+      "bytes": 49,
+      "sha256": "ecfe4939586ccd6dddb027f752d3c4d465675ae6718fdc352ed3fa5c101a8f9f"
+    },
+    {
+      "path": "app-server-migration/plan-round3-owner-v2/e2b6d6281bca4776be5e1130d4e1d8e7-receipt.json",
+      "bytes": 3689,
+      "sha256": "7592e9298960baa7c70eede40374e7334bfb181d7545ffa90888e43e18b50498"
+    },
+    {
+      "path": "app-server-migration/plan-round3-prompt-v1.txt",
+      "bytes": 106019,
+      "sha256": "1fff88d2a733a720ddcf04ca69ccf5f10244f1a04523b7b028a91579c04e248e"
+    },
+    {
+      "path": "app-server-migration/plan-round3-prompt-v2.txt",
+      "bytes": 109680,
+      "sha256": "d6712e4e57c40223fd1b0f74f2c1b0cedc27b70a2d1eb51cb47c622c0eb9783b"
+    },
+    {
+      "path": "app-server-migration/plan-round4-console-v1.log",
+      "bytes": 2160,
+      "sha256": "8bee029466588a0c78af4f3d9c4608741822e38b9219e8518471367107109a1e"
+    },
+    {
+      "path": "app-server-migration/plan-round4-originals/round-4-attempt-1-carryover.json",
+      "bytes": 8061,
+      "sha256": "2d99bda70554c6a67105a46f57cfeca0e62448c98b0e105549af0cb1aa0d8c90"
+    },
+    {
+      "path": "app-server-migration/plan-round4-originals/round-4-attempt-1-carryover.txt",
+      "bytes": 7610,
+      "sha256": "850c02ac7f74d07c614bb577060b41afcf123e730970b4e27f38a311ad4cbd8e"
+    },
+    {
+      "path": "app-server-migration/plan-round4-originals/round-4-attempt-1-events.jsonl",
+      "bytes": 4579,
+      "sha256": "163b7d8cf614c568966d90b8b75d4d83b9389df1752deef4776a8763b68597bb"
+    },
+    {
+      "path": "app-server-migration/plan-round4-originals/round-4-attempt-1-meta.json",
+      "bytes": 4522,
+      "sha256": "4d7d36f349b3da57f38f426637043058daa5e0d20a96ac3145ee57c17715cb5c"
+    },
+    {
+      "path": "app-server-migration/plan-round4-originals/round-4-attempt-1-process.json",
+      "bytes": 559,
+      "sha256": "23104b22742eaa360efefdcd07394050f240989618c960af8dcba49f29d3f7b5"
+    },
+    {
+      "path": "app-server-migration/plan-round4-originals/round-4-attempt-1-usage.json",
+      "bytes": 258,
+      "sha256": "4611fb163006499ea27f43486e1c29199ce0a9f00a8c050cfb05242bbf0c9138"
+    },
+    {
+      "path": "app-server-migration/plan-round4-originals/round-4-attempt-1-verdict.raw.json",
+      "bytes": 1927,
+      "sha256": "978ac2a62cc8c9dd293b005ec62877fa2081163897f820c0c369eec07dac6fc9"
+    },
+    {
+      "path": "app-server-migration/plan-round4-originals/round-4-verdict.json",
+      "bytes": 1927,
+      "sha256": "978ac2a62cc8c9dd293b005ec62877fa2081163897f820c0c369eec07dac6fc9"
+    },
+    {
+      "path": "app-server-migration/plan-round4-owner-v1/1db10fa5397d432e9462f2ff7f34581c-budget.bin",
+      "bytes": 49,
+      "sha256": "8f910fdc3506b1f8b6878cf1f0ea85f2e4f865fc43a8a22c9c3469e1e3d74fb5"
+    },
+    {
+      "path": "app-server-migration/plan-round4-owner-v1/1db10fa5397d432e9462f2ff7f34581c-receipt.json",
+      "bytes": 4863,
+      "sha256": "2f6610fd68f9d4ce2d2bb740cbab4982d174f86b989f9d54931fa3eb82b7a358"
+    },
+    {
+      "path": "app-server-migration/plan-round4-prompt-v1.txt",
+      "bytes": 110140,
+      "sha256": "e54e899c16a82bcfcf0c014e46a0d2af9ba890864376cdf4c191cffe5e37464c"
+    },
+    {
+      "path": "app-server-migration/plan-round5-console-v1.log",
+      "bytes": 2137,
+      "sha256": "8597c389150859c5402fd1d840f64315d5e159c267be196798afc48be2ade71e"
+    },
+    {
+      "path": "app-server-migration/plan-round5-originals/round-5-attempt-1-carryover.json",
+      "bytes": 10997,
+      "sha256": "9d7ce2030b2acecefa781967926b4cc405416469b535863caeee0ea3a76fe562"
+    },
+    {
+      "path": "app-server-migration/plan-round5-originals/round-5-attempt-1-carryover.txt",
+      "bytes": 10261,
+      "sha256": "6c68631043351e2ec875b3e0696358b2c52fdc8dc3ada22c68ba759c0c504dbd"
+    },
+    {
+      "path": "app-server-migration/plan-round5-originals/round-5-attempt-1-events.jsonl",
+      "bytes": 4726,
+      "sha256": "7b112d2210ebf701bc3b838be3cd51a430f0218a457f43633092a1ca2ac963ec"
+    },
+    {
+      "path": "app-server-migration/plan-round5-originals/round-5-attempt-1-meta.json",
+      "bytes": 4523,
+      "sha256": "c76d137a739a0b9c31b7809a7fbac007a3eecfa3ee4b783c0991669b7ac9d73e"
+    },
+    {
+      "path": "app-server-migration/plan-round5-originals/round-5-attempt-1-process.json",
+      "bytes": 439,
+      "sha256": "8e61c8e02fa19c42db57d9808dcace5eedc2e1b7790965f289fea9d094745609"
+    },
+    {
+      "path": "app-server-migration/plan-round5-originals/round-5-attempt-1-usage.json",
+      "bytes": 258,
+      "sha256": "9659381bbfc475a07e4c0e3168ff83d165d8dd482e2a99ec3f088851735268e8"
+    },
+    {
+      "path": "app-server-migration/plan-round5-originals/round-5-attempt-1-verdict.raw.json",
+      "bytes": 2048,
+      "sha256": "3258e4b78648f622583543b87700b50ea54483bfe614e6b699a60c195f67ccb4"
+    },
+    {
+      "path": "app-server-migration/plan-round5-originals/round-5-verdict.json",
+      "bytes": 1906,
+      "sha256": "55d4f16689af2bfd55c3ebc0f4b50e718afd21ec8bc57c9b114fb695eee1c640"
+    },
+    {
+      "path": "app-server-migration/plan-round5-owner-v1/1aa31777dd694deaa5bb968f4923c6b4-budget.bin",
+      "bytes": 49,
+      "sha256": "42ef0d16a81888784cd6dc8f81a536949314d49207e7577fac8e1096bf76f266"
+    },
+    {
+      "path": "app-server-migration/plan-round5-owner-v1/1aa31777dd694deaa5bb968f4923c6b4-receipt.json",
+      "bytes": 4834,
+      "sha256": "6e0f23b26db3a79a6b18f0152328e066eaaae7120ab349b7ed7636a0cd4bee64"
+    },
+    {
+      "path": "app-server-migration/plan-round5-prompt-v1.txt",
+      "bytes": 111097,
+      "sha256": "a3a89ec5808d001243fdf3c18a38234d792d220ea890134622498cd0a3cc8f66"
+    },
+    {
+      "path": "app-server-migration/plan-round6-console-v1.log",
+      "bytes": 1047,
+      "sha256": "38e885ce2074a1a1b3b03bda3f88de217dc9f427701a159bd567e44dcc70c793"
+    },
+    {
+      "path": "app-server-migration/plan-round6-originals/round-6-attempt-1-carryover.json",
+      "bytes": 13700,
+      "sha256": "a5b2cff2fa05360f661167dee07c640981d47dd421e9c7b51bdd54b5ff0c76b3"
+    },
+    {
+      "path": "app-server-migration/plan-round6-originals/round-6-attempt-1-carryover.txt",
+      "bytes": 12679,
+      "sha256": "6f053c5bbd74ea159f2b03c54cd594ea2aeb8792a61bb7b52c1b4ce954e4dcb0"
+    },
+    {
+      "path": "app-server-migration/plan-round6-originals/round-6-attempt-1-events.jsonl",
+      "bytes": 3498,
+      "sha256": "ca2ffed8eb0e687f496e3f3739ddaf806be846c1426413bfc4042bf2034b3a91"
+    },
+    {
+      "path": "app-server-migration/plan-round6-originals/round-6-attempt-1-meta.json",
+      "bytes": 4523,
+      "sha256": "6d022b78447da5d3125d9feefaa76694568fc6deef96c19422b049725212140a"
+    },
+    {
+      "path": "app-server-migration/plan-round6-originals/round-6-attempt-1-process.json",
+      "bytes": 439,
+      "sha256": "78bef467c0e0e67e6050767dc5c8d9a907f0dceb74f068eccc0f118b0315356b"
+    },
+    {
+      "path": "app-server-migration/plan-round6-originals/round-6-attempt-1-usage.json",
+      "bytes": 258,
+      "sha256": "7ed928ea9b2f3af7bda60ff4283f6901fc084127ff49b15acf11adcaac589b11"
+    },
+    {
+      "path": "app-server-migration/plan-round6-originals/round-6-attempt-1-verdict.raw.json",
+      "bytes": 870,
+      "sha256": "940bf7b46046f741a6ba3c85524bfa4ed770f4bc99c46b484fe30f30e9cadaeb"
+    },
+    {
+      "path": "app-server-migration/plan-round6-originals/round-6-verdict.json",
+      "bytes": 812,
+      "sha256": "aaf9f1bd9340fad15930a1ea19358b0fde6c7154556aff97a1c64f83a4d52a33"
+    },
+    {
+      "path": "app-server-migration/plan-round6-owner-v1/f1f40e4f74424526b58f1c0b8a9d3b52-budget.bin",
+      "bytes": 49,
+      "sha256": "c069c56e71ada6aaec51687accd27155ccc36a0fdb317e6d7b77fc0f54f28943"
+    },
+    {
+      "path": "app-server-migration/plan-round6-owner-v1/f1f40e4f74424526b58f1c0b8a9d3b52-receipt.json",
+      "bytes": 3378,
+      "sha256": "7952a5ea90bd545427c21e51f2c6ece9e0b0097f65f274d1b552090584932218"
+    },
+    {
+      "path": "app-server-migration/plan-round6-prompt-v1.txt",
+      "bytes": 111852,
+      "sha256": "7eaef436996f8ed65dc84ec2556fd8f8a7c877df44f539d1a6b556ed95827a20"
+    },
+    {
+      "path": "app-server-migration/plan-round7-console-v1.log",
+      "bytes": 487,
+      "sha256": "7867d2430ae04fe863e42541bc854cb1053aea53e4ccc0dbc79607fdf9e6e6d6"
+    },
+    {
+      "path": "app-server-migration/plan-round7-originals/round-7-attempt-1-carryover.json",
+      "bytes": 14877,
+      "sha256": "ed2bcd32e5cf8cbc60153c6cf4aad3e3230afa0fda44d9d8655c14c02b2940ec"
+    },
+    {
+      "path": "app-server-migration/plan-round7-originals/round-7-attempt-1-carryover.txt",
+      "bytes": 13761,
+      "sha256": "81b97a5ab71b931b42450899aeae63438c2f3427dc05551ca0bbfe72130f41c7"
+    },
+    {
+      "path": "app-server-migration/plan-round7-originals/round-7-attempt-1-events.jsonl",
+      "bytes": 2853,
+      "sha256": "cd2076627c0c22759368a9698b8e178de0b14d8f8eeabf4fa5a18462e5384a11"
+    },
+    {
+      "path": "app-server-migration/plan-round7-originals/round-7-attempt-1-meta.json",
+      "bytes": 4523,
+      "sha256": "bf32cd746de1d617881ef3dbcd76d220e944d00c5f318d77b399134580a3c2b2"
+    },
+    {
+      "path": "app-server-migration/plan-round7-originals/round-7-attempt-1-process.json",
+      "bytes": 439,
+      "sha256": "7745c8e381092132ee31f22bd7ff701a26d51b3e972f807529de6f4e850e19eb"
+    },
+    {
+      "path": "app-server-migration/plan-round7-originals/round-7-attempt-1-usage.json",
+      "bytes": 258,
+      "sha256": "9cfb0d01c1474da409521d8bc7c7cad1fb0e9edb87135762c239cc993afe7544"
+    },
+    {
+      "path": "app-server-migration/plan-round7-originals/round-7-attempt-1-verdict.raw.json",
+      "bytes": 252,
+      "sha256": "5f0219d1928c513f1212aeb14615e0b2752a87ef5af7fa7d90b60b861b4742af"
+    },
+    {
+      "path": "app-server-migration/plan-round7-originals/round-7-verdict.json",
+      "bytes": 252,
+      "sha256": "5f0219d1928c513f1212aeb14615e0b2752a87ef5af7fa7d90b60b861b4742af"
+    },
+    {
+      "path": "app-server-migration/plan-round7-owner-v1/510b75b8037c44c49861258737dedfc1-budget.bin",
+      "bytes": 49,
+      "sha256": "949a30c408c6432f95d0fc8f18be39ffaa14e539e9a6d68e6e79fba45f016562"
+    },
+    {
+      "path": "app-server-migration/plan-round7-owner-v1/510b75b8037c44c49861258737dedfc1-receipt.json",
+      "bytes": 2630,
+      "sha256": "cccae335a2d3c6a3e28bdb4e7cea6993973f3c67b2820df76fbe1c41ed66a27e"
+    },
+    {
+      "path": "app-server-migration/plan-round7-prompt-v1.txt",
+      "bytes": 113154,
+      "sha256": "a9efe0805b11b5c6272b8f210438f94762023a767e127bc012d8c3860666de80"
+    },
+    {
+      "path": "app-server-migration/pypi-openai-codex.json",
+      "bytes": 39370,
+      "sha256": "ff49c7df21757308c552f6117d21e9e9b45d195deac59106fa9cdb9dbf6b4138"
+    },
+    {
+      "path": "app-server-migration/pypi-packaging-26.2.json",
+      "bytes": 5747,
+      "sha256": "7eea47157cf6e38386b2a0026bd646cbff4b344f9399b22a89e15f5a79f54593"
+    },
+    {
+      "path": "app-server-migration/pypi-runtime-0.163.0.json",
+      "bytes": 8721,
+      "sha256": "3f913067c9e22f28a0f4914949c9443325b50a7361c9e353b780bf261de7b1e4"
+    },
+    {
+      "path": "app-server-migration/sdk-source/openai_codex/__init__.py",
+      "bytes": 2053,
+      "sha256": "9a58d9301d099824b21c15fef2fdc4e98191aa9ee4fb1b9b9026e5d700590bd3"
+    },
+    {
+      "path": "app-server-migration/sdk-source/openai_codex/_approval_mode.py",
+      "bytes": 1685,
+      "sha256": "9cd7dbf7f20529b97adb9291832ed01645befff58d9642670f1fb8b774bd1b62"
+    },
+    {
+      "path": "app-server-migration/sdk-source/openai_codex/_goal.py",
+      "bytes": 16291,
+      "sha256": "b61a1a25322e8d385ded39a1a93f0c4131d5bf0c66461cee89989930d2352643"
+    },
+    {
+      "path": "app-server-migration/sdk-source/openai_codex/_initialize_metadata.py",
+      "bytes": 1863,
+      "sha256": "9ab05330ae46e2c2fc1e6279efeca98789a759f43b19601e887e4772d0f4f6da"
+    },
+    {
+      "path": "app-server-migration/sdk-source/openai_codex/_inputs.py",
+      "bytes": 3122,
+      "sha256": "6b6b92ce54bb65c8eb68585e794207d3c800434a5486d91b38c4eefefdb371ce"
+    },
+    {
+      "path": "app-server-migration/sdk-source/openai_codex/_login.py",
+      "bytes": 5985,
+      "sha256": "0acc5d5e801afbb9b1b73ce2867412031dbb099fb4747713fdaec41b3c02e91b"
+    },
+    {
+      "path": "app-server-migration/sdk-source/openai_codex/_message_router.py",
+      "bytes": 16756,
+      "sha256": "8c1239bae89e3128ea797fd1ed23619bccab5614212908f3cb498f84ea67c396"
+    },
+    {
+      "path": "app-server-migration/sdk-source/openai_codex/_run.py",
+      "bytes": 4295,
+      "sha256": "ca0e0c0d9a2c3ae8606cc5986c93bae100c47583df6c4e5643dc5cc582428263"
+    },
+    {
+      "path": "app-server-migration/sdk-source/openai_codex/_runtime_requirements.py",
+      "bytes": 2481,
+      "sha256": "dab856ff4ff4a02c567b3f362c5b1298b0cdeaed6d2a84384c5dc87765447d28"
+    },
+    {
+      "path": "app-server-migration/sdk-source/openai_codex/_sandbox.py",
+      "bytes": 2443,
+      "sha256": "01ab6cabc1642941ba958b287c34a5475066c934b67e4fd194d78b4bb2eb27b2"
+    },
+    {
+      "path": "app-server-migration/sdk-source/openai_codex/_version.py",
+      "bytes": 906,
+      "sha256": "678f4945d9906b0150a3d84cfc217e06824b9a963e7d248bd4b0d0fb51210658"
+    },
+    {
+      "path": "app-server-migration/sdk-source/openai_codex/api.py",
+      "bytes": 33152,
+      "sha256": "bd9cac51820997fa4d3fa4ac5c24894f45b92da8ba481d49c44cb96dcc9af430"
+    },
+    {
+      "path": "app-server-migration/sdk-source/openai_codex/async_client.py",
+      "bytes": 16245,
+      "sha256": "7d1e291eed8ce7a907b9dafd79580f286451224c12c59302b61918046a01f99c"
+    },
+    {
+      "path": "app-server-migration/sdk-source/openai_codex/client.py",
+      "bytes": 33781,
+      "sha256": "8452afbd8148ea212c94e8a6727468054b175acb0daf95002c84b66b604d05a6"
+    },
+    {
+      "path": "app-server-migration/sdk-source/openai_codex/errors.py",
+      "bytes": 3656,
+      "sha256": "104b435d7e9f293c3327ad59fc7985363503fb4d919cadbb73f943d12a75a615"
+    },
+    {
+      "path": "app-server-migration/sdk-source/openai_codex/generated/__init__.py",
+      "bytes": 71,
+      "sha256": "0fa172a905073649a4c73e2559c8f3c81816da814ebb692ee812d67ae0dcc599"
+    },
+    {
+      "path": "app-server-migration/sdk-source/openai_codex/generated/notification_registry.py",
+      "bytes": 14957,
+      "sha256": "d4d1b15daede7394b70e0a4d5498171fc671a123f6503269c4b651eb936c228f"
+    },
+    {
+      "path": "app-server-migration/sdk-source/openai_codex/generated/v2_all.py",
+      "bytes": 408875,
+      "sha256": "7e76ff20474dc44ef05b66778904d7304fdc930839ed0a0ed98cab603e999289"
+    },
+    {
+      "path": "app-server-migration/sdk-source/openai_codex/models.py",
+      "bytes": 3337,
+      "sha256": "f0a33994b07369711e4d5b2c7a977d20dfbad5d9e0a72b922ca14ce639a6c4fd"
+    },
+    {
+      "path": "app-server-migration/sdk-source/openai_codex/retry.py",
+      "bytes": 1007,
+      "sha256": "0d0d048748a675ea29a2df497ae416d79887d5a69d03453fb7ca7387c4c8af47"
+    },
+    {
+      "path": "app-server-migration/sdk-source/openai_codex/types.py",
+      "bytes": 1910,
+      "sha256": "31a95f0a42e1e4f655663db0473927d102664547f534713ec2040cdb913c8afc"
+    },
+    {
+      "path": "app-server-migration/spec-draft-v1.md",
+      "bytes": 25943,
+      "sha256": "e99d6bfbf0223aeae453421aefd2df1047e0207ce8f81f6838e680c7c44808c2"
+    },
+    {
+      "path": "app-server-migration/spec-round2-console-v1.log",
+      "bytes": 5342,
+      "sha256": "26908272fb7892ac041b80bda899d60c42159eaad3ea0e82b8e6d3c8796c1293"
+    },
+    {
+      "path": "app-server-migration/spec-round2-input-v1.json",
+      "bytes": 217,
+      "sha256": "1b6ae4dec721352a391db450a8ccf45e3f48456357f0abb85ae23ed5e738ffef"
+    },
+    {
+      "path": "app-server-migration/spec-round2-originals/round-2-attempt-1-events.jsonl",
+      "bytes": 8256,
+      "sha256": "841a33e12c9f6c5755442dd8c9eedad775cbee892fc72c99d0d4c2f512bfe033"
+    },
+    {
+      "path": "app-server-migration/spec-round2-originals/round-2-attempt-1-meta.json",
+      "bytes": 4455,
+      "sha256": "56a084b93a584cdd36f59841a8b18c0d6330cc01f0a0b9cf112bd8368091f009"
+    },
+    {
+      "path": "app-server-migration/spec-round2-originals/round-2-attempt-1-process.json",
+      "bytes": 439,
+      "sha256": "8f9b0efd09742f5c37263e14404199cf6856c24c1b851824a0e9fa8595b22e37"
+    },
+    {
+      "path": "app-server-migration/spec-round2-originals/round-2-attempt-1-usage.json",
+      "bytes": 258,
+      "sha256": "51565fb657dc21913b994508560b52d0be9895825d8f765066be3b784b810f6e"
+    },
+    {
+      "path": "app-server-migration/spec-round2-originals/round-2-attempt-1-verdict.raw.json",
+      "bytes": 5465,
+      "sha256": "ae2a06bc89d875c0c19effae55db81a086c755ac0e1456591c65d78466ff13e1"
+    },
+    {
+      "path": "app-server-migration/spec-round2-originals/round-2-verdict.json",
+      "bytes": 5113,
+      "sha256": "f6df705531c48d6a04a805fe3d42f6ab56d774ce4719a18230e31dbb15f9bb89"
+    },
+    {
+      "path": "app-server-migration/spec-round2-owner-v1/6a5049b4b06e442e932d71a651a38fba-budget.bin",
+      "bytes": 49,
+      "sha256": "7663d9076b920dce805a6b82b81961b94c5ccb761f813554fadbdb5cff8bcf0c"
+    },
+    {
+      "path": "app-server-migration/spec-round2-owner-v1/6a5049b4b06e442e932d71a651a38fba-receipt.json",
+      "bytes": 9025,
+      "sha256": "2526fe96ba9f817dfe36301a29cb0b4763cf1aac35eaa07cc8ba8ebd69ba9f1b"
+    },
+    {
+      "path": "app-server-migration/spec-round2-prompt-v1.txt",
+      "bytes": 28504,
+      "sha256": "7246c75dd529f63b1a83ee8bd631d3a2b5f95a757e0a570afab38ed3c1d778b9"
+    },
+    {
+      "path": "app-server-migration/spec-round3-console-v1.log",
+      "bytes": 2122,
+      "sha256": "c7a3231ed034fbaa33b9c535a9891be56b29ae095d01b651b258538f482c0537"
+    },
+    {
+      "path": "app-server-migration/spec-round3-input-v1.json",
+      "bytes": 225,
+      "sha256": "a47fb642b65e743680095811af6b4759516ea6dd25700854460860a26077dc0e"
+    },
+    {
+      "path": "app-server-migration/spec-round3-originals/round-3-attempt-1-carryover.json",
+      "bytes": 8876,
+      "sha256": "df744eb6804efd5cad17c4baf44c074d5a0b666f359017d1c11aa794236fe9a8"
+    },
+    {
+      "path": "app-server-migration/spec-round3-originals/round-3-attempt-1-carryover.txt",
+      "bytes": 8330,
+      "sha256": "b72836452afd61de5a72e41c87e8e1d4b98cd43453fef86d236d71672e97f1f6"
+    },
+    {
+      "path": "app-server-migration/spec-round3-originals/round-3-attempt-1-events.jsonl",
+      "bytes": 4716,
+      "sha256": "c328e4d7f72d8dfa6e025ae30e9a1031eed4ba9bc4b87574a0969ffed852c733"
+    },
+    {
+      "path": "app-server-migration/spec-round3-originals/round-3-attempt-1-meta.json",
+      "bytes": 4517,
+      "sha256": "0188a51c47f59a5f8fc5c56f9342f45c8321156c8bb37f22ce6f2b85802792e6"
+    },
+    {
+      "path": "app-server-migration/spec-round3-originals/round-3-attempt-1-process.json",
+      "bytes": 439,
+      "sha256": "a0d7a1870aeb89cd487238fb00a1ad4e680958914bb25824d7fc2550e40abd26"
+    },
+    {
+      "path": "app-server-migration/spec-round3-originals/round-3-attempt-1-usage.json",
+      "bytes": 258,
+      "sha256": "7c67276b6007608e0c7ba43b46326130ffb49587399e9e239671348f2e626c4e"
+    },
+    {
+      "path": "app-server-migration/spec-round3-originals/round-3-attempt-1-verdict.raw.json",
+      "bytes": 2035,
+      "sha256": "3b0c61c16c8bb6f3d4d0cb3a26bd6c231f7f1a33e04dd2a83bec66de9c5fd0d8"
+    },
+    {
+      "path": "app-server-migration/spec-round3-originals/round-3-verdict.json",
+      "bytes": 1893,
+      "sha256": "e273a6de5fd99588dfb4cd023c485d9f675cf72ef3b320875670beeedd46ba06"
+    },
+    {
+      "path": "app-server-migration/spec-round3-owner-v1/6197c81122034c339a93c8a8fb81ee4f-budget.bin",
+      "bytes": 49,
+      "sha256": "3680ebce3d53c5f78a99bb164b025987da705697f7563ed87e9fb2e061294476"
+    },
+    {
+      "path": "app-server-migration/spec-round3-owner-v1/6197c81122034c339a93c8a8fb81ee4f-receipt.json",
+      "bytes": 4732,
+      "sha256": "07790682a4c5cae6f766bbc4179f17d2e5117e16d67da800b8484db5d24ffaa6"
+    },
+    {
+      "path": "app-server-migration/spec-round3-prompt-v1.txt",
+      "bytes": 49887,
+      "sha256": "170ee3577db9852c7ef6ebf3eba446e3d39de25f3ebe41a300d15b79b40bf2e3"
+    },
+    {
+      "path": "app-server-migration/wheelhouse-v1/openai_codex_cli_bin-0.163.0-py3-none-win_amd64.whl",
+      "bytes": 153991643,
+      "sha256": "b759f212cc0deec6da9f297800797232c73d3f0d963842deaa02df965ee0b8b6"
+    },
+    {
+      "path": "app-server-migration/wheelhouse-v1/openai_codex-0.163.0-py3-none-any.whl",
+      "bytes": 99039,
+      "sha256": "d151e3ff8188bc2c07a962855d598b93bf87a49ec3440810e45a5f2e1167d99e"
+    },
+    {
+      "path": "app-server-migration/wheelhouse-v1/packaging-26.2-py3-none-any.whl",
+      "bytes": 100195,
+      "sha256": "5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e"
+    },
+    {
+      "path": "app-server-migration/wheelhouse-v1/verification.json",
+      "bytes": 532,
+      "sha256": "1defd331424b8835db2eb3af8424454dd04c0d06690bed04efb07a9fc8338e9f"
+    },
+    {
+      "path": "task8-powershell-v2-console.log",
+      "bytes": 342863,
+      "sha256": "b92ffaf6a53ede8c54165909fd8b48b80e9482d3ae72803c7f2a0caae8618418"
+    },
+    {
+      "path": "task8-powershell-v2-source.json",
+      "bytes": 292,
+      "sha256": "61c165325db551b62db7f434778a6c4e860e702c1e199b396f906b8276413fac"
+    },
+    {
+      "path": "task8-powershell-v2/5c9423d4187c431580e98c330e636e13-budget.bin",
+      "bytes": 49,
+      "sha256": "e3291ef68e421311bcf168c0a5961ae79c1c528b1127c2024a22462e72a7aa3b"
+    },
+    {
+      "path": "task8-powershell-v2/5c9423d4187c431580e98c330e636e13-receipt.json",
+      "bytes": 458259,
+      "sha256": "21dc7bd47e5189eb8993adcff53db3b8b20e855758ead6f33303bc9a7726b5be"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "round": 3,
+  "attempt": 1,
+  "timestamp": "2026-10-21T23:07:39.1259892Z",
+  "prompt_sha256": "0df5fe0d7a66ba0c3696b11dbe364a951f42a6e683dd17b50e3ab97b8bd67be0",
+  "cli_sha256": "f6dbf48cb70f62649c645f26c87dc9bf84cc36986202dfad8e12fb5b8ca70312",
+  "cli_version": "0.163.0-alpha.10.2",
+  "ExitCode": 0,
+  "StartFailed": false,
+  "TimedOut": false,
+  "ErrorMessage": null,
+  "StderrText": "Failed to write last message file \"docs\\\\superpowers\\\\reviews\\\\2026-10-20-reduced-mcp-core\\\\plan\\\\round-3-attempt-1-verdict.raw.json\": The system cannot find the path specified. (os error 3)\n",
+  "ProcessTreeRetired": false
+}

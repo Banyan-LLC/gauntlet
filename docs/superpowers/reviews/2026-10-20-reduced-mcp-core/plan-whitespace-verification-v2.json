@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "supersedes_whitespace_scope": "plan-final-verification.json",
+  "initial_documentation_check": "Refused generated carry-over final blank line; no evidence was edited.",
+  "retained_original": "docs/superpowers/reviews/2026-10-20-reduced-mcp-core/plan/round-2-attempt-1-carryover.txt",
+  "sha256": "e3a8e67c2e711e5869c1640ad7bd17a8bd5f91cae48381a35c9984a4bffe85ca",
+  "check_scope": "All staged documentation except exact generated round2 events.jsonl and carryover.txt, whose original final blank lines and exact hashes are preserved.",
+  "product_tests": "Not run: plan stage only."
+}

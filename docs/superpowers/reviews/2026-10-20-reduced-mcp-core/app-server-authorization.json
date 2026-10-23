@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "date": "2026-10-21",
+  "instruction": "Proceed with the app-server migration through the Python SDK. Amend the spec and plan, preserve all evidence and review history, and prove the full Claude↔Codex workflow before publishing the PR.",
+  "execution_method": "native (preserved prior selection)",
+  "review_route": "local branch first, then one authoritative PR round (preserved prior selection)",
+  "publication_gate": "real complete Claude-to-Codex finding, committed fix and same-conversation closure",
+  "approval_or_merge_authorized": false,
+  "prior_spec_blob": "b3326f11143be16b0f7a4a674f0c2492a6bd26d1",
+  "pre_amendment_head": "b8bd4d883ff982f0bbab5b8930b7cce9f58c76a0",
+  "scope": "Amend the current host integration; retain the model-neutral core, legacy mode and all existing evidence/review history. No prerequisite review waiver is inherited."
+}

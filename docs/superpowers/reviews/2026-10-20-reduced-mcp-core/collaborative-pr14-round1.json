@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "source_head": "ec29d1983beb9e3edf2b3b734d911f88fdab3ec8",
+  "review_id": "a403d262abcd45b5940e0d4f55958523",
+  "revision_id": "c56297edd48d476da931da257d2aa260",
+  "verdict_event_id": "424be810cb3344fabcb3ee07f1e59f76",
+  "canonical_status": "changes_requested",
+  "original_findings": [
+    {
+      "record": {
+        "severity": "important",
+        "location": "gauntlet-review/python/gauntlet_review/collaborative/policy.py:26",
+        "issue": "The verdict accepts the snapshot digest as coverage_digest, and open_review labels that same header-and-manifest digest as manifest_digest. The approved attestation requires the exact complete change-manifest digest; docs/collaborative-mcp.md:188-189 teaches the same wrong value.",
+        "suggestion": "Compute and expose a distinct digest of the complete ordered change manifest, validate coverage_digest against it, and correct the guide and protocol tests.",
+        "id": "r2-5faf990621240ce2fe9b09161bf984e1",
+        "review_id": "a403d262abcd45b5940e0d4f55958523",
+        "revision_id": "c56297edd48d476da931da257d2aa260",
+        "round": 2,
+        "index": 0
+      },
+      "digest": "1251329395b01f7a3f88f045049aba5b649121119ec13badc7ea3c12f5958b5d",
+      "disposition": "outstanding",
+      "event_id": "424be810cb3344fabcb3ee07f1e59f76",
+      "snapshot_digest": "0e1db9a916c94ee07383acda83c25deee88f2db160e27b6557bd564e0da5f040"
+    },
+    {
+      "record": {
+        "severity": "important",
+        "location": "gauntlet-review/python/gauntlet_review/collaborative/policy.py:53-55",
+        "issue": "recommendation_id receives only round, index and finding content. Identical findings in different review series therefore get the same ID, contrary to the required review-ID namespace; the legacy helper confirms no review ID is mixed into its hash.",
+        "suggestion": "Include the review ID in deterministic ID derivation and validation while preserving the bounded ID shape; test identical findings in separate series.",
+        "id": "r2-34493f4d8fb121bd8127199f8cc5be0d",
+        "review_id": "a403d262abcd45b5940e0d4f55958523",
+        "revision_id": "c56297edd48d476da931da257d2aa260",
+        "round": 2,
+        "index": 1
+      },
+      "digest": "f777db5c4cbdea83cdfd74a53fec0a9904983d8907d0c734b29288a4a52f743c",
+      "disposition": "outstanding",
+      "event_id": "424be810cb3344fabcb3ee07f1e59f76",
+      "snapshot_digest": "0e1db9a916c94ee07383acda83c25deee88f2db160e27b6557bd564e0da5f040"
+    },
+    {
+      "record": {
+        "severity": "important",
+        "location": "gauntlet-review/python/gauntlet_review/collaborative/store.py:225-231",
+        "issue": "Rollback or connection.close errors in the _connection finally block escape outside its typed SQLite handlers and can replace the initiating failure. After a committed write, a close failure becomes the core's generic INTERNAL_ERROR rather than a structured uncertain storage outcome.",
+        "suggestion": "Handle cleanup failures as typed storage errors, preserve the primary cause and committed-or-uncertain state, and cover rollback and close failures around commits.",
+        "id": "r2-dfbac36ce12e527a9400371979b45ee7",
+        "review_id": "a403d262abcd45b5940e0d4f55958523",
+        "revision_id": "c56297edd48d476da931da257d2aa260",
+        "round": 2,
+        "index": 2
+      },
+      "digest": "8e46cda1084e8635d12cc3ef6a3b1d60e598c323d5ff882ffe862448810fde11",
+      "disposition": "outstanding",
+      "event_id": "424be810cb3344fabcb3ee07f1e59f76",
+      "snapshot_digest": "0e1db9a916c94ee07383acda83c25deee88f2db160e27b6557bd564e0da5f040"
+    },
+    {
+      "record": {
+        "severity": "important",
+        "location": "tests/support/collaborative_process.py:1296-1332",
+        "issue": "The shielded AnyIO deadline scope can suppress its own cancellation during transport teardown. Execution then reaches protocol_finished and writes completed=true without requiring observed root reaping, tree retirement, and settled readers/writer. This can produce an internally inconsistent native custody receipt.",
+        "suggestion": "Check whether teardown scope was cancelled and derive completed only from the observed retirement and I/O flags; persist a failed partial receipt on deadline.",
+        "id": "r2-3c0a08cedf832c8481420c9e840dafee",
+        "review_id": "a403d262abcd45b5940e0d4f55958523",
+        "revision_id": "c56297edd48d476da931da257d2aa260",
+        "round": 2,
+        "index": 3
+      },
+      "digest": "5533d789bce00a67bb32239b3b6ff1ecdc61751a5d3df77120048c79630491ea",
+      "disposition": "outstanding",
+      "event_id": "424be810cb3344fabcb3ee07f1e59f76",
+      "snapshot_digest": "0e1db9a916c94ee07383acda83c25deee88f2db160e27b6557bd564e0da5f040"
+    }
+  ],
+  "native_complete_read_verification": {
+    "required_artifacts": 235,
+    "all_required_bytes_verified": true,
+    "turns": 7,
+    "original_worker_exit": 0,
+    "native_tree_retired": true
+  },
+  "original_archive": "app-server-migration/collaborative-pr14-01",
+  "sha256": {
+    "acceptance.json": "4550c7f3e56ee0c7b68db9744ae916d482926f847ca2eec6a1e52ad007531ab1",
+    "canonical-records.json": "5c80efdc01c36213854e263712d4ca3941aed1d05ed15427851ae66a9653e5e2",
+    "closure.json": "f5f06992c49c3ff7009c3f3a2d3ffc2249aee701f0f862d72e0f9cc0547fc9f8",
+    "peer-history.json": "8efb937ae6a73c6185395f842dcea5a9ceb43e9966d58cfdaeae8aac9f652ad3",
+    "native-codex-transcript.jsonl": "4bb206cda2657d8175ce1a2649e0f50b088431bad95c2286439c70811a30aa60",
+    "closed-files.json": "5923c8f8a14388448f74b6bf4f038a888c7b805588e9a75ce462eb77e1b4988e"
+  },
+  "author_response_not_a_peer_disposition": {
+    "r2-5faf990621240ce2fe9b09161bf984e1": "The existing attestation hashes the canonical complete manifest together with its repository/ref/OID/policy header. It binds every manifest byte, with stronger snapshot context than a detached rows hash. Clarify the returned manifest_digest value in the operator guide; a real control rejects detached/altered manifest digests and accepts the exact bound value. No persisted receipt or coverage contract is rewritten.",
+    "r2-34493f4d8fb121bd8127199f8cc5be0d": "The approved plan explicitly preserves the legacy local ID and namespaces it by (review_id,id). Each immutable record/digest and request includes review_id; foreign records/digests are rejected. A real two-series control produces the same local ID, proves distinct namespace/digest, and refuses both foreign carryover and a foreign whole record. Clarify the guide; preserve all original IDs/history.",
+    "r2-dfbac36ce12e527a9400371979b45ee7": "Eight original regressions failed, then passed after the shared SQLite cleanup fix. Preserve typed primary codes/causes and all cleanup failures, attempt close even after transaction-state/rollback failure, propagate real cancellation, and expose typed uncertainty after a durable commit; exact retry recovers the original one event.",
+    "r2-3c0a08cedf832c8481420c9e840dafee": "The real AnyIO deadline regression reported completed=True/continued before the fix. Teardown now requires a completed scope, explicit root/tree/I/O observations and the inherited deadline before success. Regression plus normal transport/sibling controls passed."
+  },
+  "boundary": "All four canonical findings remain outstanding in the original record. Only a later peer verdict can assign original-ID/digest carryover dispositions. No author closure, ID replacement, counter reset, GitHub approval or merge.",
+  "additional_same_class_hardening": {
+    "pre_gate_findings": "Typed-error, conformance and parity lenses identified startup duplicate unguarded rollback and ambient sys.exception capture in the initial working fix; full original messages/reports retained.",
+    "reproduction": "Ten additional real SQLite cases RED: startup schema/corrupt/cancellation plus rollback or transaction-state observation and close errors; successful reads/durable mutations with close error inside an unrelated already-handled CoreError or cancellation.",
+    "fix": "Capture only a local propagating operation exception in explicit mapped/BaseException handlers; initialize primary=None. Delegate startup rollback to the shared guarded handler. All18 cleanup regressions plus2 separate binding controls GREEN20, original exit0/full native retirement.",
+    "preservation": "Earlier eight-case GREEN and initial full matrix475-pass/32-custody-pass evidence remain historical; the final matrix must cover the expanded final working bytes.",
+    "native_timeout_observation": "The next full matrix refused at one normal MCP startup probe before starting suites: zero protocol/control output, original exit74, timed_out=true, root/tree/I/O retired. No nested transport receipt existed. Three identical10-second startup controls and the canceled-teardown regression subsequently passed. Original failure retained; no timeout/profile increase or false pass. Fresh whole matrix still required."
+  }
+}

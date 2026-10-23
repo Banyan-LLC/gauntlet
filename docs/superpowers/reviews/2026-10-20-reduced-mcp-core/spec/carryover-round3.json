@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "round": 3,
+  "entries": [
+    {
+      "id": "r2-9bd8f87063ece82e65594fc91c747cfb",
+      "severity": "blocking",
+      "location": "Limits, errors and filesystem behavior; MCP interface and review flow",
+      "issue": "[P1] The tenth accepted verdict can add a blocking finding, and the twentieth revision can contain a finding requiring a committed fix. Either exhausts the slots needed to close it, contradicting the guarantee that an accepted finding set remains closable.",
+      "suggestion": "Reserve verdict and revision capacity for closure, or reject mutations that would leave open findings with no possible closure path. Test both limits.",
+      "status": "disputed",
+      "reason": "The original approved spec binds fixed 10-verdict/20-revision budgets and calls for payload space for complete carry-over, not an eleventh verdict. Clarified payload representability within remaining slots. Exhaustion preserves open findings and refuses mutations; it cannot claim completion or reset history. Existing reachable 180-finding round-ten closure and 200-finding visibility evidence remain intact."
+    },
+    {
+      "id": "r2-3efc988d9abb0c13316869b939ee4459",
+      "severity": "blocking",
+      "location": "Host-integration amendment: deadline and poisoned-conversation paragraphs",
+      "issue": "[P1] Interruption and SDK close are only attempted. There is no bounded fallback that kills and reaps the app-server process tree, including descendants holding stdout, stderr or stdin open. A close failure or exception can outlive the shared deadline on Windows, Linux or macOS; a test-time closure receipt does not guarantee runtime cleanup.",
+      "suggestion": "Specify one deadline for the turn and every cleanup wait, guaranteed cleanup on every exit path, and platform-specific whole-tree termination and reaping when native close fails.",
+      "status": "disputed",
+      "reason": "The approved design delegates native-host lifecycle and excludes hard OS-I/O/physical certification. The Human specifically directs the standard Python SDK/app-server migration. The separate adapter now explicitly bounds application waits only, reports uncertain cleanup and poisons on failure; it does not claim native tree retirement. Adding a new platform supervisor would restore rejected orchestration. The model-free core is unchanged and live verification independently requires real outer native closure."
+    },
+    {
+      "id": "r2-a54ae4c0c88390814e2ea398a45d453e",
+      "severity": "important",
+      "location": "Limits, errors and filesystem behavior; Host-integration amendment: adapter limits",
+      "issue": "[P1] The stated limits bound decoded events, final text and logical stored payloads, but do not bound retained stdin prompts, raw stdout/stderr, SDK/parser buffers, cached prompts and metadata, Git decompression or aggregate process memory. Crossing a cap is not explicitly required to stop consumption immediately.",
+      "suggestion": "Define per-channel and aggregate retained-byte caps, count all cached request and response data, and terminate the affected operation as soon as any cap is crossed. Verify bounds before decoding or materializing large inputs.",
+      "status": "disputed",
+      "reason": "Addressed logical omissions: cache counts keys/digests/responses/metadata without retaining prompt bodies; decoded-event overflow immediately stops application consumption and interrupts/closes. The approved spec explicitly excludes physical SDK/parser allocations, Git decompression, SQLite-file and OS bounds. Raw native stdio/SDK buffers remain native-host responsibilities, without pre-parse or process-memory certification."
+    },
+    {
+      "id": "r2-debdc0db2a7b8c3ec3d728fc9324b43c",
+      "severity": "important",
+      "location": "Host-integration amendment: retry cache/ownership paragraph",
+      "issue": "[P1] The retry cache is process-local, while a first call needs only a null expected thread ID. After a restart, an exact retry of a lost first response is indistinguishable from a fresh call and can start a second model turn despite the exact-key replay promise.",
+      "suggestion": "Require a fresh adapter instance token or durable idempotency record so an old first-call retry is rejected before model work; define the restart result as structured uncertainty.",
+      "status": "addressed",
+      "reason": "Added fresh random adapter instance ID and codex_status discovery. Every call checks it before cache/native work. Old first-call retries after restart return structured ADAPTER_RESTARTED uncertainty, and clients must not automatically substitute a new ID. Explicit lost-first-response restart regression added."
+    },
+    {
+      "id": "r2-76b9d1b56dc73537662220d9c534eed7",
+      "severity": "important",
+      "location": "Limits, errors and filesystem behavior: state startup; Components and boundary: Git adapter",
+      "issue": "[P1] Symlink rejection covers named state path components and database files, but not SQLite journal, WAL, SHM or temporary entries. The trusted Git metadata, linked-worktree pointers and object-storage paths also lack a no-follow open rule. The startup rule does not distinguish ENOENT from other stat failures or require validation at each open.",
+      "suggestion": "Specify no-follow validation for every intermediate component and opened state or repository entry, including SQLite sidecars; treat only ENOENT as absence and fail on other stat errors.",
+      "status": "disputed",
+      "reason": "Clarified real state checks on every database open, all journal/WAL/SHM sidecars and ENOENT-only absence; implementation already validates these. The original approved spec explicitly trusts repository metadata, linked-worktree pointers/object storage and excludes hostile same-user path replacement. No request-derived filesystem path is opened; universal no-follow semantics for trusted Git storage are outside that declared support boundary."
+    },
+    {
+      "id": "r2-b59c416213b56d59d8af2b1f0a612b36",
+      "severity": "important",
+      "location": "Host-integration amendment: notification and failure-result paragraphs",
+      "issue": "[P2] A matching successful terminal notification is the only explicit success precondition. The contract does not require a complete final message from that same turn, or define a structured result that marks partial output unusable and preserves a typed underlying failure when the final message is missing or invalid.",
+      "suggestion": "Require validated terminal and final-message records with matching IDs before success. Define tagged partial-failure results with a cause code, available IDs and unusable partial-data marker; test successful-terminal and missing-final-message cases.",
+      "status": "addressed",
+      "reason": "Require both matching successful terminal notification and a validated complete final message from the same thread/turn. Missing/invalid final message and unterminated stream fail/poison; external tagged error includes partial_usable=false and safe cause/IDs. Added explicit regression cases."
+    },
+    {
+      "id": "r2-4c87a31d977b4d6806c3480c1f5c1811",
+      "severity": "important",
+      "location": "Host-integration amendment: adapter error handling",
+      "issue": "[P2] The core requires typed exceptions, but the adapter specifies only a safe 'uncertain/error response' and diagnostic codes. SDK, timeout, cancellation and close failures have no typed cause-preserving contract.",
+      "suggestion": "Define typed adapter errors and a structured external error schema that preserves the underlying cause category and cleanup outcome without exposing prompts, responses or credentials.",
+      "status": "addressed",
+      "reason": "Defined BridgeError with underlying typed cause chaining and fixed external error schema including category, correlation ID, uncertainty, unusable partial marker, IDs and cleanup outcomes. Timeout/cancellation/SDK/RPC/transport/final-message/cleanup failures are distinct without body or credential disclosure."
+    },
+    {
+      "id": "r2-b6038d584a7b07dae7c6d89d5667030a",
+      "severity": "important",
+      "location": "MCP interface and review flow: native host conversation paragraph",
+      "issue": "[P2] The operative text still calls native Codex MCP `codex` and `codex-reply` the initial conversation example, although the amendment says those removed endpoints are superseded by the Python SDK and app server.",
+      "suggestion": "Replace that operative sentence with the Claude Code → host adapter → Python SDK → app-server flow, leaving removed endpoints only in the historical reference section.",
+      "status": "addressed",
+      "reason": "Replaced the operative native codex/codex-reply sentence with Claude Code to host adapter to official Python SDK to app-server. Removed endpoints remain only in explicitly historical references and preserved source/review history."
+    }
+  ]
+}

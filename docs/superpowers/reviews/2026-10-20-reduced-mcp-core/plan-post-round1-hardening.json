@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "reviewed_plan_commit": "c89dcd9a82f8b259a878666324c3afd8ecd40e29",
+  "approved_spec_commit": "5c93d6b29d507ace5e7ad901e75a188924204ba2",
+  "formal_prior_findings": 5,
+  "ledger": "plan/carryover-round2.json",
+  "lenses": [
+    "fail-closed",
+    "resource-lifecycle",
+    "path-filesystem",
+    "cross-platform",
+    "typed-errors-api",
+    "spec-conformance"
+  ],
+  "remaining_findings": 0,
+  "local_additional_finding": {
+    "priority": "P1",
+    "issue": "Nested run_case could create an escaping POSIX group under the matrix owner",
+    "resolution": "Nested cases inherit ownership/deadline/budget; only external controller creates fresh groups/jobs. Fatal probes run outside suite workers; outer-expiry tests cover both inner MCP hosts."
+  },
+  "planning_checks": {
+    "payload_bytes": 218196,
+    "limit_bytes": 262144,
+    "remaining_bytes": 43948,
+    "python_blocks_parsed": 10,
+    "product_implementation": "not begun",
+    "product_dependencies": "not installed"
+  }
+}

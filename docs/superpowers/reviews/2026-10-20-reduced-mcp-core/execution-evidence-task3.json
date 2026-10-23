@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-10-21T12:42:44.7179179Z",
+  "archive_root": "C:/Users/geoff/Documents/Projects/Banyan/gauntlet/.git/info/reduced-mcp-core/20261021-execution",
+  "prior_manifests": [
+    "execution-evidence-task0.json",
+    "execution-evidence-task1.json",
+    "execution-evidence-task2.json"
+  ],
+  "files": [
+    {
+      "path": "task2-task-done-v1.log",
+      "bytes": 291,
+      "sha256": "b7fc307dab4ffe6eb57d9b1c6ccc7d9b942e38dec15996f89f0febf1070a5f63"
+    },
+    {
+      "path": "task2-task-done-v1/39a065951d52460fa950c48adea452aa-budget.bin",
+      "bytes": 49,
+      "sha256": "f3c90051305e2f236b68a68bf9df256d4db9a35521e47aadc063d9a3374049f3"
+    },
+    {
+      "path": "task2-task-done-v1/39a065951d52460fa950c48adea452aa-receipt.json",
+      "bytes": 1537,
+      "sha256": "36a6508db46741ec1eeb6a388504696b56d4deacc0d80c77c64993f887b7f228"
+    },
+    {
+      "path": "task3-event-type-red-v1/68a3f1de2f7f4c418704ac9a6099c2e6-budget.bin",
+      "bytes": 49,
+      "sha256": "c17971c1192bee5e4ea0857c56b127c55604710d005bdd7e36ccc7e7f006f134"
+    },
+    {
+      "path": "task3-event-type-red-v1/68a3f1de2f7f4c418704ac9a6099c2e6-receipt.json",
+      "bytes": 2860,
+      "sha256": "7e3fdc0af2a2eab8829203d14dda321e9b77f35c253d1f049c96b6ef7f2f113a"
+    },
+    {
+      "path": "task3-full-suite-v1/7de0c07403e54bb0a9c95ba174351aa6-budget.bin",
+      "bytes": 49,
+      "sha256": "69934a6f2fd51b7f1bc6c50f2829eafdcc1eff1f5d2f6060683797bd484ffeaa"
+    },
+    {
+      "path": "task3-full-suite-v1/7de0c07403e54bb0a9c95ba174351aa6-receipt.json",
+      "bytes": 2728,
+      "sha256": "24d8e7d2cfdc9195c1f67a7e34f276642cb9f604d89e92c0bec9ef152f475762"
+    },
+    {
+      "path": "task3-green-v1/aa934b6d41f2431e93011671d8c9fad5-budget.bin",
+      "bytes": 49,
+      "sha256": "aa262925ad8b67a5c534752eef9f0e26f21e48e04c24c2fa6d2c535b2e8b15b1"
+    },
+    {
+      "path": "task3-green-v1/aa934b6d41f2431e93011671d8c9fad5-receipt.json",
+      "bytes": 1583,
+      "sha256": "2d3c73b282ac8e71f99799ddb4498f388846a852a74d80ebf59db45b8f1e3aca"
+    },
+    {
+      "path": "task3-green-v2/eba7e3e5ad4646cb8355d0ac41ca1710-budget.bin",
+      "bytes": 49,
+      "sha256": "cc9c243f98755d71cac7ceceba1e058a54ffc42928268b6dbea176659778f7c3"
+    },
+    {
+      "path": "task3-green-v2/eba7e3e5ad4646cb8355d0ac41ca1710-receipt.json",
+      "bytes": 1584,
+      "sha256": "b5a83ce22e7fa1073f3902525d68969081a4e201171d0ce9368298ad05e5b0a1"
+    },
+    {
+      "path": "task3-green-v3/e5238d3a4b8049c99c5d2c2bc0c2f5dc-budget.bin",
+      "bytes": 49,
+      "sha256": "a74c5073bca9ce7e6135afbb2eec8b1e3a397b525707d61d22dc4f9e8fd4f19e"
+    },
+    {
+      "path": "task3-green-v3/e5238d3a4b8049c99c5d2c2bc0c2f5dc-receipt.json",
+      "bytes": 1583,
+      "sha256": "71c76f656dc4fa1cca3101046877577698df84c623d67c0b6578bd46bc574def"
+    },
+    {
+      "path": "task3-green-v4/fc67edd917434ec09c7838a01453d60c-budget.bin",
+      "bytes": 49,
+      "sha256": "7ebe9ee44962fc07a857490a4cd9a34bf0f18f5c5376a4d0d88801f2c96a136b"
+    },
+    {
+      "path": "task3-green-v4/fc67edd917434ec09c7838a01453d60c-receipt.json",
+      "bytes": 1584,
+      "sha256": "9e2703d660f5e675b4bb83f554cdf10a3c492a539e866f055b2a024e34e20ce3"
+    },
+    {
+      "path": "task3-metadata-red-v1/30981bff8f5f490c985e8cd4ae2070ce-budget.bin",
+      "bytes": 49,
+      "sha256": "62719148d66d4e0ea21ed74b4d232eee6cc9fde51f3ccc2070698431db9b6ef3"
+    },
+    {
+      "path": "task3-metadata-red-v1/30981bff8f5f490c985e8cd4ae2070ce-receipt.json",
+      "bytes": 3075,
+      "sha256": "70394d7437f18143e7ebe823b4853be1cc6fa98e333b823a05fe5728d2b145c7"
+    },
+    {
+      "path": "task3-red-v1/8895365265ba4c91815f0997369c0cbb-budget.bin",
+      "bytes": 49,
+      "sha256": "ce1596cdb1bf43adec8dec3dfa140aa126839223959a1ff4aa21e8171a57377a"
+    },
+    {
+      "path": "task3-red-v1/8895365265ba4c91815f0997369c0cbb-receipt.json",
+      "bytes": 2271,
+      "sha256": "dab37760edfc6dbdb9d187c4abffe2f52f4b03b698a00ea6f225324c2774382e"
+    },
+    {
+      "path": "task3-schema-red-v1/521f0168c46d4f63aa9e7bc4efbde23b-budget.bin",
+      "bytes": 49,
+      "sha256": "15ec3d808d438a4366d01c60a7a39dd1f256f80397c0baf27b8b323a59d0c5aa"
+    },
+    {
+      "path": "task3-schema-red-v1/521f0168c46d4f63aa9e7bc4efbde23b-receipt.json",
+      "bytes": 2348,
+      "sha256": "fdf90d5c4ff4336105273f54380b97a88aa681b77ecf3ece03a506faf7165b7d"
+    }
+  ]
+}

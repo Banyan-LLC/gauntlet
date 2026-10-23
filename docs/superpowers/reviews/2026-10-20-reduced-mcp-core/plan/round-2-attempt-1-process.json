@@ -1,0 +1,27 @@
+{
+  "round": 2,
+  "attempt": 1,
+  "timestamp": "2026-10-21T04:15:08.2034673Z",
+  "prompt_sha256": "dfdef8d1db97aea21a5bfe01cc2e43934222f0a89917fa30b5284ca4184c3a17",
+  "cli_sha256": "f6dbf48cb70f62649c645f26c87dc9bf84cc36986202dfad8e12fb5b8ca70312",
+  "cli_version": "0.163.0-alpha.10.2",
+  "native_confirmed": true,
+  "aggregate": {
+    "ExitCode": 0,
+    "StartFailed": false,
+    "TimedOut": false,
+    "ErrorMessage": null,
+    "ProcessTreeRetired": true,
+    "TransportSucceeded": true,
+    "TransportRetired": true,
+    "WorkerRetired": true,
+    "InvocationSubmitted": true,
+    "StartStatus": "started"
+  },
+  "ExitCode": 0,
+  "StartFailed": false,
+  "TimedOut": false,
+  "ErrorMessage": null,
+  "StderrText": "",
+  "ProcessTreeRetired": true
+}
