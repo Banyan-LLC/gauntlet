@@ -386,6 +386,7 @@ class NativeChild:
     def __init__(self, argv, cwd, environment, pipes, *, fresh):
         self.fresh = fresh
         self.process = None
+        self.thread = None
         self.job = None
         self.pid = None
         self.returncode = None
@@ -419,6 +420,7 @@ class NativeChild:
             command = ctypes.create_unicode_buffer(subprocess.list2cmdline(argv))
             block = ctypes.create_unicode_buffer("\0".join(
                 f"{key}={value}" for key, value in sorted(environment.items(), key=lambda x: x[0].upper())) + "\0\0")
+            primary = None
             try:
                 require_execution(context)
                 _check(_create_process(None, command, None, None, True,
@@ -429,14 +431,31 @@ class NativeChild:
                     _check(_assign_job(self.job, self.process))
                 if _resume(info.hThread) == 0xFFFFFFFF:
                     raise ctypes.WinError(ctypes.get_last_error())
-            except BaseException:
+            except BaseException as initiating:
+                failures = [initiating]
                 if self.process:
-                    _terminate_process(self.process, 74)
-                    _wait(self.process, 0)
-                raise
+                    try:
+                        _check(_terminate_process(self.process, 74))
+                    except BaseException as error:
+                        failures.append(error)
+                    try:
+                        if _wait(self.process, 0) not in (0, 258):
+                            raise ctypes.WinError(ctypes.get_last_error())
+                    except BaseException as error:
+                        failures.append(error)
+                primary = (BaseExceptionGroup("native startup and rollback failed", failures)
+                           if len(failures) > 1 else initiating)
             finally:
-                if info.hThread:
-                    _close(info.hThread)
+                self.thread = info.hThread or None
+                try:
+                    self._close_handle("thread")
+                except BaseException as error:
+                    if primary is not None:
+                        raise BaseExceptionGroup("native startup and thread closure failed",
+                                                 [primary, error]) from None
+                    raise
+            if primary is not None:
+                raise primary
         else:
             if not fresh:
                 self.group = json.loads(environment[OWNER_ENV])["group"]
@@ -504,10 +523,10 @@ class NativeChild:
             _NESTED_CHILDREN.add(self)
 
     def poll(self):
-        if self.process is None:
-            return None
         if self.returncode is not None:
             return self.returncode
+        if self.process is None:
+            return None
         if os.name == "nt":
             status = _wait(self.process, 0)
             if status == 0:
@@ -710,18 +729,23 @@ class NativeChild:
             capacity *= 2
         raise RuntimeError("job membership inventory exceeds test limit")
 
+    def _close_handle(self, name):
+        handle = getattr(self, name)
+        if handle:
+            _check(_close(handle))
+            setattr(self, name, None)
+
     def close(self):
         failures=[]
         if os.name == "nt":
-            for handle in (self.process,self.job):
-                if handle:
-                    try:
-                        _check(_close(handle))
-                    except BaseException as error:
-                        failures.append(error)
-        _NESTED_CHILDREN.discard(self)
+            for name in ("thread", "process", "job"):
+                try:
+                    self._close_handle(name)
+                except BaseException as error:
+                    failures.append(error)
         if failures:
             raise BaseExceptionGroup("native handle closure failed",failures)
+        _NESTED_CHILDREN.discard(self)
 
 
 def checkpoint(name,**fields):

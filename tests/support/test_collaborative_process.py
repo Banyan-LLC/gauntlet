@@ -165,6 +165,135 @@ class ProcessContract(unittest.TestCase):
         self.assert_failure(result)
         self.assertTrue(result.cleanup_errors)
 
+    def protected_thread_case(self, *, primary=False, recover=False, rollback=False):
+        """Refuse a real CloseHandle, then explicitly retire the protected handle."""
+        api=self.api
+        create,close,resume=api._create_process,api._close,api._resume
+        terminate=api._terminate_process
+        initialize,pipe_initialize=api.NativeChild.__init__,api.RawPipe.__init__
+        handles=[]; children=[]; pipes=[]; attempts=[]; observed={}
+
+        def created(*args):
+            result=create(*args)
+            if result:
+                handles.append(args[-1]._obj.hThread)
+            return result
+
+        def closing(handle):
+            if handle in handles:
+                previous=sum(row["handle"]==handle for row in attempts)
+                if not previous:
+                    api._check(api._handle_info(handle,2,2))
+                elif recover:
+                    api._check(api._handle_info(handle,2,0))
+                result=close(handle)
+                attempts.append({"handle":handle,"closed":bool(result),
+                                 "winerror":None if result else api.ctypes.get_last_error()})
+                return result
+            return close(handle)
+
+        def initialized(child,*args,**kwargs):
+            children.append(child)
+            initialize(child,*args,**kwargs)
+
+        def pipe_initialized(pipe,*args,**kwargs):
+            pipes.append(pipe)
+            pipe_initialize(pipe,*args,**kwargs)
+
+        def resumed(handle):
+            if primary:
+                raise RuntimeError("injected resume primary")
+            return resume(handle)
+
+        def terminated(handle,code):
+            if rollback:
+                raise OSError("injected rollback termination")
+            return terminate(handle,code)
+
+        try:
+            with mock.patch.object(api,"_create_process",created), \
+                    mock.patch.object(api,"_close",closing), \
+                    mock.patch.object(api,"_resume",resumed), \
+                    mock.patch.object(api,"_terminate_process",terminated), \
+                    mock.patch.object(api.NativeChild,"__init__",initialized), \
+                    mock.patch.object(api.RawPipe,"__init__",pipe_initialized):
+                result=self.case("success",seconds=5)
+                child=children[0]
+                observed.update({"attempts":attempts,
+                    "thread":getattr(child,"thread",None),
+                    "process":child.process,"job":child.job,
+                    "retained_valid":[bool(api._handle_info(handle,0,0)) for handle in handles],
+                    "all_pipes_closed":all(pipe.child_closed and pipe.parent_closed for pipe in pipes)})
+        finally:
+            cleaned=[]
+            for handle in handles:
+                if api._handle_info(handle,0,0):
+                    api._check(api._handle_info(handle,2,0))
+                    child=children[0]
+                    if getattr(child,"thread",None)==handle:
+                        child.close()
+                    else:
+                        api._check(close(handle))
+                    cleaned.append(not bool(api._handle_info(handle,0,0)))
+            observed["explicit_cleanup_closed"]=cleaned
+            (self.evidence/"thread-close-observation.json").write_text(
+                json.dumps(observed,indent=2)+"\n",encoding="utf-8")
+        return result,observed
+
+    @unittest.skipUnless(os.name=="nt","real Windows protected thread handle")
+    def test_startup_thread_close_refusal_is_failed_and_handle_retained(self):
+        result,observed=self.protected_thread_case()
+        self.assert_failure(result)
+        self.assertTrue(result.root_reaped and result.tree_retired)
+        self.assertTrue(any("WinError 6" in str(error) for error in result.errors))
+        self.assertTrue(any("WinError 6" in str(error) for error in result.cleanup_errors))
+        self.assertEqual(observed["thread"],observed["attempts"][0]["handle"])
+        self.assertIsNone(observed["process"])
+        self.assertIsNone(observed["job"])
+        self.assertTrue(observed["all_pipes_closed"])
+        self.assertEqual(observed["retained_valid"],[True])
+        self.assertEqual(observed["explicit_cleanup_closed"],[True])
+
+    @unittest.skipUnless(os.name=="nt","real Windows protected thread handle")
+    def test_startup_primary_survives_actual_thread_close_refusal(self):
+        result,observed=self.protected_thread_case(primary=True)
+        self.assert_failure(result)
+        self.assertTrue(result.root_reaped and result.tree_retired)
+        self.assertTrue(any("injected resume primary" in str(error) for error in result.errors))
+        self.assertTrue(any("WinError 6" in str(error) for error in result.errors))
+        self.assertTrue(any("WinError 6" in str(error) for error in result.cleanup_errors))
+        self.assertIsNone(observed["process"])
+        self.assertIsNone(observed["job"])
+        self.assertTrue(observed["all_pipes_closed"])
+        self.assertEqual(observed["explicit_cleanup_closed"],[True])
+
+    @unittest.skipUnless(os.name=="nt","real Windows protected thread handle")
+    def test_startup_close_refusal_remains_failed_after_later_closure(self):
+        result,observed=self.protected_thread_case(recover=True)
+        self.assert_failure(result)
+        self.assertTrue(result.root_reaped and result.tree_retired)
+        self.assertTrue(any("WinError 6" in str(error) for error in result.errors))
+        self.assertNotIn("handle-close",[error.stage for error in result.cleanup_errors])
+        self.assertIsNone(observed["thread"])
+        self.assertIsNone(observed["process"])
+        self.assertIsNone(observed["job"])
+        self.assertEqual([row["closed"] for row in observed["attempts"]],[False,True])
+        self.assertEqual(observed["retained_valid"],[False])
+        self.assertTrue(observed["all_pipes_closed"])
+
+    @unittest.skipUnless(os.name=="nt","real Windows protected thread handle")
+    def test_startup_primary_survives_rollback_and_thread_close_refusals(self):
+        result,observed=self.protected_thread_case(primary=True,rollback=True)
+        self.assert_failure(result)
+        self.assertTrue(result.root_reaped and result.tree_retired)
+        for detail in ("injected resume primary","injected rollback termination","WinError 6"):
+            self.assertTrue(any(detail in str(error) for error in result.errors),detail)
+        self.assertTrue(result.cleanup_errors)
+        self.assertIsNone(observed["process"])
+        self.assertIsNone(observed["job"])
+        self.assertTrue(observed["all_pipes_closed"])
+        self.assertEqual(observed["explicit_cleanup_closed"],[True])
+
     def test_unstarted_stdin_thread_still_closes_and_persists_failed_outcome(self):
         with mock.patch.object(self.api.threading.Thread,"start",side_effect=RuntimeError("injected writer start failure")):
             result=self.case("sleep",seconds=3)

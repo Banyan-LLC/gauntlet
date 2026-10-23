@@ -521,3 +521,33 @@ complete adapter run qualifies the final SDK delta. All 79 final source hashes
 match the verification record. All six final lenses have no remaining findings.
 Exact-head native CI and a later genuine peer disposition remain required; author,
 lens and test assertions do not close either original canonical finding.
+
+
+## 2026-10-22 supplemental GitHub review: Windows startup handle
+
+The successful PR05 canonical model gate remains exact-head historical evidence
+for `3de5292`; its eight completed turns, 246 required reads, seven original
+finding records/dispositions and all earlier failures remain preserved. A later
+Human-authorized independent GitHub review reproduced an additional test-only
+Windows cleanup defect: an actual protected startup-thread handle refused closure
+with WinError 6, while the helper reported completed success and lost ownership.
+The original review and native probe receipts are retained.
+
+The test owner now retains the startup thread through confirmed closure, checks
+CloseHandle, attempts thread/process/job closures independently, and clears each
+reference only after success. Primary startup, rollback and thread-close failures
+remain typed together. Cached actual exit status survives closing process handles.
+Four real-refusal regressions were RED before the fix, then GREEN with a normal
+control on Python 3.14 and 3.13. Each probe explicitly unprotects and closes any
+retained handle. One intermediate test incorrectly prohibited an unrelated honest
+EOF diagnostic; that failed attempt remains, and the test now checks the actual
+handle-cleanup guarantee without suppressing other diagnostics.
+
+Fresh Windows 3.14 verification passes 506 Python cases (254 core, 107 bridge,
+145 instrumented legacy; seven legacy skips), plus 41 custody probes with four
+POSIX-only skips. All three suite exits are zero with observed native retirement;
+all 79 runtime source hashes bind the tested working delta. Product core, SDK,
+configuration and assurance boundaries are unchanged. The supplemental GitHub
+review and fresh CI must qualify the new committed head; the prior canonical
+model verdict is not represented as a verdict on that new head, and canonical
+state/history remains untouched. See `pr14-thread-close-verification.json`.
