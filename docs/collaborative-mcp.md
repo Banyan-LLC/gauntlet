@@ -15,6 +15,15 @@ evidence execution claims are participant attestations.
 
 ## Install and create private state
 
+The `gauntlet-review` and `gauntlet-dev` skills select this route by default.
+Explicitly request `legacy`, `hermetic` or `mode=legacy` to use their preserved
+`LEGACY.md` instructions. A missing MCP installation is reported as a setup gap;
+it does not silently select the hermetic harness. Copy updated skill entrypoints,
+their `LEGACY.md` files and referenced resources together into each native host's
+skill directory, preserving existing calibration/runtime files and all review
+archives. Start a fresh native session to refresh skill discovery. Skill updates
+do not migrate the database or change its fixed operator bindings.
+
 Use Python 3.11+ and an absolute interpreter path owned by the operator. Install
 from the checkout you intend to run, retaining its revision:
 
