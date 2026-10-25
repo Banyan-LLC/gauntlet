@@ -146,7 +146,10 @@ OpenAI Codex to act as an independent reviewer:
 
 The skills are developed and verified in this repository, but they are not limited to this
 repository. The setup in [collaborative-mcp.md](docs/collaborative-mcp.md) is required
-for the default MCP route. Copy each skill's `SKILL.md`, `LEGACY.md` and referenced
+for the default MCP route; once its venv exists, `install.ps1` registers the two servers
+with Claude Code once, at user scope, through a launcher that binds each session to the
+checkout and branch it starts in ([Global registration](docs/collaborative-mcp.md#global-registration)).
+Copy each skill's `SKILL.md`, `LEGACY.md` and referenced
 resources together into the host's skill directory (`~/.claude/skills` for Claude,
 `~/.agents/skills` for Codex). Back up existing files first and preserve runtime
 calibration files and all review state. Start a fresh host session for updated
@@ -352,9 +355,15 @@ The installer:
 2. copies `gauntlet-review` and `gauntlet-dev` to
    `%USERPROFILE%\.claude\skills\`;
 3. adds a short activation rule to `%USERPROFILE%\.claude\CLAUDE.md` if it is not already
-   present.
+   present;
+4. registers `gauntlet-core` and `gauntlet-peer` with Claude Code at user scope, both
+   starting `python -m gauntlet_review.launch` from the collaborative venv
+   (`-McpPython` picks the venv, `-StateRoot` the review-state folder,
+   `-SkipMcpRegistration` skips this step). It warns and skips when `claude`, the venv or
+   the launcher is missing.
 
-Start a new Claude Code session after installation so skill discovery runs from a clean session.
+Start a new Claude Code session after installation so skill discovery and the servers load
+from a clean session.
 
 ### 5. Check activation
 

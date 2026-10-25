@@ -100,7 +100,49 @@ missing optional pins, unsafe state paths or mismatched persisted bindings refus
 startup/operations; no alternative state is silently created. There are no new
 secrets, environment variables, deployment settings or migrations required for
 legacy users. The optional extra and host configuration are required only to use
-this feature. No user host configuration is rewritten by installation.
+this feature. `install.ps1` registers the two Claude Code servers described in
+[Global registration](#global-registration) at user scope, replacing earlier
+user-scope entries with the same names; run it with `-SkipMcpRegistration` to leave
+every host configuration untouched. It rewrites nothing else.
+
+## Global registration
+
+One user-scope registration of each server serves every Claude Code project. Both
+entries start the launcher, which runs in the session's working folder, works out
+that session's operator tuple there and then starts the ordinary server in the same
+process, so every process still has exactly one immutable tuple:
+
+```powershell
+& 'C:/Users/YOU/AppData/Local/Gauntlet/mcp-venv/Scripts/python.exe' -I -m gauntlet_review.launch core --state-root 'C:/Users/YOU/AppData/Local/Gauntlet/state'
+& 'C:/Users/YOU/AppData/Local/Gauntlet/mcp-venv/Scripts/python.exe' -I -m gauntlet_review.launch peer --state-root 'C:/Users/YOU/AppData/Local/Gauntlet/state'
+```
+
+- `--repo` is the checkout containing the working folder; a linked worktree is its own checkout.
+- `--source-ref` is the branch that checkout has checked out. A detached HEAD is refused.
+- `--target-ref` is origin's default branch (`refs/remotes/origin/HEAD`), else
+  `refs/remotes/origin/main` or `refs/remotes/origin/master`. Hosts still own fetching.
+- `--repository-id` is `<owner>-<repository>` from origin's URL (lowercase, at most 64
+  characters), else the main checkout's folder name.
+- `--state-dir` is `<state-root>/<repository-id>--<branch>-<digest>`. The digest covers the
+  checkout path, the ID and both refs, so each checkout and ref pair has its own store and a
+  store is never rebound to other refs. A new directory (and a missing state root) is created
+  restricted to the current account: `icacls /inheritance:r /grant:r` on Windows, mode `0700`
+  elsewhere. Redirected components are refused, as the core refuses them.
+- The participants are `claude-author` (role `author`) for `core` and `claude-peer` for `peer`;
+  `peer` passes `--timeout-seconds` (default 600) to the adapter.
+
+A refusal prints one fixed code on stderr (`NOT_A_GIT_CHECKOUT`, `DETACHED_HEAD`,
+`NO_TARGET_REF`, `STATE_INSIDE_REPOSITORY`, `REDIRECTED_STATE_COMPONENT`,
+`STATE_NOT_PRIVATE`, `STATE_UNAVAILABLE`, `CONFIGURATION_ERROR`), so the host reports the
+server as failed and the skills report a setup gap. Details go to
+`<state-root>/launch.log` (bounded), which the operator owns. The host loads servers when
+a session starts: start a new session after registering, and after checking out another
+branch in the same folder. A project or local registration with the same name takes
+precedence over the user-scope one, which keeps a review bound to an older explicit tuple
+on its existing store. Register by hand with
+`claude mcp add-json gauntlet-core '<entry>' -s user` (and `gauntlet-peer`), where the
+entry's `args` are the launcher arguments above. A separately operated Codex host keeps its
+own explicit configuration.
 
 Claude Code can read a user-owned JSON configuration supplied with
 `--mcp-config /absolute/path/gauntlet-hosts.json --strict-mcp-config`:

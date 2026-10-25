@@ -1,4 +1,13 @@
 #Requires -Version 7
+param(
+    # Leave every host configuration untouched: do not register the collaborative servers with Claude Code.
+    [switch]$SkipMcpRegistration,
+    # The python of the venv that holds gauntlet-review[codex] from this checkout (default: the first of
+    # %LOCALAPPDATA%\Gauntlet\mcp-venv and ~\.local\share\gauntlet\mcp-venv that exists).
+    [string]$McpPython,
+    # Where the launcher keeps one private review store per checkout and ref pair (default: 'state' beside the venv).
+    [string]$StateRoot
+)
 $src = $PSScriptRoot
 . "$src\gauntlet-review\scripts\lib.ps1"
 # Installation is a gate too: it uses the SAME selection policy and stack-identity manifest a
@@ -40,3 +49,37 @@ if (-not (Test-Path $claudeMd) -or -not ((Get-Content -Raw $claudeMd) -match [re
     Add-Content -Path $claudeMd -Value "`n$pointer"
     Write-Host "appended pointer to $claudeMd"
 } else { Write-Host "pointer already present" }
+
+# Collaborative route (docs/collaborative-mcp.md, "Global registration"): one user-scope Claude Code registration
+# of each server, through the launcher, which binds every session to the checkout and branch it starts in. A
+# project or local entry with the same name still takes precedence. Anything missing skips this step with a warning;
+# it never registers a server that cannot start.
+if ($SkipMcpRegistration) { Write-Host "skipped Claude Code MCP registration (-SkipMcpRegistration)"; return }
+if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
+    Write-Warning "skipped Claude Code MCP registration: the claude command is not on PATH"; return
+}
+if (-not $McpPython) {
+    $McpPython = @("$env:LOCALAPPDATA\Gauntlet\mcp-venv\Scripts\python.exe",
+                   "$HOME\.local\share\gauntlet\mcp-venv\Scripts\python.exe") |
+        Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
+}
+if (-not $McpPython -or -not (Test-Path -LiteralPath $McpPython -PathType Leaf)) {
+    Write-Warning "skipped Claude Code MCP registration: no collaborative venv found; create one as docs/collaborative-mcp.md describes, then rerun with -McpPython <its python>"
+    return
+}
+& $McpPython -I -c "import gauntlet_review.launch, gauntlet_review.collaborative.server, gauntlet_review.codex_bridge.server" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "skipped Claude Code MCP registration: $McpPython has no gauntlet-review[codex] with the launcher; install it from this checkout (docs/collaborative-mcp.md)"
+    return
+}
+if (-not $StateRoot) { $StateRoot = Join-Path (Split-Path (Split-Path (Split-Path $McpPython))) 'state' }
+if (-not [IO.Path]::IsPathRooted($StateRoot)) { Write-Error "-StateRoot must be an absolute path"; exit 1 }
+foreach ($role in 'core', 'peer') {
+    $name = "gauntlet-$role"
+    $entry = [ordered]@{ type = 'stdio'; command = $McpPython; env = @{}
+                         args = @('-I', '-m', 'gauntlet_review.launch', $role, '--state-root', $StateRoot) } | ConvertTo-Json -Compress
+    & claude mcp remove $name -s user *> $null                 # an earlier user-scope entry of this name is replaced
+    & claude mcp add-json $name $entry -s user
+    if ($LASTEXITCODE -ne 0) { Write-Error "could not register $name with Claude Code"; exit 1 }
+}
+Write-Host "registered gauntlet-core and gauntlet-peer with Claude Code (user scope, review state under $StateRoot); start a new session to load them"
