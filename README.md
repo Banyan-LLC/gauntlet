@@ -359,8 +359,11 @@ The installer:
 4. registers `gauntlet-core` and `gauntlet-peer` with Claude Code at user scope, both
    starting `python -m gauntlet_review.launch` from the collaborative venv
    (`-McpPython` picks the venv, `-StateRoot` the review-state folder,
-   `-SkipMcpRegistration` skips this step). It warns and skips when `claude`, the venv or
-   the launcher is missing.
+   `-SkipMcpRegistration` skips this step). It first resolves the interpreter to an absolute
+   path and runs the launcher's dependency check there (`python -m gauntlet_review.launch
+   check`, the servers' exact pins); it warns and skips, changing nothing, when `claude`, the
+   venv, the configuration or that check fails. If a replacement fails, both previous
+   entries are put back and the install stops.
 
 Start a new Claude Code session after installation so skill discovery and the servers load
 from a clean session.
