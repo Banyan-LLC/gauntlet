@@ -6,7 +6,10 @@ param(
     # %LOCALAPPDATA%\Gauntlet\mcp-venv and ~\.local\share\gauntlet\mcp-venv that exists).
     [string]$McpPython,
     # Where the launcher keeps one private review store per checkout and ref pair (default: 'state' beside the venv).
-    [string]$StateRoot
+    [string]$StateRoot,
+    # The Claude Code configuration file the claude command changes (default ~\.claude.json; required when
+    # CLAUDE_CONFIG_DIR is set, naming that profile's .claude.json).
+    [string]$ClaudeConfig
 )
 $src = $PSScriptRoot
 . "$src\gauntlet-review\scripts\lib.ps1"
@@ -52,11 +55,14 @@ if (-not (Test-Path $claudeMd) -or -not ((Get-Content -Raw $claudeMd) -match [re
 
 # Collaborative route (docs/collaborative-mcp.md, "Global registration"): one user-scope Claude Code registration
 # of each server, through the launcher, which binds every session to the checkout and branch it starts in. A
-# project or local entry with the same name still takes precedence. Anything missing skips this step with a warning;
-# a failed replacement puts both previous entries back and stops the install.
+# project or local entry with the same name still takes precedence. Anything missing, or CLAUDE_CONFIG_DIR without
+# -ClaudeConfig, skips this step with a warning; a failed replacement undoes its changes, checks the result and stops
+# the install, naming any entry that is not as it was.
 if ($SkipMcpRegistration) { Write-Host "skipped Claude Code MCP registration (-SkipMcpRegistration)"; return }
 . "$src\mcp-registration.ps1"
-try { $registration = Register-GauntletMcp -McpPython $McpPython -StateRoot $StateRoot }
+$registrationArgs = @{ McpPython = $McpPython; StateRoot = $StateRoot }
+if ($ClaudeConfig) { $registrationArgs.ClaudeConfig = $ClaudeConfig }
+try { $registration = Register-GauntletMcp @registrationArgs }
 catch { Write-Error $_.Exception.Message; exit 1 }
 if ($registration.Registered) {
     Write-Host "registered gauntlet-core and gauntlet-peer with Claude Code (user scope, $($registration.Python), review state under $($registration.StateRoot)); start a new session to load them"

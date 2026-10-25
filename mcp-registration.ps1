@@ -6,14 +6,73 @@ function New-GauntletMcpSkip([string]$Reason) {
     [pscustomobject]@{ Registered = $false; Reason = $Reason; Python = $null; StateRoot = $null }
 }
 
+function ConvertTo-GauntletCanonical($Value) {
+    # A copy with every dictionary's keys sorted, so two definitions compare equal whatever their key order.
+    if ($Value -is [System.Collections.IDictionary]) {
+        $sorted = [ordered]@{}
+        foreach ($key in ($Value.Keys | Sort-Object)) { $sorted[$key] = ConvertTo-GauntletCanonical $Value[$key] }
+        return $sorted
+    }
+    if ($Value -is [System.Collections.IList]) { return , @(foreach ($item in $Value) { ConvertTo-GauntletCanonical $item }) }
+    $Value
+}
+
+function Read-GauntletUserEntries([string]$ClaudeConfig, [string[]]$Names) {
+    # The user-scope definitions of $Names in $ClaudeConfig: name -> @{ Raw (compact JSON in the file's own order, to
+    # put back exactly); Canonical (sorted keys, to compare) }. A missing file or name is absent; an unreadable file throws.
+    $found = @{}
+    if (-not (Test-Path -LiteralPath $ClaudeConfig)) { return $found }
+    $config = Get-Content -Raw -LiteralPath $ClaudeConfig | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+    $servers = if ($config -is [System.Collections.IDictionary]) { $config['mcpServers'] } else { $null }
+    if ($servers -is [System.Collections.IDictionary]) {
+        foreach ($name in $Names) {
+            if ($servers.Contains($name)) {
+                $found[$name] = @{ Raw = ConvertTo-Json -InputObject $servers[$name] -Compress -Depth 32
+                                   Canonical = ConvertTo-Json -InputObject (ConvertTo-GauntletCanonical $servers[$name]) -Compress -Depth 32 }
+            }
+        }
+    }
+    $found
+}
+
+function Save-GauntletMcpBackup([string]$ClaudeConfig, [hashtable]$Definitions) {
+    # Keeps original definitions that could not be put back in a new file only the current user can read, next to the
+    # configuration, and returns its path; $null when it could not be made private (then nothing is left behind).
+    # Definitions can hold credentials, so they never go into a message.
+    $path = "$ClaudeConfig.gauntlet-mcp-backup-$((Get-Date).ToString('yyyyMMddTHHmmssfff')).json"
+    $created = $false
+    try {
+        $fs = [IO.File]::Open($path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)   # never an existing file
+        $fs.Dispose()
+        $created = $true
+        if ($IsWindows) {
+            $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+            & icacls $path /inheritance:r /grant:r "*${sid}:F" *> $null
+            if ($LASTEXITCODE -ne 0) { throw "icacls exited $LASTEXITCODE" }
+        } else {
+            & chmod 600 $path
+            if ($LASTEXITCODE -ne 0) { throw "chmod exited $LASTEXITCODE" }
+        }
+        $body = [ordered]@{}
+        foreach ($name in ($Definitions.Keys | Sort-Object)) { $body[$name] = $Definitions[$name] | ConvertFrom-Json -AsHashtable }
+        Set-Content -LiteralPath $path -Value (ConvertTo-Json -InputObject $body -Depth 32) -NoNewline
+        return $path
+    } catch {
+        if ($created) { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
+        return $null
+    }
+}
+
 function Register-GauntletMcp {
     <#
     Returns [pscustomobject]@{ Registered; Reason; Python; StateRoot }. Every check runs before the host is changed:
-    the interpreter is resolved to an absolute path, the launcher's model-free dependency check (both servers' exact
-    pins) passes in it, and the current user-scope definitions of both names are read from the Claude Code user
-    configuration. Then each name is replaced in turn; if any step fails, both names are put back exactly as they
-    were (absent, or their original definition) and the function throws, naming any name it could not restore.
-    No other host setting and no review store is touched.
+    the configuration read is the one the claude command changes (with CLAUDE_CONFIG_DIR set it may not be the
+    default, so -ClaudeConfig must name it), the interpreter is resolved to an absolute path, the launcher's
+    model-free dependency check (both servers' exact pins) passes in it, and the current user-scope definitions of
+    both names are read. Then each name is replaced in turn and the result is read back. If any step fails, both
+    names are put back (absent, or their original definition), the configuration is read back to check, and the
+    function throws, naming any name that is not as it was; original definitions it could not put back are kept in
+    a backup only the user can read, never in a message. No other host setting and no review store is touched.
     #>
     param(
         [string]$McpPython,
@@ -25,6 +84,9 @@ function Register-GauntletMcp {
             (Join-Path $HOME '.local\share\gauntlet\mcp-venv\Scripts\python.exe'))
     )
     if (-not (Get-Command $Claude -ErrorAction SilentlyContinue)) { return New-GauntletMcpSkip "the $Claude command is not on PATH" }
+    if ($env:CLAUDE_CONFIG_DIR -and -not $PSBoundParameters.ContainsKey('ClaudeConfig')) {
+        return New-GauntletMcpSkip "CLAUDE_CONFIG_DIR is set, so the $Claude command may change another profile than $ClaudeConfig; rerun with -ClaudeConfig naming that profile's .claude.json, or -SkipMcpRegistration"
+    }
     if (-not $McpPython) {
         $McpPython = $DefaultPythons | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
         if (-not $McpPython) { return New-GauntletMcpSkip 'no collaborative venv found; create one as docs/collaborative-mcp.md describes, then rerun with -McpPython <its python>' }
@@ -47,44 +109,56 @@ function Register-GauntletMcp {
 
     # The current user-scope definitions, kept so a failed replacement can put them back exactly.
     $names = 'gauntlet-core', 'gauntlet-peer'
-    $original = @{}
-    if (Test-Path -LiteralPath $ClaudeConfig) {
-        try { $config = Get-Content -Raw -LiteralPath $ClaudeConfig | ConvertFrom-Json -AsHashtable -ErrorAction Stop }
-        catch { return New-GauntletMcpSkip "cannot read $ClaudeConfig to keep its current entries ($($_.Exception.Message))" }
-        $servers = if ($config -is [System.Collections.IDictionary]) { $config['mcpServers'] } else { $null }
-        if ($servers -is [System.Collections.IDictionary]) {
-            foreach ($name in $names) {
-                if ($servers.Contains($name)) { $original[$name] = $servers[$name] | ConvertTo-Json -Compress -Depth 32 }
-            }
-        }
-    }
+    try { $original = Read-GauntletUserEntries $ClaudeConfig $names }
+    catch { return New-GauntletMcpSkip "cannot read $ClaudeConfig to keep its current entries ($($_.Exception.Message))" }
     $entries = @{}
     foreach ($role in 'core', 'peer') {
         $entries["gauntlet-$role"] = [ordered]@{ type = 'stdio'; command = $McpPython; env = @{}
-            args = @('-I', '-m', 'gauntlet_review.launch', $role, '--state-root', $StateRoot) } | ConvertTo-Json -Compress
+            args = @('-I', '-m', 'gauntlet_review.launch', $role, '--state-root', $StateRoot) }
     }
 
     $failure = $null
+    $done = [System.Collections.Generic.List[object]]::new()   # the changes the CLI made, so a rollback undoes only those
     foreach ($name in $names) {
         if ($original.ContainsKey($name)) {
             & $Claude mcp remove $name -s user *> $null
             if ($LASTEXITCODE -ne 0) { $failure = "removing the existing $name failed"; break }
+            $done.Add(@{ Name = $name; Step = 'removed' })
         }
-        & $Claude mcp add-json $name $entries[$name] -s user *> $null
+        & $Claude mcp add-json $name (ConvertTo-Json -InputObject $entries[$name] -Compress -Depth 32) -s user *> $null
         if ($LASTEXITCODE -ne 0) { $failure = "adding the new $name failed"; break }
+        $done.Add(@{ Name = $name; Step = 'added' })
+    }
+    if (-not $failure) {                                 # the CLI said yes: the configuration must show it
+        try { $after = Read-GauntletUserEntries $ClaudeConfig $names }
+        catch { throw "Claude Code MCP registration could not be checked: $ClaudeConfig cannot be read back ($($_.Exception.Message))" }
+        $missing = @($names | Where-Object {
+            -not $after.ContainsKey($_) -or $after[$_].Canonical -ne (ConvertTo-Json -InputObject (ConvertTo-GauntletCanonical $entries[$_]) -Compress -Depth 32) })
+        if ($missing) { $failure = "$ClaudeConfig does not show the new $($missing -join ' and ') (the claude command may use another profile)" }
     }
     if ($failure) {
-        $unrestored = @()
-        foreach ($name in $names) {
-            & $Claude mcp remove $name -s user *> $null        # it may already be absent
-            if ($original.ContainsKey($name)) {
-                & $Claude mcp add-json $name $original[$name] -s user *> $null
-                if ($LASTEXITCODE -ne 0) { $unrestored += $name }
-            }
+        for ($i = $done.Count - 1; $i -ge 0; $i--) {      # undo in reverse; never touch a name the CLI did not change
+            $step = $done[$i]
+            if ($step.Step -eq 'added') { & $Claude mcp remove $step.Name -s user *> $null }
+            else { & $Claude mcp add-json $step.Name $original[$step.Name].Raw -s user *> $null }
+        }                                                   # every outcome is judged by the read-back below
+        $checked = $true
+        try {
+            $after = Read-GauntletUserEntries $ClaudeConfig $names
+            $unrestored = @($names | Where-Object {
+                $was = if ($original.ContainsKey($_)) { $original[$_].Canonical } else { $null }
+                $now = if ($after.ContainsKey($_)) { $after[$_].Canonical } else { $null }
+                $was -ne $now })
+        } catch { $checked = $false; $unrestored = $names }
+        if (-not $unrestored) { throw "Claude Code MCP registration failed: $failure; both entries are back as they were" }
+        $state = "$($unrestored -join ' and ') " + $(if ($checked) { 'could not be put back' } else { "could not be checked: $ClaudeConfig cannot be read back" })
+        $lost = @{}
+        foreach ($name in $unrestored) { if ($original.ContainsKey($name)) { $lost[$name] = $original[$name].Raw } }
+        if ($lost.Count) {
+            $backup = Save-GauntletMcpBackup $ClaudeConfig $lost
+            $state += if ($backup) { "; their original definitions are in $backup (readable by you only)" }
+                      else { '; their original definitions could not be saved privately, so they are not shown' }
         }
-        $state = if ($unrestored) { "could not restore $($unrestored -join ' and '); their definitions were: " +
-                     (($unrestored | ForEach-Object { "$_ = $($original[$_])" }) -join '; ') }
-                 else { 'both entries are back as they were' }
         throw "Claude Code MCP registration failed: $failure; $state"
     }
     [pscustomobject]@{ Registered = $true; Reason = $null; Python = $McpPython; StateRoot = $StateRoot }

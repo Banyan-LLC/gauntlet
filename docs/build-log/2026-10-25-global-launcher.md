@@ -79,3 +79,33 @@ The first review requested five changes, all made in one update:
 Run against the round-0 launcher, 10 of the new launcher tests fail (both redirect cases, the
 containment cases, the cleanup case and the `check` cases); against this update all 28 pass.
 `tests/test-install-registration.ps1`: 43 assertions pass.
+
+## Review round 2 (PR 16)
+
+The re-review verified F1, F3, F4 and F5 and found F2's rollback still incomplete in three ways,
+all in `mcp-registration.ps1`:
+
+- **R2-F1, the wrong profile.** The snapshot came from `~/.claude.json` while the `claude` command
+  follows `CLAUDE_CONFIG_DIR`; with the entries only in that profile, the first add failed and the
+  rollback removed both real entries. Now: with `CLAUDE_CONFIG_DIR` set and no `-ClaudeConfig`
+  (also a new `install.ps1` parameter), the step is skipped before anything is read or changed;
+  the rollback undoes only the changes the command made, in reverse, so a mismatched file can
+  never cost an entry the command did not touch; and a registration is read back, so a command
+  that reports success without the file showing it is a failure, not a success.
+- **R2-F2, an unchecked rollback.** Failed removals were ignored and "both entries are back" was
+  claimed from exit codes. Now the configuration is read back after every rollback and each name
+  is compared with its original (absent, or the same definition with keys in any order); names
+  that differ, or a file that cannot be read back, are reported as such.
+- **R2-F3, secrets in errors.** A failed restore printed the full original definitions. Now the
+  message names the entries only; original definitions that could not be put back are written to
+  a new file beside the configuration, made readable by the current user alone (`icacls`
+  `/inheritance:r` with the user's SID, or `chmod 600`) before anything is written to it, and the
+  message gives its path. If it cannot be made private it is removed and the message says so.
+
+Regressions in `tests/test-install-registration.ps1` (a stub `claude` that now follows
+`CLAUDE_CONFIG_DIR`, fails any set of calls, or accepts calls without writing): two stores with the
+override (refused untouched; a wrong `-ClaudeConfig` removes nothing; the right one registers in
+that profile only), a forward failure followed by a rollback failure with and without original
+entries, secret markers in `env` and `args` absent from the message and present in a backup with
+one access rule for the user, and a read-back that catches an unwritten registration. 62 assertions
+pass; against the round-1 `mcp-registration.ps1`, 11 of them fail.

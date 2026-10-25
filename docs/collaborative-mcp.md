@@ -147,10 +147,16 @@ dependency checks, their exact pins included, and starts nothing.
 
 `install.ps1` (through `mcp-registration.ps1`) resolves the interpreter to an absolute path,
 runs that check in it, and reads the current user-scope definitions of both names from the
-Claude Code user configuration before changing anything. It then replaces each name in turn;
-if any step fails, both names are put back exactly as they were (absent, or their original
-definition) and the install stops, naming any name it could not restore. A missing `claude`
-command, venv or configuration, or a failed check, skips the step with nothing changed. The host loads servers when
+Claude Code user configuration before changing anything. With `CLAUDE_CONFIG_DIR` set, the
+`claude` command may change another profile than `~/.claude.json`, so the step is skipped
+unless `-ClaudeConfig` names that profile's configuration file. It then replaces each name in
+turn and reads the configuration back to check the result. If any step fails, it undoes only
+the changes the `claude` command made, in reverse order, reads the configuration back, and
+stops: either both names are as they were (absent, or their original definition), or the
+names that are not are listed, and original definitions it could not put back are kept in a
+new backup file next to the configuration that only the current user can read. Definitions
+can hold credentials, so no message shows them. A missing `claude` command, venv or
+configuration, or a failed check, skips the step with nothing changed. The host loads servers when
 a session starts: start a new session after registering, and after checking out another
 branch in the same folder. A project or local registration with the same name takes
 precedence over the user-scope one, which keeps a review bound to an older explicit tuple
