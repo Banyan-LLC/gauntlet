@@ -19,10 +19,14 @@ function ConvertTo-GauntletCanonical($Value) {
 
 function Read-GauntletUserEntries([string]$ClaudeConfig, [string[]]$Names) {
     # The user-scope definitions of $Names in $ClaudeConfig: name -> @{ Raw (compact JSON in the file's own order, to
-    # put back exactly); Canonical (sorted keys, to compare) }. A missing file or name is absent; an unreadable file throws.
+    # put back exactly); Canonical (sorted keys, to compare) }. Only a file that does not exist means no entries; any
+    # other failure to read or parse it throws, whatever the caller's error preference, so an unreadable configuration
+    # is never taken as proof that entries are absent or restored.
+    $ErrorActionPreference = 'Stop'
     $found = @{}
-    if (-not (Test-Path -LiteralPath $ClaudeConfig)) { return $found }
-    $config = Get-Content -Raw -LiteralPath $ClaudeConfig | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+    try { $text = [IO.File]::ReadAllText($ClaudeConfig) }
+    catch [System.IO.FileNotFoundException], [System.IO.DirectoryNotFoundException] { return $found }
+    $config = ConvertFrom-Json -InputObject $text -AsHashtable -ErrorAction Stop
     $servers = if ($config -is [System.Collections.IDictionary]) { $config['mcpServers'] } else { $null }
     if ($servers -is [System.Collections.IDictionary]) {
         foreach ($name in $Names) {

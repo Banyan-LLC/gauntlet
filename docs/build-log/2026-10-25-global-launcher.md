@@ -141,3 +141,22 @@ read-back that fails too (both reported unchecked, both kept in the backup), a t
 `claude` call and a throwing undo; and backup writes that throw, report a non-terminating
 error or come up short under `Continue` (never advertised, no file left, no value in the
 message). 80 assertions pass; the round-2 code fails at the first changed check.
+
+## Review round 4 (PR 16)
+
+The fourth review verified R3-F1 and R3-F3 and the thrown read-back and invocation cases of R3-F2,
+and found the remaining class (R4-F1): the reader used `Test-Path` and `Get-Content` under the
+caller's error preference, so with the normal `Continue` a configuration another program held
+open read as empty, and a final check could claim "both entries are back" while the new core
+stayed installed. `Read-GauntletUserEntries` now reads with `[IO.File]::ReadAllText` and stops on
+any error (`$ErrorActionPreference = 'Stop'` locally): a missing file or folder still means no
+entries, and every other failure to read or parse throws into the existing recovery.
+
+Regressions under `Continue`, with a real exclusive lock (the stub can hold the store open with no
+sharing after any call and release it at a later one): a locked first read skips with no call; a
+locked check after the changes is undone with both originals back; the review's own case (a
+failed peer add, a failed undo, then a locked final check) reports both names as unchecked and
+never as restored, while the core really remains; and the reader on its own returns no entries
+for a missing file or folder and throws for a locked or unparseable one. 90 assertions pass;
+against the round-3 code the run stops at the first locked read, which reads as empty, calls the
+command and then claims both entries are back.

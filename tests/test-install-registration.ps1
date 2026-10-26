@@ -12,19 +12,28 @@ Add-Content (Join-Path $dir 'calls.log') ($args -join ' | ')
 $count = 1 + [int](Get-Content (Join-Path $dir 'count.txt') -ErrorAction SilentlyContinue)
 Set-Content (Join-Path $dir 'count.txt') $count
 $failAt = @(Get-Content (Join-Path $dir 'fail-at.txt') -ErrorAction SilentlyContinue | ForEach-Object { [int]$_ })
-if ($failAt -contains $count) { exit 1 }
 $throwAt = @(Get-Content (Join-Path $dir 'throw-at.txt') -ErrorAction SilentlyContinue | ForEach-Object { [int]$_ })
-if ($throwAt -contains $count) { throw "stub claude failed at call $count" }
-if (Test-Path (Join-Path $dir 'no-write.txt')) { exit 0 }     # says yes and changes nothing
-$cfg = Get-Content -Raw $store | ConvertFrom-Json -AsHashtable
-if (-not $cfg.Contains('mcpServers')) { $cfg['mcpServers'] = @{} }
-switch ($args[1]) {
-    'add-json' { if ($cfg.mcpServers.Contains($args[2])) { exit 1 }; $cfg.mcpServers[$args[2]] = ($args[3] | ConvertFrom-Json -AsHashtable) }
-    'remove'   { if (-not $cfg.mcpServers.Contains($args[2])) { exit 1 }; $cfg.mcpServers.Remove($args[2]) }
-    default    { exit 2 }
-}
-$cfg | ConvertTo-Json -Depth 32 | Set-Content $store
-exit 0
+# lock-after.txt / unlock-at.txt: after call N the store is held open with no sharing (a real lock, as another program
+# would hold it), until call M starts. The stub runs in the test's process, so the handle lives in a global.
+$lockAfter = @(Get-Content (Join-Path $dir 'lock-after.txt') -ErrorAction SilentlyContinue | ForEach-Object { [int]$_ })
+$unlockAt = @(Get-Content (Join-Path $dir 'unlock-at.txt') -ErrorAction SilentlyContinue | ForEach-Object { [int]$_ })
+if ($unlockAt -contains $count -and $global:GauntletTestLock) { $global:GauntletTestLock.Dispose(); $global:GauntletTestLock = $null }
+$code = & {
+    if ($failAt -contains $count) { return 1 }
+    if ($throwAt -contains $count) { throw "stub claude failed at call $count" }
+    if (Test-Path (Join-Path $dir 'no-write.txt')) { return 0 }     # says yes and changes nothing
+    $cfg = Get-Content -Raw $store | ConvertFrom-Json -AsHashtable
+    if (-not $cfg.Contains('mcpServers')) { $cfg['mcpServers'] = @{} }
+    switch ($args[1]) {
+        'add-json' { if ($cfg.mcpServers.Contains($args[2])) { return 1 }; $cfg.mcpServers[$args[2]] = ($args[3] | ConvertFrom-Json -AsHashtable) }
+        'remove'   { if (-not $cfg.mcpServers.Contains($args[2])) { return 1 }; $cfg.mcpServers.Remove($args[2]) }
+        default    { return 2 }
+    }
+    $cfg | ConvertTo-Json -Depth 32 | Set-Content $store
+    return 0
+} @args
+if ($lockAfter -contains $count) { $global:GauntletTestLock = [IO.File]::Open($store, 'Open', 'ReadWrite', 'None') }
+exit $code
 '@
 $fakePython = @'
 Add-Content (Join-Path $PSScriptRoot 'python-calls.log') ($args -join ' ')
@@ -33,7 +42,7 @@ if ($code) { Write-Output '{"code":"UNSUPPORTED_EXTRA","operation":"launch"}' }
 exit $code
 '@
 
-function New-Bench([hashtable]$Servers = @{}, [int[]]$FailAt = @(), [int[]]$ThrowAt = @(), [int]$CheckExit = 0) {
+function New-Bench([hashtable]$Servers = @{}, [int[]]$FailAt = @(), [int[]]$ThrowAt = @(), [int[]]$LockAfter = @(), [int[]]$UnlockAt = @(), [int]$CheckExit = 0) {
     $root = Join-Path ([IO.Path]::GetTempPath()) ("gauntlet-reg-" + [guid]::NewGuid().ToString('N'))
     $venvScripts = Join-Path $root 'gauntlet\mcp-venv\Scripts'
     New-Item -ItemType Directory -Force $venvScripts | Out-Null
@@ -41,6 +50,8 @@ function New-Bench([hashtable]$Servers = @{}, [int[]]$FailAt = @(), [int[]]$Thro
     Set-Content (Join-Path $venvScripts 'python.ps1') $fakePython
     if ($FailAt) { Set-Content (Join-Path $root 'fail-at.txt') ($FailAt | ForEach-Object { "$_" }) }
     if ($ThrowAt) { Set-Content (Join-Path $root 'throw-at.txt') ($ThrowAt | ForEach-Object { "$_" }) }
+    if ($LockAfter) { Set-Content (Join-Path $root 'lock-after.txt') ($LockAfter | ForEach-Object { "$_" }) }
+    if ($UnlockAt) { Set-Content (Join-Path $root 'unlock-at.txt') ($UnlockAt | ForEach-Object { "$_" }) }
     if ($CheckExit) { Set-Content (Join-Path $venvScripts 'check-exit.txt') $CheckExit }
     $store = [ordered]@{ numStartups = 7; projects = @{ 'C:/work/x' = @{ mcpServers = @{} } }
                          mcpServers = [ordered]@{ other = @{ type = 'stdio'; command = 'other.exe'; args = @('--x'); env = @{} } } }
@@ -253,6 +264,40 @@ try {
         Assert-True ($message -notmatch 'secret-marker') "a $($script:writeMode) backup write keeps the values out of the message"
     }
 } finally { $ErrorActionPreference = $savedPreference; ${function:Write-GauntletBackupText} = $realWrite }
+
+# R4-F1: under the normal Continue preference, a configuration that cannot be read (here held open by another handle
+# with no sharing, as another program would) is never taken as absent or restored, at the first read, at the check
+# after the changes, or at the final check; only a missing file means no entries.
+$savedPreference = $ErrorActionPreference
+try {
+    $ErrorActionPreference = 'Continue'
+    $b = New-Bench -Servers $originals
+    $lock = [IO.File]::Open($b.Config, 'Open', 'ReadWrite', 'None')
+    try { $r = Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config } finally { $lock.Dispose() }
+    Assert-True (-not $r.Registered -and $r.Reason -match 'cannot read') "a locked configuration at the first read skips"
+    Assert-Eq (Get-Calls $b).Count 0 "no call when the current entries cannot be read"
+
+    $b = New-Bench -LockAfter 2 -UnlockAt 3           # locked after the second add, released when the undo starts
+    try { $message = Get-Failure { Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config } }
+    finally { if ($global:GauntletTestLock) { $global:GauntletTestLock.Dispose(); $global:GauntletTestLock = $null } }
+    Assert-True ($message -match 'could not be read back to check the new entries; both entries are back as they were') "a locked check after the changes is undone: $message"
+    $after = Get-Store $b
+    Assert-True (-not $after.mcpServers.Contains('gauntlet-core') -and -not $after.mcpServers.Contains('gauntlet-peer')) "both new entries were undone"
+
+    $b = New-Bench -FailAt 2, 3 -LockAfter 3          # add core, add peer fails, removing the new core fails, final check locked
+    try { $message = Get-Failure { Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config } }
+    finally { if ($global:GauntletTestLock) { $global:GauntletTestLock.Dispose(); $global:GauntletTestLock = $null } }
+    Assert-True ($message -notmatch 'both entries are back' -and $message -match 'gauntlet-core and gauntlet-peer could not be checked') "a locked final check is never reported as restored: $message"
+    Assert-True ((Get-Store $b).mcpServers.Contains('gauntlet-core')) "the core really is still there (the report was right not to claim otherwise)"
+
+    $b = New-Bench -Servers $originals
+    Assert-Eq (Read-GauntletUserEntries (Join-Path $b.Root 'no-such.json') @('gauntlet-core', 'gauntlet-peer')).Count 0 "a missing file means no entries"
+    Assert-Eq (Read-GauntletUserEntries (Join-Path $b.Root 'no-such-dir\.claude.json') @('gauntlet-core')).Count 0 "a missing folder means no entries"
+    $lock = [IO.File]::Open($b.Config, 'Open', 'ReadWrite', 'None')
+    try { Assert-Throws { Read-GauntletUserEntries $b.Config @('gauntlet-core') } "a locked file throws under Continue" } finally { $lock.Dispose() }
+    Set-Content $b.Config '{not json'
+    Assert-Throws { Read-GauntletUserEntries $b.Config @('gauntlet-core') } "an unparseable file throws under Continue"
+} finally { $ErrorActionPreference = $savedPreference }
 
 # A CLI that says yes but changes nothing is caught by the read-back, not reported as success.
 $b = New-Bench
