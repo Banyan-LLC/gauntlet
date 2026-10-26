@@ -1,4 +1,16 @@
 #Requires -Version 7
+param(
+    # Leave every host configuration untouched: do not register the collaborative servers with Claude Code.
+    [switch]$SkipMcpRegistration,
+    # The python of the venv that holds gauntlet-review[codex] from this checkout (default: the first of
+    # %LOCALAPPDATA%\Gauntlet\mcp-venv and ~\.local\share\gauntlet\mcp-venv that exists).
+    [string]$McpPython,
+    # Where the launcher keeps one private review store per checkout and ref pair (default: 'state' beside the venv).
+    [string]$StateRoot,
+    # Optional confirmation of the Claude Code configuration the claude command changes (<CLAUDE_CONFIG_DIR>\.claude.json,
+    # else ~\.claude.json); any other path stops the registration before any change.
+    [string]$ClaudeConfig
+)
 $src = $PSScriptRoot
 . "$src\gauntlet-review\scripts\lib.ps1"
 # Installation is a gate too: it uses the SAME selection policy and stack-identity manifest a
@@ -40,3 +52,20 @@ if (-not (Test-Path $claudeMd) -or -not ((Get-Content -Raw $claudeMd) -match [re
     Add-Content -Path $claudeMd -Value "`n$pointer"
     Write-Host "appended pointer to $claudeMd"
 } else { Write-Host "pointer already present" }
+
+# Collaborative route (docs/collaborative-mcp.md, "Global registration"): one user-scope Claude Code registration
+# of each server, through the launcher, which binds every session to the checkout and branch it starts in. A
+# project or local entry with the same name still takes precedence. Anything missing, or a -ClaudeConfig that is not
+# the claude command's configuration, skips this step with a warning; a failed replacement undoes its changes, checks
+# the result and stops the install, naming any entry that is not as it was.
+if ($SkipMcpRegistration) { Write-Host "skipped Claude Code MCP registration (-SkipMcpRegistration)"; return }
+. "$src\mcp-registration.ps1"
+$registrationArgs = @{ McpPython = $McpPython; StateRoot = $StateRoot }
+if ($ClaudeConfig) { $registrationArgs.ClaudeConfig = $ClaudeConfig }
+try { $registration = Register-GauntletMcp @registrationArgs }
+catch { Write-Error $_.Exception.Message; exit 1 }
+if ($registration.Registered) {
+    Write-Host "registered gauntlet-core and gauntlet-peer with Claude Code (user scope, $($registration.Python), review state under $($registration.StateRoot)); start a new session to load them"
+} else {
+    Write-Warning "skipped Claude Code MCP registration: $($registration.Reason)"
+}

@@ -100,7 +100,73 @@ missing optional pins, unsafe state paths or mismatched persisted bindings refus
 startup/operations; no alternative state is silently created. There are no new
 secrets, environment variables, deployment settings or migrations required for
 legacy users. The optional extra and host configuration are required only to use
-this feature. No user host configuration is rewritten by installation.
+this feature. `install.ps1` registers the two Claude Code servers described in
+[Global registration](#global-registration) at user scope, replacing earlier
+user-scope entries with the same names; run it with `-SkipMcpRegistration` to leave
+every host configuration untouched. It rewrites nothing else.
+
+## Global registration
+
+One user-scope registration of each server serves every Claude Code project. Both
+entries start the launcher, which runs in the session's working folder, works out
+that session's operator tuple there and then starts the ordinary server in the same
+process, so every process still has exactly one immutable tuple:
+
+```powershell
+& 'C:/Users/YOU/AppData/Local/Gauntlet/mcp-venv/Scripts/python.exe' -I -m gauntlet_review.launch core --state-root 'C:/Users/YOU/AppData/Local/Gauntlet/state'
+& 'C:/Users/YOU/AppData/Local/Gauntlet/mcp-venv/Scripts/python.exe' -I -m gauntlet_review.launch peer --state-root 'C:/Users/YOU/AppData/Local/Gauntlet/state'
+```
+
+- `--repo` is the checkout containing the working folder; a linked worktree is its own checkout.
+- `--source-ref` is the branch that checkout has checked out. A detached HEAD is refused.
+- `--target-ref` is origin's default branch (`refs/remotes/origin/HEAD`), else
+  `refs/remotes/origin/main` or `refs/remotes/origin/master`. Hosts still own fetching.
+- `--repository-id` is `<owner>-<repository>` from origin's URL (lowercase, at most 64
+  characters), else the main checkout's folder name.
+- `--state-dir` is `<state-root>/<repository-id>--<branch>-<digest>`. The digest covers the
+  checkout path, the ID and both refs, so each checkout and ref pair has its own store and a
+  store is never rebound to other refs. The state root is never resolved: every existing
+  component of it, from the drive or filesystem root down, must be a real directory (no
+  symbolic link, junction or other reparse point), checked before anything is created or
+  logged, and the unresolved path is what the core receives and checks again. A new
+  directory (and a missing state root) is created restricted to the current account:
+  `icacls /inheritance:r /grant:r` on Windows, mode `0700` elsewhere; if that fails it is
+  removed again and the original failure is reported.
+- The participants are `claude-author` (role `author`) for `core` and `claude-peer` for `peer`;
+  `peer` passes `--timeout-seconds` (default 600) to the adapter.
+
+Every failure before the hand-off prints one fixed code on stderr and nothing else: no
+path, argument or traceback (`NOT_A_GIT_CHECKOUT`, `DETACHED_HEAD`, `NO_TARGET_REF`,
+`UNSUPPORTED_REF`, `STATE_INSIDE_REPOSITORY`, `REDIRECTED_STATE_COMPONENT`,
+`STATE_COMPONENT_NOT_DIRECTORY`, `STATE_NOT_PRIVATE`, `STATE_UNAVAILABLE`, `MISSING_EXTRA`,
+`UNSUPPORTED_EXTRA`, `CONFIGURATION_ERROR`, or `INTERNAL_ERROR` with a correlation ID), so the
+host reports the server as failed and the skills report a setup gap. Details go to
+`<state-root>/launch.log` (bounded), which the operator owns, and only when that root is a
+real directory. `python -m gauntlet_review.launch check` runs both servers' model-free
+dependency checks, their exact pins included, and starts nothing.
+
+`install.ps1` (through `mcp-registration.ps1`) resolves the interpreter to an absolute path,
+runs that check in it, and reads the current user-scope definitions of both names from the
+Claude Code user configuration before changing anything. That configuration is the file the
+`claude` command itself reads and changes: `<CLAUDE_CONFIG_DIR>/.claude.json` when that
+variable is set, else `~/.claude.json`. `-ClaudeConfig` is optional and only confirms it: a
+path that is not that same file stops the step before any `claude` call. It then replaces
+each name in turn and reads the configuration back to check the result. If any step fails (a
+refused or throwing `claude` call, or a read-back that fails or disagrees), it undoes only the
+changes the command made, in reverse order, reads the configuration back, and stops: either
+both names are as they were (absent, or their original definition), or the names that are not
+(or could not be checked) are listed, and their original definitions are kept in a new backup
+file next to the configuration, made readable by the current user alone before anything is
+written to it and reported only once it reads back exactly. Definitions can hold credentials,
+so no message shows them. A missing `claude` command, venv or configuration, or a failed check,
+skips the step with nothing changed. The host loads servers when
+a session starts: start a new session after registering, and after checking out another
+branch in the same folder. A project or local registration with the same name takes
+precedence over the user-scope one, which keeps a review bound to an older explicit tuple
+on its existing store. Register by hand with
+`claude mcp add-json gauntlet-core '<entry>' -s user` (and `gauntlet-peer`), where the
+entry's `args` are the launcher arguments above. A separately operated Codex host keeps its
+own explicit configuration.
 
 Claude Code can read a user-owned JSON configuration supplied with
 `--mcp-config /absolute/path/gauntlet-hosts.json --strict-mcp-config`:
