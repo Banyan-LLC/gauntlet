@@ -362,10 +362,11 @@ The installer:
    `-SkipMcpRegistration` skips this step). It first resolves the interpreter to an absolute
    path and runs the launcher's dependency check there (`python -m gauntlet_review.launch
    check`, the servers' exact pins); it warns and skips, changing nothing, when `claude`, the
-   venv, the configuration or that check fails, and when `CLAUDE_CONFIG_DIR` is set without
-   `-ClaudeConfig` naming that profile's configuration. If a replacement fails, the changes it
-   made are undone, the result is read back, and the install stops, naming any entry that is
-   not as it was (its original definition kept in a backup only you can read).
+   venv, the configuration or that check fails. It changes the configuration the `claude`
+   command uses (`<CLAUDE_CONFIG_DIR>/.claude.json`, else `~/.claude.json`); `-ClaudeConfig`, if
+   given, must name that same file. If a replacement fails, the changes it made are undone, the
+   result is read back, and the install stops, naming any entry that is not as it was (its
+   original definition kept in a backup only you can read).
 
 Start a new Claude Code session after installation so skill discovery and the servers load
 from a clean session.

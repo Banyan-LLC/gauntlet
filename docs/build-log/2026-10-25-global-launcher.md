@@ -109,3 +109,35 @@ that profile only), a forward failure followed by a rollback failure with and wi
 entries, secret markers in `env` and `args` absent from the message and present in a backup with
 one access rule for the user, and a read-back that catches an unwritten registration. 62 assertions
 pass; against the round-1 `mcp-registration.ps1`, 11 of them fail.
+
+## Review round 3 (PR 16)
+
+The third review verified the absent-entry rollback and the secret-free errors and found three
+gaps in the recovery code:
+
+- **R3-F1, a populated wrong profile.** Round 2 only checked that `-ClaudeConfig` was given; with
+  `CLAUDE_CONFIG_DIR` selecting profile A and a populated file B passed, the command changed A
+  and the rollback wrote B's definitions into A. The configuration is now derived the way the
+  CLI derives it, `<CLAUDE_CONFIG_DIR>/.claude.json` or `~/.claude.json` (confirmed with the CLI
+  and a throwaway profile: an entry in that profile's `.claude.json` is listed as "Scope: User
+  config"), and `-ClaudeConfig` only confirms it: any other path, compared as a full path, is
+  refused before any call. The round-2 rule that skipped whenever `CLAUDE_CONFIG_DIR` was set is
+  gone, since the right file is now known.
+- **R3-F2, a read-back that escaped recovery.** A failing read-back after the changes threw past
+  the rollback. It is now a failure like any other, and so is a `claude` call that throws (also
+  during the undo, where the read-back judges the outcome). A final read-back that fails reports
+  every name as unchecked and keeps all original definitions in the backup.
+- **R3-F3, an unverified backup.** The write ran under the caller's error preference and was
+  never checked. The backup now fails on any error inside it (`$ErrorActionPreference = 'Stop'`
+  locally), writes through one helper, and is reported only after its content reads back
+  exactly; otherwise the file is removed and the message says the definitions were not saved.
+
+Regressions (`tests/test-install-registration.ps1`, now with every bench pointing
+`CLAUDE_CONFIG_DIR` at its own folder, so the real configuration is never read): populated,
+different definitions in the CLI's profile and in another file, a mismatched `-ClaudeConfig`
+refused with no call and both files unchanged, the same file spelled another way accepted; a
+read-back that fails after the four changes (all four undone, both originals back), a final
+read-back that fails too (both reported unchecked, both kept in the backup), a throwing
+`claude` call and a throwing undo; and backup writes that throw, report a non-terminating
+error or come up short under `Continue` (never advertised, no file left, no value in the
+message). 80 assertions pass; the round-2 code fails at the first changed check.

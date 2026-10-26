@@ -147,16 +147,19 @@ dependency checks, their exact pins included, and starts nothing.
 
 `install.ps1` (through `mcp-registration.ps1`) resolves the interpreter to an absolute path,
 runs that check in it, and reads the current user-scope definitions of both names from the
-Claude Code user configuration before changing anything. With `CLAUDE_CONFIG_DIR` set, the
-`claude` command may change another profile than `~/.claude.json`, so the step is skipped
-unless `-ClaudeConfig` names that profile's configuration file. It then replaces each name in
-turn and reads the configuration back to check the result. If any step fails, it undoes only
-the changes the `claude` command made, in reverse order, reads the configuration back, and
-stops: either both names are as they were (absent, or their original definition), or the
-names that are not are listed, and original definitions it could not put back are kept in a
-new backup file next to the configuration that only the current user can read. Definitions
-can hold credentials, so no message shows them. A missing `claude` command, venv or
-configuration, or a failed check, skips the step with nothing changed. The host loads servers when
+Claude Code user configuration before changing anything. That configuration is the file the
+`claude` command itself reads and changes: `<CLAUDE_CONFIG_DIR>/.claude.json` when that
+variable is set, else `~/.claude.json`. `-ClaudeConfig` is optional and only confirms it: a
+path that is not that same file stops the step before any `claude` call. It then replaces
+each name in turn and reads the configuration back to check the result. If any step fails (a
+refused or throwing `claude` call, or a read-back that fails or disagrees), it undoes only the
+changes the command made, in reverse order, reads the configuration back, and stops: either
+both names are as they were (absent, or their original definition), or the names that are not
+(or could not be checked) are listed, and their original definitions are kept in a new backup
+file next to the configuration, made readable by the current user alone before anything is
+written to it and reported only once it reads back exactly. Definitions can hold credentials,
+so no message shows them. A missing `claude` command, venv or configuration, or a failed check,
+skips the step with nothing changed. The host loads servers when
 a session starts: start a new session after registering, and after checking out another
 branch in the same folder. A project or local registration with the same name takes
 precedence over the user-scope one, which keeps a review bound to an older explicit tuple

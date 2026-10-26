@@ -1,19 +1,21 @@
 . "$PSScriptRoot\helpers.ps1"
 . "$PSScriptRoot\..\mcp-registration.ps1"
 # Register-GauntletMcp (install.ps1's Claude Code registration) against stub commands: a fake claude that keeps a
-# user-scope store in its own JSON file (the same file the function reads as the Claude Code configuration) and can
-# fail any chosen call, and a fake python whose launcher dependency check passes or fails. Nothing real is touched.
+# user-scope store in <CLAUDE_CONFIG_DIR>/.claude.json, as the real CLI does (each bench points CLAUDE_CONFIG_DIR at its
+# own folder, so the real home configuration is never read or changed), and can fail, throw or skip writing at any
+# chosen call; and a fake python whose launcher dependency check passes or fails. Nothing real is touched.
 
 $fakeClaude = @'
 $dir = $PSScriptRoot
-# Like the real CLI, CLAUDE_CONFIG_DIR moves the profile it changes.
-$store = if ($env:CLAUDE_CONFIG_DIR) { Join-Path $env:CLAUDE_CONFIG_DIR '.claude.json' } else { Join-Path $dir 'store.json' }
+$store = Join-Path $(if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { $dir }) '.claude.json'
 Add-Content (Join-Path $dir 'calls.log') ($args -join ' | ')
 $count = 1 + [int](Get-Content (Join-Path $dir 'count.txt') -ErrorAction SilentlyContinue)
 Set-Content (Join-Path $dir 'count.txt') $count
 $failAt = @(Get-Content (Join-Path $dir 'fail-at.txt') -ErrorAction SilentlyContinue | ForEach-Object { [int]$_ })
 if ($failAt -contains $count) { exit 1 }
-if (Test-Path (Join-Path $dir 'no-write.txt')) { exit 0 }     # says yes and changes nothing (another profile, say)
+$throwAt = @(Get-Content (Join-Path $dir 'throw-at.txt') -ErrorAction SilentlyContinue | ForEach-Object { [int]$_ })
+if ($throwAt -contains $count) { throw "stub claude failed at call $count" }
+if (Test-Path (Join-Path $dir 'no-write.txt')) { exit 0 }     # says yes and changes nothing
 $cfg = Get-Content -Raw $store | ConvertFrom-Json -AsHashtable
 if (-not $cfg.Contains('mcpServers')) { $cfg['mcpServers'] = @{} }
 switch ($args[1]) {
@@ -31,32 +33,37 @@ if ($code) { Write-Output '{"code":"UNSUPPORTED_EXTRA","operation":"launch"}' }
 exit $code
 '@
 
-function New-Bench([hashtable]$Servers = @{}, [int[]]$FailAt = @(), [int]$CheckExit = 0) {
+function New-Bench([hashtable]$Servers = @{}, [int[]]$FailAt = @(), [int[]]$ThrowAt = @(), [int]$CheckExit = 0) {
     $root = Join-Path ([IO.Path]::GetTempPath()) ("gauntlet-reg-" + [guid]::NewGuid().ToString('N'))
     $venvScripts = Join-Path $root 'gauntlet\mcp-venv\Scripts'
     New-Item -ItemType Directory -Force $venvScripts | Out-Null
     Set-Content (Join-Path $root 'claude.ps1') $fakeClaude
     Set-Content (Join-Path $venvScripts 'python.ps1') $fakePython
     if ($FailAt) { Set-Content (Join-Path $root 'fail-at.txt') ($FailAt | ForEach-Object { "$_" }) }
+    if ($ThrowAt) { Set-Content (Join-Path $root 'throw-at.txt') ($ThrowAt | ForEach-Object { "$_" }) }
     if ($CheckExit) { Set-Content (Join-Path $venvScripts 'check-exit.txt') $CheckExit }
     $store = [ordered]@{ numStartups = 7; projects = @{ 'C:/work/x' = @{ mcpServers = @{} } }
                          mcpServers = [ordered]@{ other = @{ type = 'stdio'; command = 'other.exe'; args = @('--x'); env = @{} } } }
     foreach ($k in $Servers.Keys) { $store.mcpServers[$k] = $Servers[$k] }
-    $store | ConvertTo-Json -Depth 32 | Set-Content (Join-Path $root 'store.json')
-    [pscustomobject]@{ Root = $root; Claude = (Join-Path $root 'claude.ps1'); Config = (Join-Path $root 'store.json')
+    $store | ConvertTo-Json -Depth 32 | Set-Content (Join-Path $root '.claude.json')
+    $env:CLAUDE_CONFIG_DIR = $root                    # the profile both the stub and Register-GauntletMcp use
+    [pscustomobject]@{ Root = $root; Claude = (Join-Path $root 'claude.ps1'); Config = (Join-Path $root '.claude.json')
                        Python = (Join-Path $venvScripts 'python.ps1'); Calls = (Join-Path $root 'calls.log') }
 }
 function Get-Store($Bench) { Get-Content -Raw $Bench.Config | ConvertFrom-Json -AsHashtable }
 function Get-Calls($Bench) { if (Test-Path $Bench.Calls) { @(Get-Content $Bench.Calls) } else { @() } }
 function Get-Entries($Servers) {      # each server's definition as compact JSON, by name: independent of key order
     $out = [ordered]@{}
-    foreach ($name in ($Servers.Keys | Sort-Object)) { $out[$name] = $Servers[$name] | ConvertTo-Json -Depth 32 -Compress }
+    foreach ($name in ($Servers.Keys | Sort-Object)) { $out[$name] = ConvertTo-Json -InputObject (ConvertTo-GauntletCanonical $Servers[$name]) -Depth 32 -Compress }
     ($out.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join "`n"
 }
+function Get-Failure([scriptblock]$Call) { try { & $Call | Out-Null; $null } catch { $_.Exception.Message } }
 
 $oldCore = @{ type = 'stdio'; command = 'C:\old\python.exe'; args = @('-m', 'gauntlet_review.collaborative', '--repo', 'C:\w'); env = @{ KEEP = '1' } }
 $oldPeer = @{ type = 'stdio'; command = 'C:\old\python.exe'; args = @('-m', 'gauntlet_review.codex_bridge', '--repo', 'C:\w'); env = @{} }
 $originals = @{ 'gauntlet-core' = $oldCore; 'gauntlet-peer' = $oldPeer }
+$savedConfigDir = $env:CLAUDE_CONFIG_DIR
+try {
 
 # A fresh registration: both entries point at the absolute interpreter and the launcher, with the default state root.
 $b = New-Bench
@@ -70,9 +77,9 @@ Assert-Eq $s.mcpServers['other'].command 'other.exe' "an unrelated server is unt
 Assert-Eq $s.numStartups 7 "unrelated settings are untouched"
 Assert-Eq (Get-Content (Join-Path (Split-Path $b.Python) 'python-calls.log')) '-I -m gauntlet_review.launch check' "the dependency check ran first"
 
-# Replacing existing entries succeeds and drops the old definitions.
+# Replacing existing entries succeeds and drops the old definitions; -ClaudeConfig may be left out.
 $b = New-Bench -Servers $originals
-$r = Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config
+$r = Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude
 Assert-True $r.Registered "replacement succeeds"
 Assert-Eq (Get-Store $b).mcpServers['gauntlet-core'].args[2] 'gauntlet_review.launch' "core replaced"
 $calls = Get-Calls $b
@@ -84,8 +91,7 @@ Assert-True ($calls[0] -like 'mcp | remove | gauntlet-core | *' -and $calls[1] -
 foreach ($failAt in 1, 2, 3, 4) {
     $b = New-Bench -Servers $originals -FailAt $failAt
     $before = Get-Entries (Get-Store $b).mcpServers
-    $message = $null
-    try { Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config | Out-Null } catch { $message = $_.Exception.Message }
+    $message = Get-Failure { Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config }
     Assert-True ($message -match 'both entries are back as they were') "failure at mutation $failAt reports the rollback"
     $after = Get-Store $b
     Assert-Eq (Get-Entries $after.mcpServers) $before "failure at mutation $failAt restores both originals"
@@ -94,8 +100,7 @@ foreach ($failAt in 1, 2, 3, 4) {
 }
 # With no previous entries, a failed second add leaves neither name behind (no mixed pair).
 $b = New-Bench -FailAt 2
-$message = $null
-try { Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config | Out-Null } catch { $message = $_.Exception.Message }
+$message = Get-Failure { Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config }
 Assert-True ($message -match 'adding the new gauntlet-peer failed') "failed second add is named"
 $after = Get-Store $b
 Assert-True (-not $after.mcpServers.Contains('gauntlet-core') -and -not $after.mcpServers.Contains('gauntlet-peer')) "no half-registered pair is left"
@@ -133,54 +138,84 @@ Set-Content $b.Config '{not json'
 $r = Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config
 Assert-True (-not $r.Registered -and $r.Reason -match 'cannot read') "an unreadable configuration skips"
 Assert-Eq (Get-Calls $b).Count 0 "no host mutation for any skip"
-Assert-Throws { Register-GauntletMcp -McpPython $b.Python -StateRoot 'relative\state' -Claude $b.Claude -ClaudeConfig (Join-Path $b.Root 'absent.json') } "a relative -StateRoot is refused"
+Assert-Throws { Register-GauntletMcp -McpPython $b.Python -StateRoot 'relative\state' -Claude $b.Claude } "a relative -StateRoot is refused"
 
-# R2-F1: with CLAUDE_CONFIG_DIR set the CLI changes another profile than the default configuration. Without -ClaudeConfig
-# nothing is read or changed; naming that profile registers there; a wrong -ClaudeConfig never costs the real entries.
-$b = New-Bench
+# R3-F1 (R2-F1): the configuration read is the one the claude command changes, CLAUDE_CONFIG_DIR's .claude.json. A
+# -ClaudeConfig naming any other file is refused before any call, so populated, different definitions in both files
+# survive; the same file (however spelled) or no -ClaudeConfig registers in that profile alone.
+$snapCore = @{ type = 'stdio'; command = 'snapshot-old-core.exe'; args = @(); env = @{} }
+$snapPeer = @{ type = 'stdio'; command = 'snapshot-old-peer.exe'; args = @(); env = @{} }
+$b = New-Bench -Servers @{ 'gauntlet-core' = $snapCore; 'gauntlet-peer' = $snapPeer }     # a populated file the CLI does not use
 $profileDir = Join-Path $b.Root 'profile'
 New-Item -ItemType Directory $profileDir | Out-Null
 $profileStore = Join-Path $profileDir '.claude.json'
-[ordered]@{ mcpServers = [ordered]@{ 'gauntlet-core' = $oldCore; 'gauntlet-peer' = $oldPeer } } | ConvertTo-Json -Depth 32 | Set-Content $profileStore
-$homeBefore = Get-Content -Raw $b.Config
+[ordered]@{ mcpServers = [ordered]@{ 'gauntlet-core' = @{ type = 'stdio'; command = 'actual-profile-core.exe'; args = @(); env = @{} }
+                                     'gauntlet-peer' = @{ type = 'stdio'; command = 'actual-profile-peer.exe'; args = @(); env = @{} } } } |
+    ConvertTo-Json -Depth 32 | Set-Content $profileStore
+$otherBefore = Get-Content -Raw $b.Config
 $profileBefore = Get-Content -Raw $profileStore
-$savedDir = $env:CLAUDE_CONFIG_DIR
-try {
-    $env:CLAUDE_CONFIG_DIR = $profileDir
-    $r = Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude
-    Assert-True (-not $r.Registered -and $r.Reason -match 'CLAUDE_CONFIG_DIR') "an override without -ClaudeConfig is refused"
-    Assert-Eq (Get-Calls $b).Count 0 "no host change while the profile is unconfirmed"
-    Assert-Eq (Get-Content -Raw $profileStore) $profileBefore "the custom profile is untouched by the refusal"
-    $message = $null
-    try { Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config | Out-Null } catch { $message = $_.Exception.Message }
-    Assert-True ($message -match 'adding the new gauntlet-core failed') "a wrong -ClaudeConfig fails at the first add"
-    Assert-Eq (Get-Entries (Get-Content -Raw $profileStore | ConvertFrom-Json -AsHashtable).mcpServers) (Get-Entries ($profileBefore | ConvertFrom-Json -AsHashtable).mcpServers) "a wrong -ClaudeConfig removes no real entry"
-    Remove-Item (Join-Path $b.Root 'calls.log')
-    $r = Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $profileStore
-    Assert-True $r.Registered "naming the profile registers"
-    Assert-Eq ((Get-Content -Raw $profileStore | ConvertFrom-Json -AsHashtable).mcpServers['gauntlet-peer'].args[3]) 'peer' "the profile holds the new entries"
-    Assert-Eq (Get-Content -Raw $b.Config) $homeBefore "the home configuration is never touched"
-} finally { $env:CLAUDE_CONFIG_DIR = $savedDir }
+$env:CLAUDE_CONFIG_DIR = $profileDir
+$r = Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config
+Assert-True (-not $r.Registered -and $r.Reason -match 'is not the configuration the') "a -ClaudeConfig other than the CLI's profile is refused"
+Assert-Eq (Get-Calls $b).Count 0 "no call before the profile is confirmed"
+Assert-Eq (Get-Content -Raw $profileStore) $profileBefore "the CLI's populated profile is untouched"
+Assert-Eq (Get-Content -Raw $b.Config) $otherBefore "the other populated file is untouched"
+$r = Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig (Join-Path $profileDir '.\.claude.json')
+Assert-True $r.Registered "the same file, spelled another way, registers"
+Assert-Eq ((Get-Content -Raw $profileStore | ConvertFrom-Json -AsHashtable).mcpServers['gauntlet-peer'].args[3]) 'peer' "the CLI's profile holds the new entries"
+Assert-Eq (Get-Content -Raw $b.Config) $otherBefore "the other file is never touched"
 
 # R2-F2: a forward failure and then a rollback failure are reported as they are, decided by reading the result back.
 $b = New-Bench -FailAt 2, 3                       # add core, add peer fails, removing the new core fails too
-$message = $null
-try { Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config | Out-Null } catch { $message = $_.Exception.Message }
+$message = Get-Failure { Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config }
 Assert-True ($message -notmatch 'both entries are back') "an incomplete rollback is never reported as complete"
 Assert-True ($message -match 'gauntlet-core could not be put back') "the entry left behind is named"
 Assert-True ((Get-Store $b).mcpServers.Contains('gauntlet-core')) "the stub really kept the new core (the report matches the state)"
 $b = New-Bench -Servers $originals -FailAt 4, 5   # with originals: add peer fails, putting back the old peer fails
-$message = $null
-try { Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config | Out-Null } catch { $message = $_.Exception.Message }
+$message = Get-Failure { Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config }
 $after = Get-Store $b
 Assert-True ($message -match '^Claude Code MCP registration failed: adding the new gauntlet-peer failed; gauntlet-peer could not be put back') "only the peer is reported: $message"
-Assert-Eq (ConvertTo-Json -InputObject (ConvertTo-GauntletCanonical $after.mcpServers['gauntlet-core']) -Depth 32 -Compress) (ConvertTo-Json -InputObject (ConvertTo-GauntletCanonical $oldCore) -Depth 32 -Compress) "the core is back as it was"
+Assert-Eq (Get-Entries @{ c = $after.mcpServers['gauntlet-core'] }) (Get-Entries @{ c = $oldCore }) "the core is back as it was"
+
+# R3-F2: a read-back that fails after the changes, and a command that throws, go through the same recovery.
+$realRead = ${function:Read-GauntletUserEntries}
+$script:reads = 0
+$script:failReads = @()
+function Read-GauntletUserEntries([string]$ClaudeConfig, [string[]]$Names) {
+    $script:reads++
+    if ($script:failReads -contains $script:reads) { throw [IO.IOException]::new('injected read-back failure') }
+    & $realRead $ClaudeConfig $Names
+}
+try {
+    $b = New-Bench -Servers $originals
+    $script:reads = 0; $script:failReads = @(2)         # the snapshot reads; the check after the four changes fails
+    $message = Get-Failure { Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config }
+    Assert-True ($message -match 'could not be read back to check the new entries; both entries are back as they were') "a failed read-back is undone like any failure: $message"
+    Assert-Eq (Get-Calls $b).Count 8 "four changes, then four undone"
+    Assert-Eq (Get-Entries (Get-Store $b).mcpServers) (Get-Entries ([ordered]@{ 'gauntlet-core' = $oldCore; 'gauntlet-peer' = $oldPeer; other = @{ type = 'stdio'; command = 'other.exe'; args = @('--x'); env = @{} } })) "both originals are back"
+
+    $b = New-Bench -Servers $originals
+    $script:reads = 0; $script:failReads = @(2, 3)      # and the final check cannot read either
+    $message = Get-Failure { Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config }
+    Assert-True ($message -match 'gauntlet-core and gauntlet-peer could not be checked') "an unreadable result is reported as unchecked"
+    $backup = if ($message -match 'definitions are in (\S+) \(readable by you only\)') { $Matches[1] } else { $null }
+    Assert-True ($backup -and (Test-Path -LiteralPath $backup)) "the originals are kept when the result cannot be checked"
+    if ($backup) { Assert-Eq ((@((Get-Content -Raw -LiteralPath $backup | ConvertFrom-Json -AsHashtable).Keys) | Sort-Object) -join ',') 'gauntlet-core,gauntlet-peer' "both originals are in the backup" }
+} finally { ${function:Read-GauntletUserEntries} = $realRead }
+
+$b = New-Bench -Servers $originals -ThrowAt 3      # removing the old peer throws
+$message = Get-Failure { Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config }
+Assert-True ($message -match 'failed \(RuntimeException\); both entries are back as they were') "a throwing command is undone like a refused one: $message"
+Assert-Eq (Get-Entries @{ c = (Get-Store $b).mcpServers['gauntlet-core'] }) (Get-Entries @{ c = $oldCore }) "the core it had replaced is back"
+$b = New-Bench -Servers $originals -FailAt 4 -ThrowAt 5   # add peer fails, then putting back the old peer throws
+$message = Get-Failure { Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config }
+Assert-True ($message -notmatch 'both entries are back' -and $message -match 'gauntlet-peer could not be put back') "a throwing undo is judged by the read-back: $message"
+Assert-Eq (Get-Entries @{ c = (Get-Store $b).mcpServers['gauntlet-core'] }) (Get-Entries @{ c = $oldCore }) "the undo after the throwing one still ran"
 
 # R2-F3: original definitions never appear in a message; the ones not put back are kept in a backup only the user reads.
 $secretCore = @{ type = 'stdio'; command = 'C:\old\python.exe'; args = @('--token', 'arg-secret-marker'); env = @{ TOKEN = 'fixture-secret-marker' } }
 $b = New-Bench -Servers @{ 'gauntlet-core' = $secretCore; 'gauntlet-peer' = $oldPeer } -FailAt 2, 3   # add core fails; putting back the old core fails
-$message = $null
-try { Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config | Out-Null } catch { $message = $_.Exception.Message }
+$message = Get-Failure { Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config }
 Assert-True ($message -notmatch 'secret-marker') "no original value appears in the message"
 Assert-True ($message -match 'gauntlet-core could not be put back') "the unrestored name is reported"
 $backup = if ($message -match 'definitions are in (\S+) \(readable by you only\)') { $Matches[1] } else { $null }
@@ -196,11 +231,34 @@ if ($backup) {
     }
 }
 
-# A CLI that says yes but changes nothing (it uses another profile) is caught by the read-back, not reported as success.
+# R3-F3: a backup whose write fails, reports a non-terminating error or comes up short is never advertised, and no
+# incomplete file is left, whatever the caller's error preference.
+$realWrite = ${function:Write-GauntletBackupText}
+$savedPreference = $ErrorActionPreference
+try {
+    $ErrorActionPreference = 'Continue'
+    foreach ($mode in 'throw', 'nonterminating', 'short') {
+        $script:writeMode = $mode
+        function Write-GauntletBackupText([string]$Path, [string]$Text) {
+            switch ($script:writeMode) {
+                'throw'          { throw [IO.IOException]::new('injected write failure') }
+                'nonterminating' { Write-Error 'injected non-terminating write failure' }
+                'short'          { [IO.File]::WriteAllText($Path, $Text.Substring(0, 5)) }
+            }
+        }
+        $b = New-Bench -Servers @{ 'gauntlet-core' = $secretCore; 'gauntlet-peer' = $oldPeer } -FailAt 2, 3
+        $message = Get-Failure { Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config }
+        Assert-True ($message -match 'could not be saved privately' -and $message -notmatch 'definitions are in') "a $($script:writeMode) backup write is reported as not saved"
+        Assert-Eq @(Get-ChildItem -Path "$($b.Config).gauntlet-mcp-backup-*" -ErrorAction SilentlyContinue).Count 0 "a $($script:writeMode) backup write leaves no file"
+        Assert-True ($message -notmatch 'secret-marker') "a $($script:writeMode) backup write keeps the values out of the message"
+    }
+} finally { $ErrorActionPreference = $savedPreference; ${function:Write-GauntletBackupText} = $realWrite }
+
+# A CLI that says yes but changes nothing is caught by the read-back, not reported as success.
 $b = New-Bench
 Set-Content (Join-Path $b.Root 'no-write.txt') 'x'
-$message = $null
-try { Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config | Out-Null } catch { $message = $_.Exception.Message }
+$message = Get-Failure { Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config }
 Assert-True ($message -match 'does not show the new gauntlet-core and gauntlet-peer') "registration is checked by reading the configuration back"
 
+} finally { $env:CLAUDE_CONFIG_DIR = $savedConfigDir }
 Write-TestResult

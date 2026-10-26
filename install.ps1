@@ -7,8 +7,8 @@ param(
     [string]$McpPython,
     # Where the launcher keeps one private review store per checkout and ref pair (default: 'state' beside the venv).
     [string]$StateRoot,
-    # The Claude Code configuration file the claude command changes (default ~\.claude.json; required when
-    # CLAUDE_CONFIG_DIR is set, naming that profile's .claude.json).
+    # Optional confirmation of the Claude Code configuration the claude command changes (<CLAUDE_CONFIG_DIR>\.claude.json,
+    # else ~\.claude.json); any other path stops the registration before any change.
     [string]$ClaudeConfig
 )
 $src = $PSScriptRoot
@@ -55,9 +55,9 @@ if (-not (Test-Path $claudeMd) -or -not ((Get-Content -Raw $claudeMd) -match [re
 
 # Collaborative route (docs/collaborative-mcp.md, "Global registration"): one user-scope Claude Code registration
 # of each server, through the launcher, which binds every session to the checkout and branch it starts in. A
-# project or local entry with the same name still takes precedence. Anything missing, or CLAUDE_CONFIG_DIR without
-# -ClaudeConfig, skips this step with a warning; a failed replacement undoes its changes, checks the result and stops
-# the install, naming any entry that is not as it was.
+# project or local entry with the same name still takes precedence. Anything missing, or a -ClaudeConfig that is not
+# the claude command's configuration, skips this step with a warning; a failed replacement undoes its changes, checks
+# the result and stops the install, naming any entry that is not as it was.
 if ($SkipMcpRegistration) { Write-Host "skipped Claude Code MCP registration (-SkipMcpRegistration)"; return }
 . "$src\mcp-registration.ps1"
 $registrationArgs = @{ McpPython = $McpPython; StateRoot = $StateRoot }
