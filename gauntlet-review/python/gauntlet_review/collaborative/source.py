@@ -178,9 +178,11 @@ class GitSource:
                     raise CoreError("UNSUPPORTED_REPOSITORY", detail={"reason": "tree_mode"})
         return entries
 
+    def _blob_bytes(self, repo, oid):
+        return self._object(repo, oid, Blob).as_raw_string()
+
     def _blob(self, repo, oid, policy):
-        blob = self._object(repo, oid, Blob)
-        data = blob.as_raw_string()
+        data = self._blob_bytes(repo, oid)
         if len(data) > policy.blob_bytes:
             _limit("blob_bytes")
         return data
@@ -202,13 +204,15 @@ class GitSource:
         verified={}
         def blob_metadata(oid):
             if oid not in verified:
-                data=self._blob(repo,oid,policy)
+                data=self._blob_bytes(repo,oid)
                 verified[oid]=(len(data),hashlib.sha256(data).hexdigest())
             return verified[oid]
         # Unchanged head context is also exposed by the pinned source tree.
         # Validate it before admitting/rechecking a revision, retaining only
         # bounded metadata rather than all decompressed contents. Gitlinks are
-        # foreign pointers and do not require local submodule objects.
+        # foreign pointers and do not require local submodule objects. The blob
+        # limit binds changed surfaces and served bytes (read_blob), not this
+        # identity check, so a repository may track large unchanged files.
         for mode,oid in head_entries.values():
             if mode!=0o160000:
                 blob_metadata(oid)
@@ -230,6 +234,8 @@ class GitSource:
                     record[f"{side}_length"] = record[f"{side}_digest"] = None
                 else:
                     length,digest=blob_metadata(oid)
+                    if length > policy.blob_bytes:
+                        _limit("blob_bytes")
                     if total + length > policy.changed_bytes:
                         _limit("changed_bytes")
                     total += length
@@ -346,6 +352,6 @@ class GitSource:
         if entry.artifact_id!=self._artifact_id(snapshot,"head",entry.raw_path_b64,entry.oid):
             raise CoreError("DIGEST_MISMATCH",detail={"reason":"source_entry_identity"})
         with self._repository() as repo:
-            data=self._blob(repo,entry.oid,self.policy)
+            data=self._blob_bytes(repo,entry.oid)
             return SourceEntry(entry.raw_path_b64,entry.mode,entry.oid,len(data),
                                hashlib.sha256(data).hexdigest(),entry.artifact_id)
