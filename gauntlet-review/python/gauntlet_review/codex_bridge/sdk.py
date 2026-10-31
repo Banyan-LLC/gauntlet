@@ -14,7 +14,7 @@ from openai_codex.generated.v2_all import (
 
 from .engine import BridgeError,PeerReply,TEXT_BYTES,_consume,_encode,_safe_id,mcp_result,validate_config
 
-EVENT_BYTES=8*1024*1024
+EVENT_BYTES=64*1024*1024
 
 
 def reviewer_config(config):
