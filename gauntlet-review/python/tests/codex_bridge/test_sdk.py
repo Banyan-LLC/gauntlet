@@ -140,7 +140,7 @@ def event_bytes(event):
 async def test_exact_decoded_event_limit_and_immediate_overflow_stop(config,monkeypatch,overflow):
     final=message(); end=terminal()
     empty=Notification("unknown",UnknownNotification({"body":""}))
-    size=8*1024*1024-event_bytes(empty)-event_bytes(final)-event_bytes(end)+int(overflow)
+    size=64*1024*1024-event_bytes(empty)-event_bytes(final)-event_bytes(end)+int(overflow)
     full=Notification("unknown",UnknownNotification({"body":"x"*size}))
     peer,native=conversation(config,monkeypatch,[full,final,end,AssertionError("consumed after terminal/overflow")])
     if overflow:
@@ -154,7 +154,7 @@ async def test_exact_decoded_event_limit_and_immediate_overflow_stop(config,monk
 
 
 async def test_one_oversized_decoded_event_stops_before_following_message(config,monkeypatch):
-    huge=Notification("unknown",UnknownNotification({"body":"x"*(8*1024*1024)}))
+    huge=Notification("unknown",UnknownNotification({"body":"x"*(64*1024*1024)}))
     peer,native=conversation(config,monkeypatch,[huge,AssertionError("read past overflow")])
     with pytest.raises(BridgeError) as error:
         await peer.run("review")

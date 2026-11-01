@@ -313,7 +313,7 @@ after the peer submits its verdict.
 Exact retry returns the stored response unchanged, even after later turns.
 Changing any field under that key conflicts. One call can be active; others
 receive `BUSY`. Per process: 20 keys, 64 KiB UTF-8 prompt, 128 KiB final text,
-256 KiB complete serialized MCP result, 4 MiB logical retry cache, and 8 MiB
+256 KiB complete serialized MCP result, 4 MiB logical retry cache, and 64 MiB
 cumulative decoded SDK events per turn. Retry capacity is reserved before native
 work, and complete results are checked before return. No source, response or
 history is silently truncated.
