@@ -227,15 +227,30 @@ def test_core_rejects_relative_configuration_before_using_supplied_resources(cfg
 
 
 @pytest.mark.anyio
-async def test_unchanged_oversized_blob_refuses_admission_without_a_partial_revision(flow):
-    unchanged=b"x"*(4*1024*1024+1)
-    flow.writer.pair({b"z-large":(0o100644,unchanged)},
-                     {b"z-large":(0o100644,unchanged),b"a-small":(0o100644,b"small")})
+async def test_changed_oversized_blob_refuses_admission_without_a_partial_revision(flow):
+    flow.writer.pair({b"a-small":(0o100644,b"small")},
+                     {b"a-small":(0o100644,b"small"),b"z-large":(0o100644,b"x"*(4*1024*1024+1))})
     opened=await flow.open()
     assert_error(opened,"LIMIT_EXCEEDED")
     assert opened["error"]["detail"]=={"limit":"blob_bytes"}
     assert opened["store_version"]==0 and opened["review_id"] is None
     assert flow.author.store.read_series() is None
+
+
+@pytest.mark.anyio
+async def test_unchanged_oversized_blob_opens_a_review_and_stays_unreadable(flow):
+    unchanged=b"x"*(4*1024*1024+1)
+    flow.writer.pair({b"z-large":(0o100644,unchanged)},
+                     {b"z-large":(0o100644,unchanged),b"a-small":(0o100644,b"small")})
+    opened=await flow.open()
+    assert opened["ok"] is True
+    tree=await flow.reviewer.read_review({**flow.bound(opened),"view":"source_tree"})
+    large=next(item for item in tree["result"]["items"]
+               if item["raw_path_b64"]==base64.b64encode(b"z-large").decode("ascii"))
+    assert large["length"]==len(unchanged)
+    read=await flow.reviewer.read_review({**flow.bound(opened),"view":"artifact","artifact_id":large["artifact_id"]})
+    assert_error(read,"LIMIT_EXCEEDED")
+    assert read["error"]["detail"]=={"limit":"blob_bytes"}
 
 
 @pytest.mark.anyio

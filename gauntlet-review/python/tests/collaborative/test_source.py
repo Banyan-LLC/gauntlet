@@ -125,18 +125,65 @@ def test_unchanged_referenced_blob_is_validated_at_admission_and_freshness(git_f
         assert caught.value.code==code
 
 
+def test_policy_digest_is_unchanged_so_existing_series_stay_open():
+    # store.py refuses a series whose stored digest differs. Changing any Policy
+    # value locks every existing review out, so a change here needs a migration.
+    assert Policy().digest=="3418f209fc708d8821168a88e5fd1ccce9f40584e12b10357a0c46232de71e8f"
+
+
 @pytest.mark.parametrize("extra",[0,1],ids=["exact-limit","over-limit"])
-def test_unchanged_source_blob_obeys_fixed_profile_at_capture(git_fixture,cfg,extra):
+def test_unchanged_oversized_blob_is_identified_but_never_served(git_fixture,cfg,extra):
     stable=b"x"*(Policy().blob_bytes+extra)
     git_fixture.pair({b"stable":(0o100644,stable)},
                      {b"stable":(0o100644,stable),b"file":(0o100644,b"new")})
     with source_type()(cfg) as source:
+        snapshot=source.capture(Policy())
+        assert len(snapshot.changes)==1
+        source.check_snapshot(snapshot)
+        entry=next(e for e in source.source_entries(snapshot)
+                   if e.raw_path_b64==base64.b64encode(b"stable").decode("ascii"))
+        assert entry.length==len(stable) and entry.digest==hashlib.sha256(stable).hexdigest()
         if extra:
             with pytest.raises(CoreError) as caught:
-                source.capture(Policy())
+                source.read_blob(entry.oid,0,64,entry.digest)
             assert caught.value.code=="LIMIT_EXCEEDED" and caught.value.detail=={"limit":"blob_bytes"}
         else:
-            assert len(source.capture(Policy()).changes)==1
+            assert source.read_blob(entry.oid,0,64,entry.digest).total==len(stable)
+
+
+def test_corrupt_unchanged_oversized_blob_still_refuses(git_fixture,cfg):
+    stable=b"x"*(Policy().blob_bytes+1)
+    git_fixture.pair({b"stable":(0o100644,stable)},
+                     {b"stable":(0o100644,stable),b"file":(0o100644,b"new")})
+    with source_type()(cfg) as source:
+        snapshot=source.capture(Policy())
+        oid=hashlib.sha1(b"blob %d\0"%len(stable)+stable).hexdigest()
+        git_fixture.corrupt_loose_object(oid,zlib.compress(b"blob 5\0other"))
+        with pytest.raises(CoreError) as caught:
+            source.check_snapshot(snapshot)
+        assert caught.value.code=="DIGEST_MISMATCH"
+
+
+@pytest.mark.parametrize("base,head",[
+    ({},{b"grown":(0o100644,b"x"*(4*1024*1024+1))}),
+    ({b"shrunk":(0o100644,b"x"*(4*1024*1024+1))},{b"shrunk":(0o100644,b"small")}),
+    ({b"gone":(0o100644,b"x"*(4*1024*1024+1))},{}),
+],ids=["added","old-side","deleted"])
+def test_a_changed_blob_over_the_limit_still_refuses(git_fixture,cfg,base,head):
+    git_fixture.pair(base,head)
+    with source_type()(cfg) as source:
+        with pytest.raises(CoreError) as caught:
+            source.capture(Policy())
+        assert caught.value.code=="LIMIT_EXCEEDED" and caught.value.detail=={"limit":"blob_bytes"}
+
+
+def test_a_changed_path_sharing_an_unchanged_oversized_blob_still_refuses(git_fixture,cfg):
+    large=b"x"*(4*1024*1024+1)
+    git_fixture.pair({b"stable":(0o100644,large)},{b"stable":(0o100644,large),b"copy":(0o100644,large)})
+    with source_type()(cfg) as source:
+        with pytest.raises(CoreError) as caught:
+            source.capture(Policy())
+        assert caught.value.code=="LIMIT_EXCEEDED" and caught.value.detail=={"limit":"blob_bytes"}
 
 
 def test_new_commit_with_identical_tree_is_observed_as_drift(git_fixture,cfg):
@@ -154,12 +201,12 @@ def test_capture_ref_movement_is_refused(git_fixture,cfg,monkeypatch):
     _, head=git_fixture.pair({}, {b"file":(0o100644,b"one")})
     replacement=git_fixture.commit({b"file":(0o100644,b"two")},parents=[head])
     with source_type()(cfg) as source:
-        original=source._blob
+        original=source._blob_bytes
         def moving(*args,**kwargs):
             result=original(*args,**kwargs)
             git_fixture.set_ref(cfg.source_ref,replacement)
             return result
-        monkeypatch.setattr(source,"_blob",moving)
+        monkeypatch.setattr(source,"_blob_bytes",moving)
         with pytest.raises(CoreError) as error:
             source.capture(Policy())
         assert error.value.code == "STALE"

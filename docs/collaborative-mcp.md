@@ -382,10 +382,14 @@ bounded. Quotas describe logical payloads, not physical Git decompression,
 SDK/parser memory, SQLite file size or OS I/O limits.
 
 Opening and freshness checks validate every referenced head blob, including
-unchanged context. The 4 MiB per-blob limit applies to that context as well as
-changed surfaces; a missing, corrupt or oversized referenced blob refuses
-admission or completion. Gitlinks remain opaque foreign pointers. Repositories
-outside this fixed profile need the legacy route; there is no quota override.
+unchanged context; a missing or corrupt referenced blob refuses admission or
+completion. The 4 MiB per-blob limit binds changed surfaces, old and new, and
+every served byte. An unchanged blob above it does not block a review: the
+pinned source tree lists its length and digest, and reading its bytes refuses
+with `LIMIT_EXCEEDED`, so a peer cannot have read that file. Gitlinks remain
+opaque foreign pointers. A change touching a blob above the limit needs the
+legacy route; there is no quota override. These bounds are inputs to the policy
+digest that every series stores, so changing one refuses existing series.
 
 A maximal 200-entry carry-over request serializes to 218,196 bytes, leaving
 43,948 bytes under the verdict cap. The ten-verdict cap still applies: reaching
