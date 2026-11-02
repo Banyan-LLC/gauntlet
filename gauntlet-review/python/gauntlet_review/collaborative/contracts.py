@@ -52,7 +52,7 @@ class Policy:
     verdict_bytes: int = 256 * 1024
     findings: int = 200
     new_findings: int = 20
-    verdicts: int = 10
+    verdicts: int = 20
     revisions: int = 20
     carryover_reason_bytes: int = 256
     series_payload_bytes: int = 64 * 1024 * 1024
@@ -69,7 +69,10 @@ class Policy:
     @property
     def digest(self):
         from dataclasses import asdict
-        return hashlib.sha256(encode(asdict(self))).hexdigest()
+        # Every series stores this digest and refuses any other. The verdict cap
+        # went from 10 to 20 with no change to stored history, so it stays at 10
+        # here and existing series stay open; ReviewCore still fixes its value.
+        return hashlib.sha256(encode({**asdict(self),"verdicts":10})).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -148,8 +151,8 @@ Id = Annotated[str, Field(min_length=32, max_length=32, pattern=r"^[a-f0-9]{32}$
                AfterValidator(_pattern(r"[a-f0-9]{32}"))]
 Digest = Annotated[str, Field(min_length=64, max_length=64, pattern=r"^[a-f0-9]{64}$"),
                    AfterValidator(_pattern(r"[a-f0-9]{64}"))]
-FindingId = Annotated[str, Field(max_length=36, pattern=r"^r([1-9]|10)-[a-f0-9]{32}$"),
-                      AfterValidator(_pattern(r"r(?:[1-9]|10)-[a-f0-9]{32}"))]
+FindingId = Annotated[str, Field(max_length=36, pattern=r"^r([1-9]|1[0-9]|20)-[a-f0-9]{32}$"),
+                      AfterValidator(_pattern(r"r(?:[1-9]|1[0-9]|20)-[a-f0-9]{32}"))]
 Version = Annotated[int, Field(ge=0, le=MAX_EXACT)]
 Location = Annotated[str, Field(max_length=150), AfterValidator(_text(150))]
 FindingText = Annotated[str, Field(max_length=500), AfterValidator(_text(500))]
@@ -559,7 +562,7 @@ class FindingRecord(Recommendation):
     id: FindingId
     review_id: Id
     revision_id: Id
-    round: Annotated[int,Field(ge=1,le=10)]
+    round: Annotated[int,Field(ge=1,le=20)]
     index: Annotated[int,Field(ge=0,le=19)]
 
 
@@ -569,7 +572,7 @@ class FindingEnvelope(StrictModel):
 
 
 class VerdictData(StrictModel):
-    accepted_round: Annotated[int,Field(ge=1,le=10)]
+    accepted_round: Annotated[int,Field(ge=1,le=20)]
     reviewer: Key
     requested_verdict: Literal["approve","request_changes"]
     normalized_verdict: Literal["approve","request_changes"]
@@ -607,7 +610,7 @@ class EvidenceResult(StrictModel):
 class VerdictResult(StrictModel):
     accepted: TrueFlag
     normalized_verdict: Literal["approve","request_changes"]
-    accepted_round: Annotated[int,Field(ge=1,le=10)]
+    accepted_round: Annotated[int,Field(ge=1,le=20)]
     new_finding_ids: Annotated[list[FindingId],Field(max_length=20)]
 
 

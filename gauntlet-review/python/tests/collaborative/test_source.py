@@ -1,6 +1,6 @@
 """Object-level fixtures avoid host filesystem path normalization entirely."""
 import base64
-from dataclasses import asdict, replace
+from dataclasses import asdict, fields, replace
 import hashlib
 import os
 from pathlib import Path
@@ -126,9 +126,21 @@ def test_unchanged_referenced_blob_is_validated_at_admission_and_freshness(git_f
 
 
 def test_policy_digest_is_unchanged_so_existing_series_stay_open():
-    # store.py refuses a series whose stored digest differs. Changing any Policy
-    # value locks every existing review out, so a change here needs a migration.
+    # store.py refuses a series whose stored digest differs. Changing any bound
+    # in the digest locks every existing review out, so that needs a migration.
     assert Policy().digest=="3418f209fc708d8821168a88e5fd1ccce9f40584e12b10357a0c46232de71e8f"
+
+
+def test_verdict_cap_was_raised_without_changing_the_digest():
+    assert Policy().verdicts==20
+    assert replace(Policy(),verdicts=10).digest==Policy().digest
+
+
+@pytest.mark.parametrize("name",[field.name for field in fields(Policy) if field.name!="verdicts"])
+def test_every_other_bound_stays_bound_into_the_digest(name):
+    value=getattr(Policy(),name)
+    changed=value+1 if type(value) is int else value+"-changed"
+    assert replace(Policy(),**{name:changed}).digest!=Policy().digest
 
 
 @pytest.mark.parametrize("extra",[0,1],ids=["exact-limit","over-limit"])

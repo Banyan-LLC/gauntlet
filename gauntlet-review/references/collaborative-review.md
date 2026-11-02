@@ -100,7 +100,7 @@ After submission, call fresh core `review_status` and verify current local refs.
 Require current `peer_complete` with no unresolved non-nit findings. Report all
 remaining nits and disputes. At quota/deadline/refusal/budget exhaustion, report
 the incomplete state and outstanding findings; do not create a new store to
-evade limits. This route has no fixed promise that ten rounds will converge.
+evade limits. This route has no fixed promise that twenty rounds will converge.
 
 Keep legacy archives separate, immutable original findings intact, and native
 conversation history in native storage. Do not overwrite earlier verification

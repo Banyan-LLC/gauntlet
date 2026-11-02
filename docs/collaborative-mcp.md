@@ -375,7 +375,7 @@ in preserved history. Do not restore or downgrade to it. Current references:
 Fixed v1 bounds are 1,000 changed paths; 4 MiB per source blob; 64 MiB total
 changed old/new bytes; 64 KiB artifact pages; 256 KiB inline evidence per call;
 16 MiB stored evidence per series; 256 KiB verdict payload; 20 new findings per
-verdict; 200 total findings; 10 accepted verdicts; 20 revisions; 256 UTF-8 bytes
+verdict; 200 total findings; 20 accepted verdicts; 20 revisions; 256 UTF-8 bytes
 per carry-over reason; 64 MiB logical event/evidence payload per series; and
 1 GiB logical store payload. Metadata/listing and complete MCP results are also
 bounded. Quotas describe logical payloads, not physical Git decompression,
@@ -389,11 +389,14 @@ pinned source tree lists its length and digest, and reading its bytes refuses
 with `LIMIT_EXCEEDED`, so a peer cannot have read that file. Gitlinks remain
 opaque foreign pointers. A change touching a blob above the limit needs the
 legacy route; there is no quota override. These bounds are inputs to the policy
-digest that every series stores, so changing one refuses existing series.
+digest that every series stores, so changing one refuses existing series. The
+verdict cap is the exception: it was raised from 10 to 20 with no change to
+stored history, so the digest always hashes it as 10 and existing series stay
+open. The core still refuses any policy other than the fixed one.
 
 A maximal 200-entry carry-over request serializes to 218,196 bytes, leaving
-43,948 bytes under the verdict cap. The ten-verdict cap still applies: reaching
-200 new findings consumes all ten rounds, so an eleventh closure is refused.
+43,948 bytes under the verdict cap. Reaching 200 new findings takes at least ten
+rounds, and later rounds can still close them; a twenty-first verdict is refused.
 The reachable near-limit test closes 180 prior findings in round ten. A refusal,
 new revision, reconnect or reopening the ref pair never resets counters.
 
