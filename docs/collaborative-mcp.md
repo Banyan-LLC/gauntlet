@@ -455,6 +455,24 @@ verdict cap is the exception: it was raised from 10 to 20 with no change to
 stored history, so the digest always hashes it as 10 and existing series stay
 open. The core still refuses any policy other than the fixed one.
 
+The 20-verdict upgrade is one-way. The unchanged digest lets the new code open
+and continue every existing series; it does not make old and new code
+interchangeable. Code from before this change accepts rounds 1 to 10 only. Once
+a series stores an eleventh verdict, or a finding from round 11 or later, older
+code reads that series as `CORRUPT_STATE` with reason `event_data_shape` and
+refuses it. A store whose series never pass round 10 stays readable by both.
+
+- Upgrade every process that opens a store together, before any series in it
+  accepts an eleventh verdict: the author core, the peer adapter and the reviewer
+  core it starts, and any separately operated reviewer host. Do it at a quiet
+  point with no review call in flight, then start new host sessions so each one
+  loads the new code. Never run old and new code against the same store.
+- Once a store holds a round above 10, keep running the new code on it.
+  Downgrading that store is not supported.
+- An older host refusing such a series is expected, not damage. Keep the
+  history: do not delete, edit, truncate or rewrite the store or its recovery
+  files to get past the refusal; run the upgraded code instead.
+
 A maximal 200-entry carry-over request serializes to 218,196 bytes, leaving
 43,948 bytes under the verdict cap. Reaching 200 new findings takes at least ten
 rounds, and later rounds can still close them; a twenty-first verdict is refused.
