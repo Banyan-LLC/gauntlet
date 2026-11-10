@@ -51,6 +51,55 @@ async def test_two_strict_tools_status_no_native_turn_and_exact_result_parity(co
     assert peers[0].closed
 
 
+async def test_status_shows_the_extended_timeout_only_when_opted_in(config,monkeypatch):
+    monkeypatch.setattr(server,"SdkConversation",Peer)
+    extended=replace(config,timeout_seconds=5400,extended_timeout=True)
+    for cfg,block in ((config,None),(extended,{"timeout_seconds":5400,"max_seconds":7200})):
+        async with Client(server.create_server(cfg),raise_exceptions=True) as client:
+            status=(await client.call_tool("codex_status",{})).structured_content
+        assert set(status)=={"ok","instance_id","thread_id","state"}|({"extended_timeout"} if block else set())
+        assert status.get("extended_timeout")==block
+
+
+def _cli(config,*extra):
+    operator=config.operator
+    return ["--repo",str(operator.repo_path),"--state-dir",str(operator.state_dir),
+        "--repository-id",operator.repository_id,"--source-ref",operator.source_ref.decode(),
+        "--target-ref",operator.target_ref.decode(),"--participant",operator.participant,*extra]
+
+
+@pytest.mark.parametrize("extra, expected",[
+    (["--timeout-seconds","5400"],{"code":"TIMEOUT_OUT_OF_RANGE","accepted":{"min":10,"max":1800},
+        "opt_in":{"flag":"--allow-extended-timeout","max":7200}}),
+    (["--timeout-seconds","1801"],{"code":"TIMEOUT_OUT_OF_RANGE","accepted":{"min":10,"max":1800},
+        "opt_in":{"flag":"--allow-extended-timeout","max":7200}}),
+    (["--timeout-seconds","7201","--allow-extended-timeout"],{"code":"TIMEOUT_OUT_OF_RANGE","accepted":{"min":10,"max":7200}}),
+    (["--timeout-seconds","9"],{"code":"TIMEOUT_OUT_OF_RANGE","accepted":{"min":10,"max":1800}}),
+])
+def test_out_of_range_timeout_refuses_at_startup_and_says_how_to_opt_in(config,monkeypatch,capsys,extra,expected):
+    def create(cfg):
+        raise AssertionError("refused before building the server")
+    monkeypatch.setattr(server,"create_server",create)
+    assert server.main(_cli(config,*extra))==2
+    assert json.loads(capsys.readouterr().err)==expected
+
+
+@pytest.mark.parametrize("extra, timeout, extended",[
+    ([],600,False),
+    (["--timeout-seconds","1800"],1800,False),
+    (["--timeout-seconds","5400","--allow-extended-timeout"],5400,True),
+    (["--timeout-seconds","7200","--allow-extended-timeout"],7200,True),
+])
+def test_cli_passes_the_timeout_and_override_to_the_adapter(config,monkeypatch,extra,timeout,extended):
+    seen={}
+    def create(cfg):
+        seen["config"]=cfg
+        raise SystemExit(0)
+    monkeypatch.setattr(server,"create_server",create)
+    assert server.main(_cli(config,*extra))==0
+    assert (seen["config"].timeout_seconds,seen["config"].extended_timeout)==(timeout,extended)
+
+
 @pytest.mark.parametrize("distribution",["openai-codex","openai-codex-cli-bin"])
 @pytest.mark.parametrize("missing",[False,True])
 async def test_wrong_or_missing_sdk_pin_refuses_before_native_configuration(config,monkeypatch,distribution,missing):

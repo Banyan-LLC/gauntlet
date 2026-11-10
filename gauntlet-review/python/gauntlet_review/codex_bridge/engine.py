@@ -24,6 +24,12 @@ RESULT_BYTES=256*1024
 CACHE_BYTES=4*1024*1024
 MAX_KEYS=20
 CLEANUP_SECONDS=5
+# A turn deadline normally stays within 10..1800 seconds. An operator can
+# deliberately raise only the ceiling, to 7200, with the explicit override flag.
+TIMEOUT_MIN=10
+TIMEOUT_MAX=1800
+EXTENDED_TIMEOUT_MAX=7200
+EXTENDED_TIMEOUT_FLAG="--allow-extended-timeout"
 _IDENTIFIER=re.compile(r"[A-Za-z0-9_.:-]{1,128}\Z")
 
 
@@ -39,6 +45,7 @@ class BridgeConfig:
     operator: OperatorConfig
     model: str|None=None
     timeout_seconds: int=600
+    extended_timeout: bool=False
 
 
 @dataclass(frozen=True)
@@ -53,6 +60,22 @@ class Conversation(Protocol):
     async def close(self)->None: ...
 
 
+def timeout_ceiling(extended):
+    return EXTENDED_TIMEOUT_MAX if extended else TIMEOUT_MAX
+
+
+def timeout_refusal(seconds,extended):
+    """None for an accepted turn deadline, else the fixed structured refusal. It names the accepted range and,
+    for a value only the override would accept, the opt-in flag. It never echoes the refused value."""
+    ceiling=timeout_ceiling(extended)
+    if TIMEOUT_MIN<=seconds<=ceiling:
+        return None
+    body={"code":"TIMEOUT_OUT_OF_RANGE","accepted":{"min":TIMEOUT_MIN,"max":ceiling}}
+    if not extended and TIMEOUT_MAX<seconds<=EXTENDED_TIMEOUT_MAX:
+        body["opt_in"]={"flag":EXTENDED_TIMEOUT_FLAG,"max":EXTENDED_TIMEOUT_MAX}
+    return body
+
+
 def validate_config(config):
     try:
         if not isinstance(config,BridgeConfig):
@@ -60,8 +83,10 @@ def validate_config(config):
         validate_operator_config(config.operator)
         if config.operator.role!="reviewer":
             raise BridgeError("CONFIGURATION_ERROR")
-        if type(config.timeout_seconds) is not int or not 10<=config.timeout_seconds<=1800:
+        if type(config.extended_timeout) is not bool or type(config.timeout_seconds) is not int:
             raise BridgeError("CONFIGURATION_ERROR")
+        if timeout_refusal(config.timeout_seconds,config.extended_timeout) is not None:
+            raise BridgeError("CONFIGURATION_ERROR",cause="timeout_range")
         if config.model is not None and (type(config.model) is not str or
                 not re.fullmatch(r"[A-Za-z0-9_./:-]{1,128}",config.model)):
             raise BridgeError("CONFIGURATION_ERROR")
@@ -142,8 +167,13 @@ class Bridge:
         self._cache={}
 
     def status(self):
-        return {"ok":True,"instance_id":self.instance_id,"thread_id":self._owned_thread(),
+        payload={"ok":True,"instance_id":self.instance_id,"thread_id":self._owned_thread(),
             "state":"poisoned" if self._poisoned else "busy" if self._busy else "ready"}
+        # Shown only when the operator opted in, so the default status is unchanged.
+        if self.config.extended_timeout:
+            payload["extended_timeout"]={"timeout_seconds":self.config.timeout_seconds,
+                "max_seconds":EXTENDED_TIMEOUT_MAX}
+        return payload
 
     def _owned_thread(self):
         return self.thread_id or _safe_id(getattr(self.conversation,"thread_id",None))

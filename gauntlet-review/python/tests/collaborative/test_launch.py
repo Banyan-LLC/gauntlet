@@ -165,6 +165,77 @@ def test_main_hands_the_derived_tuple_to_the_server(checkout, tmp_path, monkeypa
                             "--target-ref", "refs/remotes/origin/main", *tail]
     assert expected.state_dir.is_dir()
     assert "core" in (root / "launch.log").read_text() or "peer" in (root / "launch.log").read_text()
+    assert "extended_timeout" not in (root / "launch.log").read_text()
+
+
+def _serve_capture(monkeypatch, module):
+    seen = {}
+
+    def serve():
+        seen["argv"] = list(sys.argv)
+        return 0
+
+    pytest.importorskip(module)
+    monkeypatch.setattr(f"{module}.main", serve)
+    monkeypatch.setattr(sys, "argv", ["gauntlet-launch"])
+    return seen
+
+
+@pytest.mark.parametrize("timeout", ["1800", "5400", "7200"])
+def test_main_forwards_the_extended_timeout_override_and_logs_it(checkout, tmp_path, monkeypatch, timeout):
+    seen = _serve_capture(monkeypatch, "gauntlet_review.codex_bridge.server")
+    monkeypatch.chdir(checkout)
+    root = tmp_path / "state"
+    assert launch.main(["peer", "--state-root", str(root), "--timeout-seconds", timeout,
+                        "--allow-extended-timeout"]) == 0
+    assert seen["argv"][-5:] == ["--participant", "claude-peer", "--timeout-seconds", timeout,
+                                 "--allow-extended-timeout"]
+    line = (root / "launch.log").read_text().splitlines()[-1]
+    assert line.split(" ", 1)[1].startswith("peer cwd=")
+    assert line.endswith(f" timeout_seconds={timeout} extended_timeout=on max_seconds=7200")
+
+
+def test_the_launcher_forwards_the_adapters_own_flag():
+    engine = pytest.importorskip("gauntlet_review.codex_bridge.engine")
+    assert launch.EXTENDED_TIMEOUT_FLAG == engine.EXTENDED_TIMEOUT_FLAG == "--allow-extended-timeout"
+
+
+def test_main_ignores_the_override_for_the_core(checkout, tmp_path, monkeypatch):
+    seen = _serve_capture(monkeypatch, "gauntlet_review.collaborative.server")
+    monkeypatch.chdir(checkout)
+    root = tmp_path / "state"
+    assert launch.main(["core", "--state-root", str(root), "--allow-extended-timeout"]) == 0
+    assert seen["argv"][-4:] == ["--participant", "claude-author", "--role", "author"]
+    assert "extended_timeout" not in (root / "launch.log").read_text()
+
+
+@pytest.mark.parametrize("args, expected, hint", [
+    (["--timeout-seconds", "5400"],
+     '{"code":"TIMEOUT_OUT_OF_RANGE","operation":"launch","accepted":{"min":10,"max":1800},'
+     '"opt_in":{"flag":"--allow-extended-timeout","max":7200}}',
+     "--timeout-seconds 5400 is outside 10-1800; add --allow-extended-timeout to accept up to 7200"),
+    (["--timeout-seconds", "1801"],
+     '{"code":"TIMEOUT_OUT_OF_RANGE","operation":"launch","accepted":{"min":10,"max":1800},'
+     '"opt_in":{"flag":"--allow-extended-timeout","max":7200}}',
+     "--timeout-seconds 1801 is outside 10-1800; add --allow-extended-timeout to accept up to 7200"),
+    (["--timeout-seconds", "7201", "--allow-extended-timeout"],
+     '{"code":"TIMEOUT_OUT_OF_RANGE","operation":"launch","accepted":{"min":10,"max":7200}}',
+     "--timeout-seconds 7201 is outside 10-7200 (--allow-extended-timeout is on)"),
+    (["--timeout-seconds", "9"],
+     '{"code":"TIMEOUT_OUT_OF_RANGE","operation":"launch","accepted":{"min":10,"max":1800}}',
+     "--timeout-seconds 9 is outside 10-1800"),
+])
+def test_main_refuses_an_out_of_range_timeout_before_the_hand_off(checkout, tmp_path, monkeypatch, capsys,
+                                                                 args, expected, hint):
+    seen = _serve_capture(monkeypatch, "gauntlet_review.codex_bridge.server")
+    monkeypatch.chdir(checkout)
+    root = tmp_path / "state"
+    root.mkdir()
+    assert launch.main(["peer", "--state-root", str(root), *args]) == 2
+    assert capsys.readouterr().err.strip() == expected
+    assert "argv" not in seen
+    assert f"refused TIMEOUT_OUT_OF_RANGE: {hint} (cwd=" in (root / "launch.log").read_text()
+    assert list(root.iterdir()) == [root / "launch.log"]                     # no state directory was created
 
 
 def test_main_refuses_with_a_fixed_code_and_no_paths(tmp_path, monkeypatch, capsys):
