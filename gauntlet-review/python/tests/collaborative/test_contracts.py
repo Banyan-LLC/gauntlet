@@ -96,7 +96,7 @@ def test_enums_extra_nested_properties_and_duplicates_are_refused():
     rejected("submit_review", {**verdict(), "carryover": [{**prior, "reason": "checking", "issue": "replacement"}]})
 
 
-@pytest.mark.parametrize("id", ["r0-" + "a" * 32, "r11-" + "a" * 32, "r1-" + "a" * 32 + "\n"])
+@pytest.mark.parametrize("id", ["r0-" + "a" * 32, "r21-" + "a" * 32, "r30-" + "a" * 32, "r1-" + "a" * 32 + "\n"])
 def test_finding_round_id_cannot_exceed_accepted_rounds(id):
     rejected("submit_review", {**verdict(), "carryover": [dict(id=id, digest="f" * 64,
               status="addressed", reason="")]})

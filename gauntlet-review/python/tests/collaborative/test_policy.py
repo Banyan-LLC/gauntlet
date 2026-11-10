@@ -158,12 +158,14 @@ async def test_maximum_reachable_ledger_closes_on_round_ten(store,git_fixture,ap
 
 
 @pytest.mark.anyio
-async def test_200_findings_and_tenth_verdict_cannot_reset_limits_by_reopening(store,append_event,append_verdict):
+async def test_200_findings_and_twentieth_verdict_cannot_reset_limits_by_reopening(store,append_event,append_verdict):
     await append_event(store)
     for _ in range(10):
         await append_verdict(store,recommendations=[NIT]*20)
+    for _ in range(10):
+        await append_verdict(store)
     before=store.read_series()
-    assert len(before.findings) == 200 and before.verdict_count == 10
+    assert len(before.findings) == 200 and before.verdict_count == 20
     for recommendations,limit in (([NIT],"findings"),([],"verdicts")):
         with pytest.raises(CoreError) as error:
             await append_verdict(store,recommendations=recommendations)
@@ -171,10 +173,25 @@ async def test_200_findings_and_tenth_verdict_cannot_reset_limits_by_reopening(s
     assert store.read_series() == before
     await append_event(store,key="reopen",expected_version=before.store_version)
     reopened=store.read_series()
-    assert reopened.id == before.id and reopened.verdict_count == 10 and len(reopened.findings) == 200
+    assert reopened.id == before.id and reopened.verdict_count == 20 and len(reopened.findings) == 200
     with pytest.raises(CoreError) as error:
         await append_verdict(store)
     assert error.value.code == "LIMIT_EXCEEDED"
+
+
+@pytest.mark.anyio
+async def test_findings_raised_after_round_ten_are_stored_and_carried(store,append_event,append_verdict):
+    await append_event(store)
+    for _ in range(10):
+        await append_verdict(store)
+    await append_verdict(store,recommendations=[NIT])
+    for _ in range(8):
+        await append_verdict(store)
+    await append_verdict(store,recommendations=[NIT])
+    history=store.read_series()
+    assert history.verdict_count == 20
+    assert [f["record"]["round"] for f in history.findings] == [11,20]
+    assert [f["record"]["id"][:4] for f in history.findings] == ["r11-","r20-"]
 
 
 @pytest.mark.anyio
