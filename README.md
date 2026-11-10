@@ -142,7 +142,7 @@ OpenAI Codex to act as an independent reviewer:
 | Skill | Use it for |
 |---|---|
 | `gauntlet-review` | A bounded review loop over one specification, implementation plan, or pull request. |
-| `gauntlet-dev` | A complete development workflow with Codex review gates after the spec, plan, and pull request. |
+| `gauntlet-dev` | A complete development workflow with Codex review gates on the plan and pull request; spec peer review is opt-in, and the plan review stops at the first round with zero blocking findings. |
 
 The skills are developed and verified in this repository, but they are not limited to this
 repository. The setup in [collaborative-mcp.md](docs/collaborative-mcp.md) is required
@@ -398,9 +398,12 @@ Add a comprehensive audit-log subsystem to the admin app.
 Claude should select `gauntlet-dev` before brainstorming. The workflow is:
 
 1. brainstorm and write a specification;
-2. commit the specification and obtain Codex approval;
-3. write and commit the implementation plan and obtain Codex approval;
-4. implement and verify the change;
+2. commit the specification and present it at the user's spec gate (Codex reviews the spec
+   only when the user asks for a spec review for that task);
+3. write and commit the implementation plan and run the Codex plan review until a round has
+   zero blocking findings, then present the plan with every remaining finding at the user's
+   plan gate;
+4. after the user passes the plan gate, implement and verify the change;
 5. open a green pull request and run the Codex PR-review loop;
 6. hand the approved, current pull request to the human who will merge it.
 
