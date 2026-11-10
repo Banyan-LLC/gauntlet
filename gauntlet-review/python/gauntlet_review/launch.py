@@ -5,8 +5,14 @@ folder; it derives that session's operator tuple there and then runs the ordinar
 process, so stdio stays connected and the server still has exactly one immutable tuple:
 
     python -m gauntlet_review.launch core --state-root <dir>
-    python -m gauntlet_review.launch peer --state-root <dir> [--timeout-seconds N]
+    python -m gauntlet_review.launch peer --state-root <dir> [--timeout-seconds N] [--allow-extended-timeout]
     python -m gauntlet_review.launch check
+
+`--timeout-seconds` is the peer's turn deadline, 10 to 1800 seconds. `--allow-extended-timeout` is the operator's
+explicit opt-in to a ceiling of 7200; the launcher forwards it to the adapter and names it in launch.log, and the
+adapter reports it in codex_status. Without it, a value over 1800 is refused before the hand-off with
+TIMEOUT_OUT_OF_RANGE, whose stderr body names the accepted range and, for a value the override would accept, the
+flag. The core ignores both.
 
   --repo           the checkout containing the working folder (a linked worktree is its own checkout)
   --source-ref     the branch that checkout has checked out (a detached HEAD is refused)
@@ -32,13 +38,17 @@ LOG_LIMIT = 1024 * 1024
 ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 REPARSE_POINT = 0x400
 ICACLS_TIMEOUT = 30
+EXTENDED_TIMEOUT_FLAG = "--allow-extended-timeout"     # the adapter's flag, engine.EXTENDED_TIMEOUT_FLAG
 
 
 class LaunchRefused(Exception):
-    def __init__(self, code, detail=""):
+    """code goes to stderr, detail only to launch.log; fields are fixed values (never paths or arguments) that
+    stderr may also carry."""
+    def __init__(self, code, detail="", fields=None):
         super().__init__(code)
         self.code = code
         self.detail = detail
+        self.fields = fields or {}
 
 
 @dataclass(frozen=True)
@@ -199,12 +209,30 @@ def check_runtime():
                                 f"{name}: {type(error).__name__}") from error
 
 
-def server_argv(role, launch, timeout_seconds):
+def server_argv(role, launch, timeout_seconds, extended_timeout=False):
     common = ["--repo", str(launch.repo), "--state-dir", str(launch.state_dir), "--repository-id", launch.repository_id,
               "--source-ref", launch.source_ref.decode("utf-8"), "--target-ref", launch.target_ref.decode("utf-8")]
     if role == "core":
         return "gauntlet-mcp", [*common, "--participant", "claude-author", "--role", "author"]
-    return "gauntlet-codex", [*common, "--participant", "claude-peer", "--timeout-seconds", str(timeout_seconds)]
+    peer = [*common, "--participant", "claude-peer", "--timeout-seconds", str(timeout_seconds)]
+    return "gauntlet-codex", [*peer, EXTENDED_TIMEOUT_FLAG] if extended_timeout else peer
+
+
+def check_peer_timeout(timeout_seconds, extended_timeout):
+    """The accepted ceiling for a peer turn deadline. Refuses a deadline the adapter would refuse, before anything
+    is created, so the refusal reaches launch.log and names the opt-in. The adapter keeps its own check; these
+    bounds are its bounds."""
+    from gauntlet_review.codex_bridge.engine import timeout_ceiling, timeout_refusal
+    refusal = timeout_refusal(timeout_seconds, extended_timeout)
+    if refusal is None:
+        return timeout_ceiling(extended_timeout)
+    accepted = refusal["accepted"]
+    detail = f"--timeout-seconds {timeout_seconds} is outside {accepted['min']}-{accepted['max']}"
+    if "opt_in" in refusal:
+        detail += f"; add {refusal['opt_in']['flag']} to accept up to {refusal['opt_in']['max']}"
+    elif extended_timeout:
+        detail += f" ({EXTENDED_TIMEOUT_FLAG} is on)"
+    raise LaunchRefused(refusal["code"], detail, {key: value for key, value in refusal.items() if key != "code"})
 
 
 def _log(state_root, text):
@@ -232,14 +260,14 @@ def _cleanup_note(cleanup_failures):
     return "".join(f"; cleanup failed: {item}" for item in cleanup_failures)
 
 
-def _refuse(state_root, code, detail, correlation=None):
+def _refuse(state_root, code, detail, correlation=None, fields=None):
     note = f" correlation_id={correlation}" if correlation else ""
     try:
         cwd = os.getcwd()
     except OSError:
         cwd = "?"
     _log(state_root, f"refused {code}{note}: {detail} (cwd={cwd})")
-    body = {"code": code, "operation": "launch"}
+    body = {"code": code, "operation": "launch", **(fields or {})}
     if correlation:
         body["correlation_id"] = correlation
     try:
@@ -257,6 +285,7 @@ def main(argv=None):
         parser.add_argument("role", choices=("core", "peer", "check"))
         parser.add_argument("--state-root")
         parser.add_argument("--timeout-seconds", type=int, default=600)
+        parser.add_argument(EXTENDED_TIMEOUT_FLAG, action="store_true")
         args = parser.parse_args(argv)
         if args.role == "check":
             check_runtime()
@@ -264,17 +293,23 @@ def main(argv=None):
         if not args.state_root or not Path(args.state_root).is_absolute():
             raise LaunchRefused("CONFIGURATION_ERROR", "--state-root must be an absolute path")
         state_root = Path(args.state_root)
+        extended = args.role == "peer" and args.allow_extended_timeout   # the core has no turn deadline
+        ceiling = check_peer_timeout(args.timeout_seconds, extended) if args.role == "peer" else None
         launch = derive(Path.cwd(), state_root)
         ensure_private_dir(launch.state_dir, cleanup_failures)
-        prog, server_args = server_argv(args.role, launch, args.timeout_seconds)
+        prog, server_args = server_argv(args.role, launch, args.timeout_seconds, extended)
         if args.role == "core":
             from gauntlet_review.collaborative.server import main as serve
         else:
             from gauntlet_review.codex_bridge.server import main as serve
+        # The override is named in the log only when it is on, so a default launch logs exactly what it did before.
+        override = f" timeout_seconds={args.timeout_seconds} extended_timeout=on max_seconds={ceiling}" if extended else ""
         _log(state_root, f"{args.role} cwd={Path.cwd()} repo={launch.repo} id={launch.repository_id} "
-                         f"source={launch.source_ref.decode()} target={launch.target_ref.decode()} state={launch.state_dir}")
+                         f"source={launch.source_ref.decode()} target={launch.target_ref.decode()} state={launch.state_dir}"
+                         + override)
     except LaunchRefused as refusal:
-        return _refuse(state_root, refusal.code, refusal.detail + _cleanup_note(cleanup_failures))
+        return _refuse(state_root, refusal.code, refusal.detail + _cleanup_note(cleanup_failures),
+                       fields=refusal.fields)
     except ImportError as error:
         return _refuse(state_root, "MISSING_EXTRA", f"{type(error).__name__}: {error}")
     except subprocess.SubprocessError as error:

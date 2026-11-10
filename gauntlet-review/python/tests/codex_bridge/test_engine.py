@@ -211,6 +211,70 @@ async def test_operator_timeout_is_strict_and_bounded(config,timeout):
     assert error.value.code=="CONFIGURATION_ERROR"
 
 
+@pytest.mark.parametrize("timeout",[10,600,1800])
+async def test_default_ceiling_keeps_the_status_shape(config,timeout):
+    bridge=Bridge(replace(config,timeout_seconds=timeout),Conversation())
+    assert set(bridge.status())=={"ok","instance_id","thread_id","state"}
+
+
+@pytest.mark.parametrize("timeout",[1801,5400])
+async def test_over_the_default_ceiling_is_a_timeout_range_refusal(config,timeout):
+    with pytest.raises(BridgeError) as error:
+        Bridge(replace(config,timeout_seconds=timeout),Conversation())
+    assert (error.value.code,error.value.cause)==("CONFIGURATION_ERROR","timeout_range")
+
+
+@pytest.mark.parametrize("timeout",[10,1800,5400,7200])
+async def test_extended_timeout_is_an_explicit_override_shown_in_status(config,timeout):
+    bridge=Bridge(replace(config,timeout_seconds=timeout,extended_timeout=True),Conversation())
+    status=bridge.status()
+    assert status["extended_timeout"]=={"timeout_seconds":timeout,"max_seconds":7200}
+    assert {key:status[key] for key in ("ok","thread_id","state")}=={"ok":True,"thread_id":None,"state":"ready"}
+
+
+@pytest.mark.parametrize("timeout",[9,7201,10800])
+async def test_extended_timeout_keeps_a_hard_upper_bound(config,timeout):
+    with pytest.raises(BridgeError) as error:
+        Bridge(replace(config,timeout_seconds=timeout,extended_timeout=True),Conversation())
+    assert (error.value.code,error.value.cause)==("CONFIGURATION_ERROR","timeout_range")
+
+
+@pytest.mark.parametrize("flag",[1,"yes",None])
+async def test_extended_timeout_flag_is_strictly_boolean(config,flag):
+    with pytest.raises(BridgeError) as error:
+        Bridge(replace(config,timeout_seconds=600,extended_timeout=flag),Conversation())
+    assert error.value.code=="CONFIGURATION_ERROR"
+
+
+async def test_extended_timeout_reaches_the_turn_deadline(config,monkeypatch):
+    from gauntlet_review.codex_bridge import engine
+    waits=[]
+    original=engine.asyncio.wait
+    async def wait(tasks,timeout=None):
+        waits.append(timeout)
+        return await original(tasks,timeout=timeout)
+    monkeypatch.setattr(engine.asyncio,"wait",wait)
+    bridge=Bridge(replace(config,timeout_seconds=5400,extended_timeout=True),Conversation())
+    assert (await bridge.call(request(bridge)))["ok"]
+    # The turn wait is the whole deadline less the five-second cleanup reserve.
+    assert 5394<waits[0]<=5395
+
+
+@pytest.mark.parametrize("timeout, extended, expected",[
+    (10,False,None),(1800,False,None),(5400,True,None),(7200,True,None),
+    (1801,False,{"code":"TIMEOUT_OUT_OF_RANGE","accepted":{"min":10,"max":1800},
+        "opt_in":{"flag":"--allow-extended-timeout","max":7200}}),
+    (5400,False,{"code":"TIMEOUT_OUT_OF_RANGE","accepted":{"min":10,"max":1800},
+        "opt_in":{"flag":"--allow-extended-timeout","max":7200}}),
+    (9,False,{"code":"TIMEOUT_OUT_OF_RANGE","accepted":{"min":10,"max":1800}}),
+    (7201,True,{"code":"TIMEOUT_OUT_OF_RANGE","accepted":{"min":10,"max":7200}}),
+    (9,True,{"code":"TIMEOUT_OUT_OF_RANGE","accepted":{"min":10,"max":7200}}),
+])
+async def test_timeout_refusal_is_structured_and_says_how_to_opt_in(timeout,extended,expected):
+    from gauntlet_review.codex_bridge.engine import timeout_refusal
+    assert timeout_refusal(timeout,extended)==expected
+
+
 async def test_operator_cannot_use_author_role_or_relative_paths(config):
     from pathlib import Path
     for operator in (replace(config.operator,role="author"),replace(config.operator,repo_path=Path("relative"))):

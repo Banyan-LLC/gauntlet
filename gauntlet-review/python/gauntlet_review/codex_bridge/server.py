@@ -78,15 +78,21 @@ def main(argv=None):
             parser.add_argument("--"+name,required=True)
         parser.add_argument("--model")
         parser.add_argument("--timeout-seconds",type=int,default=600)
+        parser.add_argument("--allow-extended-timeout",action="store_true")
         args=parser.parse_args(argv)
         _require_extra()
         import anyio
         from mcp.server.stdio import stdio_server
         from gauntlet_review.collaborative.contracts import OperatorConfig
-        from .engine import BridgeConfig
+        from .engine import BridgeConfig,timeout_refusal
+        refusal=timeout_refusal(args.timeout_seconds,args.allow_extended_timeout)
+        if refusal is not None:
+            # Fixed fields only: the accepted range and, when it would help, the opt-in flag.
+            sys.stderr.write(json.dumps(refusal,separators=(",",":"))+"\n")
+            return 2
         config=BridgeConfig(OperatorConfig(Path(args.repo),Path(args.state_dir),args.repository_id,
             args.source_ref.encode("utf-8","strict"),args.target_ref.encode("utf-8","strict"),args.participant,"reviewer"),
-            model=args.model,timeout_seconds=args.timeout_seconds)
+            model=args.model,timeout_seconds=args.timeout_seconds,extended_timeout=args.allow_extended_timeout)
         server=create_server(config)
         async def serve():
             async with stdio_server() as (read,write):

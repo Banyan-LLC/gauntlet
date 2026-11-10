@@ -1,6 +1,6 @@
 ---
 name: gauntlet-dev
-description: Use at task initiation for substantial features that need specification, implementation-plan and code-review gates. Not for small fixes. The user can opt out with "skip codex review".
+description: Use at task initiation for substantial features that need specification, implementation-plan and code-review gates (spec peer review is opt-in; the plan review stops at the first round with zero blocking findings). Not for small fixes. The user can opt out with "skip codex review".
 ---
 
 # Gauntlet development pipeline
@@ -23,11 +23,20 @@ precedence. Address the user as The Human Overlord when appropriate.
 ## Pipeline
 
 1. **Specify:** use the project's discovery/spec workflow for substantial work.
-   Commit the spec; review its pinned Git change using `gauntlet-review`, then
-   present the spec and every finding for the user's spec gate.
+   Commit the spec and present it for the user's spec gate. **Peer review of the
+   spec is skipped by default:** run `gauntlet-review` on it only when the user
+   asks for a spec review for this task. When it runs, it follows the same
+   zero-blocking stop as the plan review below.
 2. **Plan:** write and commit the implementation plan. Review its pinned change
-   against the approved spec, then honor the user's plan gate. Existing approval
-   of the task's spec/plan carries forward; do not restart completed gates.
+   against the approved spec with `gauntlet-review`. Run rounds only while the
+   latest round has a **blocking** finding: fix, commit, append a revision and
+   re-review. At the first round with **zero blocking findings**, stop the loop,
+   even if important findings or nits remain or the status is not
+   `peer_complete`. Present the plan with every remaining finding (important and
+   nits, with their status) at the user's plan gate, and let the user decide
+   which to address. Never start implementation before the user passes the plan
+   gate. Existing approval of the task's spec/plan carries forward; do not
+   restart completed gates.
 3. **Build:** implement within the approved scope in a clean worktree; verify
    behavior. Use delegation only when authorized or required by an applicable
    workflow, rather than launching a fixed set of review agents for every task.
