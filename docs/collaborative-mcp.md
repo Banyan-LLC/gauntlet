@@ -384,15 +384,36 @@ It raises only the ceiling, from 1800 to 7200 seconds; the 10-second minimum, th
 five-second close reserve and every other limit stay as they are. Give it to the adapter
 (`gauntlet-codex` or `python -m gauntlet_review.codex_bridge`), or to the launcher's `peer`
 entry, which checks the value and forwards the flag. For the user-scope registration,
-replace the `gauntlet-peer` entry with these launcher arguments (start a new host session
-afterwards, since hosts load servers when a session starts):
+replace the `gauntlet-peer` entry with these launcher arguments, keeping its interpreter
+and state root:
 
 ```json
 ["-I", "-m", "gauntlet_review.launch", "peer", "--state-root", "C:/Users/YOU/AppData/Local/Gauntlet/state", "--timeout-seconds", "5400", "--allow-extended-timeout"]
 ```
 
-`install.ps1` always registers the default entry, so re-running it removes the override.
-While the override is on it is visible in two places:
+The native host's own tool-call limits still apply, and the adapter sends no MCP progress
+while a turn runs, so the host sees the whole turn as one silent call. A host usually has
+two limits: an overall limit per call and an idle limit for a call with no response or
+progress. Both must cover the turn deadline, or the host aborts the call first. These are
+operator settings; Gauntlet never changes them. In Claude Code, all in milliseconds (see
+its [MCP](https://code.claude.com/docs/en/mcp) and
+[environment variable](https://code.claude.com/docs/en/env-vars) references):
+
+- **Per server (preferred).** Add a `timeout` field to the `gauntlet-peer` entry, at least
+  the deadline plus some headroom, for example `"timeout": 5460000` for 5400 seconds. It is
+  a hard wall-clock limit for that server's calls, overrides `MCP_TOOL_TIMEOUT` for that
+  server only, and is also a floor under that server's idle window, so it covers both
+  limits without changing any other server.
+- **Host-wide.** Or set `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT` to at least the deadline (its
+  stdio default is 1800000, 30 minutes), and leave `MCP_TOOL_TIMEOUT` unset (about 28
+  hours by default) or at least the deadline. These apply to every server.
+
+Raising `MCP_TOOL_TIMEOUT` alone is not enough: it does not change the idle window. Other
+hosts have their own limits; check both kinds. Start a new host session after any of
+these changes, since hosts load servers and their settings when a session starts.
+
+`install.ps1` always registers the default entry, so re-running it removes the override
+and any per-server `timeout` on it. While the override is on it is visible in two places:
 
 - the launcher's `launch.log` line for that peer ends with
   `timeout_seconds=5400 extended_timeout=on max_seconds=7200`;
@@ -408,9 +429,7 @@ launcher refuses it before the hand-off, creating nothing, with this body on std
 `launch.log` records the refused value and the flag to add. Run directly, the adapter
 prints the same body without `operation`. `opt_in` appears only for a value the override
 would accept: with the override on, a value over 7200 is refused with
-`"accepted":{"min":10,"max":7200}` alone, and a value under 10 never names the flag. The
-native host's own MCP tool-call timeout, if it has one, still applies; set it at least
-as long as the turn deadline.
+`"accepted":{"min":10,"max":7200}` alone, and a value under 10 never names the flag.
 
 ## Limits and state operations
 

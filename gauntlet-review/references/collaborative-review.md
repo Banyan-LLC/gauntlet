@@ -97,8 +97,13 @@ the database or silently change the instance/thread to replay work.
 The peer's turn deadline is the operator's `--timeout-seconds` (normally at most
 1800). If one turn needs longer, say so: only the operator can restart the peer
 with a longer deadline, and above 1800 (up to 7200) that needs the explicit
-`--allow-extended-timeout` flag. `codex_status` reports `extended_timeout` when
-the override is on. Never enable it yourself.
+`--allow-extended-timeout` flag. The native host's overall and idle tool-call
+limits must also cover the deadline, because the adapter sends no progress
+during a turn; in Claude Code that is a per-server `timeout` on `gauntlet-peer`
+(milliseconds; it overrides `MCP_TOOL_TIMEOUT` and floors the idle window) or
+`CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT`, whose stdio default is 30 minutes.
+`codex_status` reports `extended_timeout` when the override is on. Never enable
+it or change host settings yourself.
 
 ## Completion and preserved state
 
