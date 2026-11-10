@@ -94,6 +94,12 @@ Report it and obtain an explicit decision to begin a fresh conversation that
 rereads the existing series, findings and evidence. Never reset counters, edit
 the database or silently change the instance/thread to replay work.
 
+The peer's turn deadline is the operator's `--timeout-seconds` (normally at most
+1800). If one turn needs longer, say so: only the operator can restart the peer
+with a longer deadline, and above 1800 (up to 7200) that needs the explicit
+`--allow-extended-timeout` flag. `codex_status` reports `extended_timeout` when
+the override is on. Never enable it yourself.
+
 ## Completion and preserved state
 
 After submission, call fresh core `review_status` and verify current local refs.

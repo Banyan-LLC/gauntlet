@@ -133,14 +133,18 @@ process, so every process still has exactly one immutable tuple:
   `icacls /inheritance:r /grant:r` on Windows, mode `0700` elsewhere; if that fails it is
   removed again and the original failure is reported.
 - The participants are `claude-author` (role `author`) for `core` and `claude-peer` for `peer`;
-  `peer` passes `--timeout-seconds` (default 600) to the adapter.
+  `peer` passes `--timeout-seconds` (default 600) to the adapter, and `--allow-extended-timeout`
+  only when the operator gives it ([Longer peer turns](#longer-peer-turns-explicit-override)).
+  The core ignores both.
 
 Every failure before the hand-off prints one fixed code on stderr and nothing else: no
 path, argument or traceback (`NOT_A_GIT_CHECKOUT`, `DETACHED_HEAD`, `NO_TARGET_REF`,
 `UNSUPPORTED_REF`, `STATE_INSIDE_REPOSITORY`, `REDIRECTED_STATE_COMPONENT`,
 `STATE_COMPONENT_NOT_DIRECTORY`, `STATE_NOT_PRIVATE`, `STATE_UNAVAILABLE`, `MISSING_EXTRA`,
-`UNSUPPORTED_EXTRA`, `CONFIGURATION_ERROR`, or `INTERNAL_ERROR` with a correlation ID), so the
-host reports the server as failed and the skills report a setup gap. Details go to
+`UNSUPPORTED_EXTRA`, `CONFIGURATION_ERROR`, `TIMEOUT_OUT_OF_RANGE`, or `INTERNAL_ERROR` with a
+correlation ID), so the host reports the server as failed and the skills report a setup gap.
+`TIMEOUT_OUT_OF_RANGE` also carries fixed fields naming the accepted range and, when it would
+help, the opt-in flag; never the refused value. Details go to
 `<state-root>/launch.log` (bounded), which the operator owns, and only when that root is a
 real directory. `python -m gauntlet_review.launch check` runs both servers' model-free
 dependency checks, their exact pins included, and starts nothing.
@@ -319,7 +323,9 @@ work, and complete results are checked before return. No source, response or
 history is silently truncated.
 
 The operator's `--timeout-seconds` defaults to 600 and accepts 10–1800, with five
-seconds reserved for interruption/close inside that deadline. Native failures,
+seconds reserved for interruption/close inside that deadline. 1800 is the normal
+ceiling; [Longer peer turns](#longer-peer-turns-explicit-override) describes the one
+explicit override. Native failures,
 deadline expiry, lost/invalid terminal state or cancellation poison the
 conversation; no automatic model retry occurs. Safe errors include fixed code,
 cause category, correlation ID, known thread/turn IDs, uncertainty, unusable
@@ -369,6 +375,42 @@ in preserved history. Do not restore or downgrade to it. Current references:
 [Python SDK](https://learn.chatgpt.com/docs/codex-sdk),
 [app server](https://learn.chatgpt.com/docs/app-server), and
 [Claude programmatic CLI](https://code.claude.com/docs/en/headless).
+
+### Longer peer turns (explicit override)
+
+A single peer turn over a very large review can need more than 30 minutes. The
+operator can deliberately opt in to a longer deadline with `--allow-extended-timeout`.
+It raises only the ceiling, from 1800 to 7200 seconds; the 10-second minimum, the
+five-second close reserve and every other limit stay as they are. Give it to the adapter
+(`gauntlet-codex` or `python -m gauntlet_review.codex_bridge`), or to the launcher's `peer`
+entry, which checks the value and forwards the flag. For the user-scope registration,
+replace the `gauntlet-peer` entry with these launcher arguments (start a new host session
+afterwards, since hosts load servers when a session starts):
+
+```json
+["-I", "-m", "gauntlet_review.launch", "peer", "--state-root", "C:/Users/YOU/AppData/Local/Gauntlet/state", "--timeout-seconds", "5400", "--allow-extended-timeout"]
+```
+
+`install.ps1` always registers the default entry, so re-running it removes the override.
+While the override is on it is visible in two places:
+
+- the launcher's `launch.log` line for that peer ends with
+  `timeout_seconds=5400 extended_timeout=on max_seconds=7200`;
+- `codex_status` adds `"extended_timeout":{"timeout_seconds":5400,"max_seconds":7200}`.
+
+Without the flag both are exactly as before, and a value over 1800 is still refused. The
+launcher refuses it before the hand-off, creating nothing, with this body on stderr:
+
+```json
+{"code":"TIMEOUT_OUT_OF_RANGE","operation":"launch","accepted":{"min":10,"max":1800},"opt_in":{"flag":"--allow-extended-timeout","max":7200}}
+```
+
+`launch.log` records the refused value and the flag to add. Run directly, the adapter
+prints the same body without `operation`. `opt_in` appears only for a value the override
+would accept: with the override on, a value over 7200 is refused with
+`"accepted":{"min":10,"max":7200}` alone, and a value under 10 never names the flag. The
+native host's own MCP tool-call timeout, if it has one, still applies; set it at least
+as long as the turn deadline.
 
 ## Limits and state operations
 
