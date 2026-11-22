@@ -1,34 +1,41 @@
 """Global host launcher for the collaborative servers.
 
-One user-scope host registration serves every checkout. The host starts this module in the session's working
-folder; it derives that session's operator tuple there and then runs the ordinary server entry point in the same
-process, so stdio stays connected and the server still has exactly one immutable tuple:
+One user-scope host registration serves every checkout. The host starts this module; it starts a session server
+(gauntlet_review.session) in the same process, so stdio stays connected:
 
     python -m gauntlet_review.launch core --state-root <dir>
     python -m gauntlet_review.launch peer --state-root <dir> [--timeout-seconds N] [--allow-extended-timeout]
     python -m gauntlet_review.launch check
 
+The host may start this process in a folder that is not the agent's (a desktop worktree session's servers can
+start in the repository's main checkout), so nothing is derived at startup. Every tool call names the agent's
+checkout, and the session server derives that call's binding with `derive` below: the same checkout, refs,
+repository ID and state directory a launcher process once derived from its working folder, so existing stores are
+reused. A branch switch or another worktree takes effect on the next call without a reconnect.
+
 `--timeout-seconds` is the peer's turn deadline, 10 to 1800 seconds. `--allow-extended-timeout` is the operator's
-explicit opt-in to a ceiling of 7200; the launcher forwards it to the adapter and names it in launch.log, and the
-adapter reports it in codex_status. Without it, a value over 1800 is refused before the hand-off with
+explicit opt-in to a ceiling of 7200; the launcher passes it to the peer session server and names it in launch.log,
+and the adapter reports it in codex_status. Without it, a value over 1800 is refused before the hand-off with
 TIMEOUT_OUT_OF_RANGE, whose stderr body names the accepted range and, for a value the override would accept, the
 flag. The core ignores both.
 
-  --repo           the checkout containing the working folder (a linked worktree is its own checkout)
-  --source-ref     the branch that checkout has checked out (a detached HEAD is refused)
-  --target-ref     origin's default branch (refs/remotes/origin/HEAD), else refs/remotes/origin/main or master
-  --repository-id  <owner>-<repository> from origin's URL, else the main checkout's folder name
-  --state-dir      <state-root>/<repository-id>--<branch>-<digest>, one private directory per checkout and ref
-                   pair (the digest covers the checkout path, both refs and the ID, so a store is never rebound),
-                   created on first use and restricted to the current account. The state root is never resolved:
-                   every existing component must be a real directory, the same no-follow rule the core applies,
-                   and the unresolved path is what the server receives.
-  --participant    claude-author with --role author (core), or claude-peer (peer)
+A binding (see `derive`):
+  repo           the checkout containing the call's folder (a linked worktree is its own checkout)
+  source ref     the branch that checkout has checked out (a detached HEAD is refused, per call)
+  target ref     origin's default branch (refs/remotes/origin/HEAD), else refs/remotes/origin/main or master
+  repository ID  <owner>-<repository> from origin's URL, else the main checkout's folder name
+  state dir      <state-root>/<repository-id>--<branch>-<digest>, one private directory per checkout and ref pair
+                 (the digest covers the checkout path, both refs and the ID, so a store is never rebound), created
+                 on first use and restricted to the current account. The state root is never resolved: every
+                 existing component must be a real directory, the same no-follow rule the core applies, and the
+                 unresolved path is what the core receives.
+  participant    claude-author with role author (core), or claude-peer (peer)
 
-`check` runs both servers' model-free dependency checks, exact pins included, and starts nothing; an installer
-uses it before registering. Every failure before the hand-off prints one fixed code on stderr, as the servers do
-(INTERNAL_ERROR adds a correlation ID); details go only to <state-root>/launch.log (bounded), which the operator
-owns. A host's explicit project or local registration with the same name takes precedence."""
+At startup the launcher creates a missing state root privately and logs one `session` line. `check` runs both
+servers' model-free dependency checks, exact pins included, and starts nothing; an installer uses it before
+registering. Every failure before the hand-off prints one fixed code on stderr, as the servers do (INTERNAL_ERROR
+adds a correlation ID); details go only to <state-root>/launch.log (bounded), which the operator owns. A host's
+explicit project or local registration with the same name takes precedence."""
 import argparse, hashlib, json, os, re, stat, subprocess, sys, time, uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -166,30 +173,44 @@ def _restrict(path):
             raise LaunchRefused("STATE_NOT_PRIVATE", str(path))
 
 
+def _make_private(directory, cleanup_failures=None):
+    """Creates one directory restricted to the current account; an existing one is left as it is. A directory
+    whose restriction fails is removed again; a failure of that removal goes to cleanup_failures and never replaces
+    the original error."""
+    try:
+        directory.mkdir(mode=0o700)
+    except FileExistsError:
+        check_unredirected(directory)
+        return
+    except OSError as error:
+        raise LaunchRefused("STATE_UNAVAILABLE", f"{directory}: {type(error).__name__}: {error}") from error
+    try:
+        check_unredirected(directory)
+        _restrict(directory)
+    except BaseException:
+        try:
+            directory.rmdir()
+        except OSError as cleanup:
+            if cleanup_failures is not None:
+                cleanup_failures.append(f"{directory}: {type(cleanup).__name__}: {cleanup}")
+        raise
+
+
 def ensure_private_dir(path, cleanup_failures=None):
     """Creates path (and a missing parent state root) as private directories; an existing one is left as it is.
-    Redirected components are refused before anything is created. A directory whose restriction fails is removed
-    again; a failure of that removal goes to cleanup_failures and never replaces the original error."""
+    Redirected components are refused before anything is created."""
     path = Path(path)
     check_unredirected(path)
     for directory in (path.parent, path):
-        try:
-            directory.mkdir(mode=0o700)
-        except FileExistsError:
-            check_unredirected(directory)
-            continue
-        except OSError as error:
-            raise LaunchRefused("STATE_UNAVAILABLE", f"{directory}: {type(error).__name__}: {error}") from error
-        try:
-            check_unredirected(directory)
-            _restrict(directory)
-        except BaseException:
-            try:
-                directory.rmdir()
-            except OSError as cleanup:
-                if cleanup_failures is not None:
-                    cleanup_failures.append(f"{directory}: {type(cleanup).__name__}: {cleanup}")
-            raise
+        _make_private(directory, cleanup_failures)
+
+
+def ensure_private_root(state_root, cleanup_failures=None):
+    """Creates a missing state root as a private directory (its parent must exist); an existing one is left as it
+    is. Redirected components are refused before anything is created. No Git state is read."""
+    state_root = Path(state_root)
+    check_unredirected(state_root)
+    _make_private(state_root, cleanup_failures)
 
 
 def check_runtime():
@@ -207,15 +228,6 @@ def check_runtime():
             code = getattr(error, "code", None)
             raise LaunchRefused(code if code in ("MISSING_EXTRA", "UNSUPPORTED_EXTRA") else "MISSING_EXTRA",
                                 f"{name}: {type(error).__name__}") from error
-
-
-def server_argv(role, launch, timeout_seconds, extended_timeout=False):
-    common = ["--repo", str(launch.repo), "--state-dir", str(launch.state_dir), "--repository-id", launch.repository_id,
-              "--source-ref", launch.source_ref.decode("utf-8"), "--target-ref", launch.target_ref.decode("utf-8")]
-    if role == "core":
-        return "gauntlet-mcp", [*common, "--participant", "claude-author", "--role", "author"]
-    peer = [*common, "--participant", "claude-peer", "--timeout-seconds", str(timeout_seconds)]
-    return "gauntlet-codex", [*peer, EXTENDED_TIMEOUT_FLAG] if extended_timeout else peer
 
 
 def check_peer_timeout(timeout_seconds, extended_timeout):
@@ -295,18 +307,21 @@ def main(argv=None):
         state_root = Path(args.state_root)
         extended = args.role == "peer" and args.allow_extended_timeout   # the core has no turn deadline
         ceiling = check_peer_timeout(args.timeout_seconds, extended) if args.role == "peer" else None
-        launch = derive(Path.cwd(), state_root)
-        ensure_private_dir(launch.state_dir, cleanup_failures)
-        prog, server_args = server_argv(args.role, launch, args.timeout_seconds, extended)
-        if args.role == "core":
-            from gauntlet_review.collaborative.server import main as serve
-        else:
-            from gauntlet_review.codex_bridge.server import main as serve
+        ensure_private_root(state_root, cleanup_failures)
+        from gauntlet_review import session
+        from gauntlet_review.collaborative.server import StartupError
+        resolver = session.Resolver(args.role, state_root)
+        try:
+            if args.role == "core":
+                server = session.create_core_server(resolver)
+            else:
+                server = session.create_peer_server(resolver, args.timeout_seconds, extended)
+        except StartupError as error:
+            code = error.code if error.code in ("MISSING_EXTRA", "UNSUPPORTED_EXTRA") else "MISSING_EXTRA"
+            raise LaunchRefused(code, f"{args.role}: {code}") from error
         # The override is named in the log only when it is on, so a default launch logs exactly what it did before.
         override = f" timeout_seconds={args.timeout_seconds} extended_timeout=on max_seconds={ceiling}" if extended else ""
-        _log(state_root, f"{args.role} cwd={Path.cwd()} repo={launch.repo} id={launch.repository_id} "
-                         f"source={launch.source_ref.decode()} target={launch.target_ref.decode()} state={launch.state_dir}"
-                         + override)
+        _log(state_root, f"{args.role} session cwd={Path.cwd()}" + override)
     except LaunchRefused as refusal:
         return _refuse(state_root, refusal.code, refusal.detail + _cleanup_note(cleanup_failures),
                        fields=refusal.fields)
@@ -319,8 +334,7 @@ def main(argv=None):
     except Exception as error:
         correlation = uuid.uuid4().hex
         return _refuse(state_root, "INTERNAL_ERROR", f"{type(error).__name__}: {error}", correlation)
-    sys.argv = [prog, *server_args]
-    return serve()
+    return session.serve(server)
 
 
 if __name__ == "__main__":

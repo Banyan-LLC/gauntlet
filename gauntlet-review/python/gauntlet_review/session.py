@@ -288,6 +288,33 @@ def create_core_server(resolver):
                   lifespan=lifetime, on_list_tools=list_tools, on_call_tool=call_tool)
 
 
+def serve(server):
+    """Runs a session server over stdio until the host disconnects, as the fixed-tuple servers' entry points do.
+    Unexpected failures print one fixed code with a correlation ID, never a traceback."""
+    import json
+    import sys
+    import anyio
+    from mcp.server.stdio import stdio_server
+    from gauntlet_review.collaborative.server import _safe_logging
+    _safe_logging(root=True)
+
+    async def run():
+        async with stdio_server() as (read, write):
+            await server.run(read, write, server.create_initialization_options())
+    try:
+        anyio.run(run)
+        return 0
+    except KeyboardInterrupt:
+        return 130
+    except Exception:
+        try:
+            sys.stderr.write(json.dumps({"code": "INTERNAL_ERROR", "operation": "serve",
+                                         "correlation_id": uuid.uuid4().hex}, separators=(",", ":")) + "\n")
+        except (OSError, ValueError):
+            pass
+        return 2
+
+
 def _consume(task):
     if not task.cancelled():
         task.exception()

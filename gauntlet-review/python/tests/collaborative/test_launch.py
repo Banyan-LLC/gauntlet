@@ -141,57 +141,66 @@ def test_refuses_a_redirected_state_component(tmp_path):
     assert refused.value.code == "REDIRECTED_STATE_COMPONENT"
 
 
-@pytest.mark.parametrize("role, prog, tail", [
-    ("core", "gauntlet-mcp", ["--participant", "claude-author", "--role", "author"]),
-    ("peer", "gauntlet-codex", ["--participant", "claude-peer", "--timeout-seconds", "900"]),
-])
-def test_main_hands_the_derived_tuple_to_the_server(checkout, tmp_path, monkeypatch, role, prog, tail):
+def capture_session(monkeypatch, real_servers=False):
+    """Replaces session.serve (and, unless real_servers, both factories) so main returns without stdio."""
+    from gauntlet_review import session
     seen = {}
+    if not real_servers:
+        def core(resolver):
+            seen.update(role="core", resolver=resolver)
+            return "core-server"
 
-    def serve():
-        seen["argv"] = list(sys.argv)
+        def peer(resolver, timeout_seconds, extended_timeout, model=None):
+            seen.update(role="peer", resolver=resolver, timeout=timeout_seconds, extended=extended_timeout)
+            return "peer-server"
+        monkeypatch.setattr(session, "create_core_server", core)
+        monkeypatch.setattr(session, "create_peer_server", peer)
+
+    def serve(server):
+        seen["served"] = server
         return 0
+    monkeypatch.setattr(session, "serve", serve)
+    return seen
 
-    module = "gauntlet_review.collaborative.server" if role == "core" else "gauntlet_review.codex_bridge.server"
-    pytest.importorskip(module)
-    monkeypatch.setattr(f"{module}.main", serve)
+
+def session_lines(root, role):
+    return [line for line in (root / "launch.log").read_text().splitlines() if f" {role} session cwd=" in line]
+
+
+@pytest.mark.parametrize("role", ["core", "peer"])
+def test_main_starts_a_real_session_server_without_deriving_anything(checkout, tmp_path, monkeypatch, role):
+    pytest.importorskip("gauntlet_review.codex_bridge.server" if role == "peer" else "mcp")
+    seen = capture_session(monkeypatch, real_servers=True)
     monkeypatch.chdir(checkout)
-    monkeypatch.setattr(sys, "argv", ["gauntlet-launch"])
     root = tmp_path / "state"
     assert launch.main([role, "--state-root", str(root), "--timeout-seconds", "900"]) == 0
-    expected = launch.derive(checkout, root)
-    assert seen["argv"] == [prog, "--repo", str(expected.repo), "--state-dir", str(expected.state_dir),
-                            "--repository-id", "owner-repo", "--source-ref", "refs/heads/feature/x",
-                            "--target-ref", "refs/remotes/origin/main", *tail]
-    assert expected.state_dir.is_dir()
-    assert "core" in (root / "launch.log").read_text() or "peer" in (root / "launch.log").read_text()
-    assert "extended_timeout" not in (root / "launch.log").read_text()
+    assert seen["served"].name == ("gauntlet-collaborative" if role == "core" else "gauntlet-codex")
+    assert sorted(p.name for p in root.iterdir()) == ["launch.log"]          # no store until a call binds one
+    assert len(session_lines(root, role)) == 1 and "extended_timeout" not in (root / "launch.log").read_text()
 
 
-def _serve_capture(monkeypatch, module):
-    seen = {}
-
-    def serve():
-        seen["argv"] = list(sys.argv)
-        return 0
-
-    pytest.importorskip(module)
-    monkeypatch.setattr(f"{module}.main", serve)
-    monkeypatch.setattr(sys, "argv", ["gauntlet-launch"])
-    return seen
+@pytest.mark.parametrize("role", ["core", "peer"])
+def test_main_hands_the_state_root_and_role_to_the_session_server(checkout, tmp_path, monkeypatch, role):
+    seen = capture_session(monkeypatch)
+    monkeypatch.chdir(checkout)
+    root = tmp_path / "state"
+    assert launch.main([role, "--state-root", str(root), "--timeout-seconds", "900"]) == 0
+    assert seen["role"] == role and seen["served"] == f"{role}-server"
+    assert seen["resolver"].role == role and seen["resolver"].state_root == root
+    if role == "peer":
+        assert (seen["timeout"], seen["extended"]) == (900, False)
 
 
 @pytest.mark.parametrize("timeout", ["1800", "5400", "7200"])
 def test_main_forwards_the_extended_timeout_override_and_logs_it(checkout, tmp_path, monkeypatch, timeout):
-    seen = _serve_capture(monkeypatch, "gauntlet_review.codex_bridge.server")
+    seen = capture_session(monkeypatch)
     monkeypatch.chdir(checkout)
     root = tmp_path / "state"
     assert launch.main(["peer", "--state-root", str(root), "--timeout-seconds", timeout,
                         "--allow-extended-timeout"]) == 0
-    assert seen["argv"][-5:] == ["--participant", "claude-peer", "--timeout-seconds", timeout,
-                                 "--allow-extended-timeout"]
+    assert (seen["timeout"], seen["extended"]) == (int(timeout), True)
     line = (root / "launch.log").read_text().splitlines()[-1]
-    assert line.split(" ", 1)[1].startswith("peer cwd=")
+    assert line.split(" ", 1)[1].startswith("peer session cwd=")
     assert line.endswith(f" timeout_seconds={timeout} extended_timeout=on max_seconds=7200")
 
 
@@ -201,11 +210,11 @@ def test_the_launcher_forwards_the_adapters_own_flag():
 
 
 def test_main_ignores_the_override_for_the_core(checkout, tmp_path, monkeypatch):
-    seen = _serve_capture(monkeypatch, "gauntlet_review.collaborative.server")
+    seen = capture_session(monkeypatch)
     monkeypatch.chdir(checkout)
     root = tmp_path / "state"
     assert launch.main(["core", "--state-root", str(root), "--allow-extended-timeout"]) == 0
-    assert seen["argv"][-4:] == ["--participant", "claude-author", "--role", "author"]
+    assert seen["role"] == "core"
     assert "extended_timeout" not in (root / "launch.log").read_text()
 
 
@@ -227,27 +236,53 @@ def test_main_ignores_the_override_for_the_core(checkout, tmp_path, monkeypatch)
 ])
 def test_main_refuses_an_out_of_range_timeout_before_the_hand_off(checkout, tmp_path, monkeypatch, capsys,
                                                                  args, expected, hint):
-    seen = _serve_capture(monkeypatch, "gauntlet_review.codex_bridge.server")
+    seen = capture_session(monkeypatch)
     monkeypatch.chdir(checkout)
     root = tmp_path / "state"
     root.mkdir()
     assert launch.main(["peer", "--state-root", str(root), *args]) == 2
     assert capsys.readouterr().err.strip() == expected
-    assert "argv" not in seen
+    assert "served" not in seen
     assert f"refused TIMEOUT_OUT_OF_RANGE: {hint} (cwd=" in (root / "launch.log").read_text()
     assert list(root.iterdir()) == [root / "launch.log"]                     # no state directory was created
 
 
-def test_main_refuses_with_a_fixed_code_and_no_paths(tmp_path, monkeypatch, capsys):
+def test_main_starts_from_a_folder_outside_any_checkout(tmp_path, monkeypatch, capsys):
+    seen = capture_session(monkeypatch)
     root = tmp_path / "state"
     root.mkdir()
     monkeypatch.chdir(tmp_path)
-    assert launch.main(["core", "--state-root", str(root)]) == 2
-    err = capsys.readouterr().err
-    assert err.strip() == '{"code":"NOT_A_GIT_CHECKOUT","operation":"launch"}'
-    assert "refused NOT_A_GIT_CHECKOUT" in (root / "launch.log").read_text()
+    assert launch.main(["core", "--state-root", str(root)]) == 0
+    assert seen["served"] == "core-server" and capsys.readouterr().err == ""
+    assert len(session_lines(root, "core")) == 1
     assert launch.main(["core", "--state-root", "relative"]) == 2
     assert launch.main(["bogus", "--state-root", str(root)]) == 2
+
+
+def test_main_creates_a_missing_state_root_and_logs_its_session_line(tmp_path, monkeypatch):
+    seen = capture_session(monkeypatch)
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    monkeypatch.chdir(plain)
+    root = tmp_path / "fresh-state"
+    assert launch.main(["peer", "--state-root", str(root)]) == 0                # no tool call follows
+    assert seen["served"] == "peer-server"
+    if os.name == "nt":
+        acl = subprocess.run(["icacls", str(root)], capture_output=True, text=True, check=True).stdout
+        assert "(I)" not in acl and os.environ["USERNAME"].lower() in acl.lower()
+    else:
+        assert stat.S_IMODE(root.stat().st_mode) == 0o700
+    assert sorted(p.name for p in root.iterdir()) == ["launch.log"]
+    assert len(session_lines(root, "peer")) == 1
+
+
+def test_main_refuses_a_state_root_whose_parent_is_missing(tmp_path, monkeypatch, capsys):
+    capture_session(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    root = tmp_path / "absent" / "state"
+    assert launch.main(["core", "--state-root", str(root)]) == 2
+    assert capsys.readouterr().err.strip() == '{"code":"STATE_UNAVAILABLE","operation":"launch"}'
+    assert not (tmp_path / "absent").exists()
 
 
 def redirect(link, target):
@@ -267,6 +302,7 @@ def no_paths_or_traceback(err, *paths):
 
 @pytest.mark.parametrize("shape", ["root", "ancestor"])
 def test_main_refuses_a_redirected_state_root_before_writing_anything(checkout, tmp_path, monkeypatch, capsys, shape):
+    capture_session(monkeypatch)
     target = tmp_path / "elsewhere"
     target.mkdir()
     link = tmp_path / "link"
@@ -293,24 +329,27 @@ def test_derive_hands_over_the_unresolved_state_path(checkout, tmp_path):
     (FileNotFoundError(2, "icacls not found", "icacls"), "STATE_UNAVAILABLE"),
 ])
 def test_main_contains_setup_failures_with_fixed_codes(checkout, tmp_path, monkeypatch, capsys, error, code):
+    seen = capture_session(monkeypatch)
+
     def fail(path):
         raise error
     monkeypatch.setattr(launch, "_restrict", fail)
     monkeypatch.chdir(checkout)
-    root = tmp_path / "state"
-    root.mkdir()
+    root = tmp_path / "state"                                              # absent: main creates and restricts it
     assert launch.main(["core", "--state-root", str(root)]) == 2
     err = capsys.readouterr().err
     assert err.strip() == '{"code":"%s","operation":"launch"}' % code
     no_paths_or_traceback(err, root, checkout, r"C:\secret\state")
-    assert list(p.name for p in root.iterdir()) == ["launch.log"]       # the half-made directory was removed
-    assert f"refused {code}" in (root / "launch.log").read_text()
+    assert not root.exists() and "served" not in seen                     # the half-made root was removed
 
 
 def test_main_contains_an_unexpected_failure_with_a_correlation_id(checkout, tmp_path, monkeypatch, capsys):
-    def boom(cwd, state_root):
+    from gauntlet_review import session
+    capture_session(monkeypatch)
+
+    def boom(role, state_root):
         raise RuntimeError(f"unexpected near {state_root}")
-    monkeypatch.setattr(launch, "derive", boom)
+    monkeypatch.setattr(session, "Resolver", boom)
     monkeypatch.chdir(checkout)
     root = tmp_path / "state"
     root.mkdir()
@@ -324,6 +363,8 @@ def test_main_contains_an_unexpected_failure_with_a_correlation_id(checkout, tmp
 
 
 def test_a_failed_cleanup_never_replaces_the_original_error(checkout, tmp_path, monkeypatch, capsys):
+    capture_session(monkeypatch)
+
     def refuse(path):
         raise launch.LaunchRefused("STATE_NOT_PRIVATE", "icacls refused")
     real_rmdir = Path.rmdir
@@ -333,8 +374,7 @@ def test_a_failed_cleanup_never_replaces_the_original_error(checkout, tmp_path, 
     monkeypatch.setattr(launch, "_restrict", refuse)
     monkeypatch.setattr(Path, "rmdir", stuck)
     monkeypatch.chdir(checkout)
-    root = tmp_path / "state"
-    root.mkdir()
+    root = tmp_path / "state"                                              # created, refused, and stuck in place
     try:
         assert launch.main(["core", "--state-root", str(root)]) == 2
     finally:
@@ -342,6 +382,20 @@ def test_a_failed_cleanup_never_replaces_the_original_error(checkout, tmp_path, 
     assert capsys.readouterr().err.strip() == '{"code":"STATE_NOT_PRIVATE","operation":"launch"}'
     log = (root / "launch.log").read_text()
     assert "icacls refused" in log and "cleanup failed" in log
+
+
+def test_main_refuses_missing_pins_for_the_session_server(checkout, tmp_path, monkeypatch, capsys):
+    from gauntlet_review.collaborative import server as core_server
+    capture_session(monkeypatch, real_servers=True)
+
+    def missing():
+        raise core_server.StartupError("UNSUPPORTED_EXTRA")
+    monkeypatch.setattr(core_server, "_require_extra", missing)
+    monkeypatch.chdir(checkout)
+    root = tmp_path / "state"
+    assert launch.main(["core", "--state-root", str(root)]) == 2
+    assert capsys.readouterr().err.strip() == '{"code":"UNSUPPORTED_EXTRA","operation":"launch"}'
+    assert "refused UNSUPPORTED_EXTRA" in (root / "launch.log").read_text()
 
 
 def test_check_passes_with_the_pinned_extras(capsys):
