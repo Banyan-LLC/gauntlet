@@ -19,11 +19,14 @@ functions that need them, as `collaborative/server.py` does).
   (one fixed string per launcher code, see below), `RETRYABLE = {"NOT_A_GIT_CHECKOUT",
   "DETACHED_HEAD", "NO_TARGET_REF"}`.
 - `class BindingError(Exception)`: `code`, `hint`, `retryable`.
-- `class Resolver(role, session_folder, state_root)`:
-  - `folder(checkout)`: `None` gives the session folder. Otherwise the value must be a `str`
-    whose UTF-8 encoding is at most `CHECKOUT_BYTES`, with no character below U+0020, not
-    starting with `\\` or `//`, and `Path(value).is_absolute()`; anything else raises
-    `BindingError("INVALID_ARGUMENT")` before any filesystem access.
+- `class Resolver(role, state_root)` (no session folder: the server's own working folder is
+  only logged, since the host may start it outside the agent's folder):
+  - `folder(checkout)`: a missing value (the `MISSING` sentinel) or `None` raises
+    `BindingError("INVALID_ARGUMENT", reason="checkout_required")`. Otherwise the value must
+    be a `str` whose UTF-8 encoding is at most `CHECKOUT_BYTES`, with no character below
+    U+0020, not starting with `\\` or `//`, and `Path(value).is_absolute()`; anything else
+    raises `BindingError("INVALID_ARGUMENT", reason="invalid_checkout")` before any
+    filesystem access.
   - `resolve(checkout) -> LaunchTuple`: `launch.derive(folder, state_root)`, then
     `launch.ensure_private_dir(t.state_dir, failures)`. `LaunchRefused` becomes
     `BindingError(code)`; `subprocess.SubprocessError` becomes `STATE_NOT_PRIVATE`; `OSError`
@@ -44,21 +47,23 @@ functions that need them, as `collaborative/server.py` does).
   - `STATE_INSIDE_REPOSITORY`, `REDIRECTED_STATE_COMPONENT`, `STATE_COMPONENT_NOT_DIRECTORY`,
     `STATE_NOT_PRIVATE`, `STATE_UNAVAILABLE`: the operator's state root is unusable; see
     `launch.log`.
-  - `INVALID_ARGUMENT`: `checkout` must be an absolute local path or null.
+  - `INVALID_ARGUMENT` / `checkout_required`: pass `checkout`, the absolute path of your
+    current working folder (the worktree you are working in).
+  - `INVALID_ARGUMENT` / `invalid_checkout`: `checkout` must be an absolute local path.
 
 Tests (`tests/collaborative/test_session.py`, reusing the `checkout` fixture pattern from
 `test_launch.py`, moved into a shared helper or duplicated):
-1. `resolve(None)` from a session folder on `feature/x` equals `launch.derive(...)` and the
-   state directory exists and is private.
-2. After `git checkout -b feature/y` in the same folder, `resolve(None)` gives the new branch
+1. `resolve(str(checkout))` on `feature/x` equals `launch.derive(...)` and the state
+   directory exists and is private.
+2. After `git checkout -b feature/y` in the same folder, the same call gives the new branch
    and a different state directory; the first one is untouched.
 3. `resolve(str(worktree))` binds a linked worktree; a subfolder of it binds the same tuple.
-4. A session folder outside any checkout: `resolve(None)` raises `NOT_A_GIT_CHECKOUT` with
-   `retryable` true; `resolve(str(checkout))` succeeds.
+4. A folder outside any checkout raises `NOT_A_GIT_CHECKOUT` with `retryable` true.
 5. Detached HEAD raises `DETACHED_HEAD`; after `git switch -c fix/z` the same call succeeds.
-6. Invalid values (`"relative/path"`, `"\\\\server\\share"`, `"//x/y"`, `"C:/a\x01b"`,
-   4097 bytes, `7`, `True`) raise `INVALID_ARGUMENT` and touch nothing (no state directory,
-   no log line naming the value beyond the fixed code).
+6. A missing value and `None` raise `INVALID_ARGUMENT` / `checkout_required`. Invalid
+   values (`"relative/path"`, `"\\\\server\\share"`, `"//x/y"`, `"C:/a\x01b"`, 4097 bytes,
+   `7`, `True`) raise `INVALID_ARGUMENT` / `invalid_checkout` and touch nothing (no state
+   directory, no log line naming the value beyond the fixed code).
 7. A `_restrict` failure gives `STATE_NOT_PRIVATE`/`STATE_UNAVAILABLE`, the half-made
    directory is removed, and the log names the cleanup failure (moved from `test_launch.py`).
 8. `launch.log` holds one `bind` line per tuple however many times it is resolved.
@@ -67,17 +72,17 @@ Tests (`tests/collaborative/test_session.py`, reusing the `checkout` fixture pat
 
 In `collaborative/server.py`, extract from `create_server` (behavior unchanged, existing tests
 must pass untouched):
-- `argument_models(extra=None)`: the strict per-tool argument models; `extra` adds optional
-  top-level fields (the session server passes `{"checkout": (str | None, None)}`).
+- `argument_models(extra=None)`: the strict per-tool argument models; `extra` adds top-level
+  fields (the session server passes `{"checkout": (str, ...)}`, a required string).
 - `tool_result(payload, limit)`: builds `CallToolResult` (canonical text plus structured
   content, `is_error = not ok`) and returns `None` when over `limit`, so each caller chooses
   its own fallback. `create_server`'s `result()` uses it with its existing fallback.
 
 In `session.py`, `create_core_server(resolver)`:
 - `_require_extra()` from the collaborative server (same pins). Tools: `sorted(ROLE_TOOLS
-  ["author"])`, descriptions from `DESCRIPTIONS` plus one sentence: "Optional checkout: the
-  absolute path of the checkout to use (default: the session folder); every call follows
-  that checkout's current branch, shown in binding."
+  ["author"])`, descriptions from `DESCRIPTIONS` plus one sentence: "checkout (required): the
+  absolute path of your current working folder; every call follows that checkout's current
+  branch, shown in binding."
 - `_CorePool(limit=CORE_BINDINGS)`: `OrderedDict` of tuple to `[core, users]`. `acquire(t)`
   reuses (move to end, `users += 1`) or opens `GitSource(config)`, `Store.open(config,
   source.repo_binding)`, `ReviewCore(config, source, store, Policy())` with
@@ -87,7 +92,9 @@ In `session.py`, `create_core_server(resolver)`:
   `CoreError("BUSY", retryable=True, detail={"reason": "bindings_in_use"})`. `release(t)`
   decrements. `close()` closes every core. Lifespan yields the pool and closes it.
 - `call_tool`: unknown name is the existing `MCPError(INVALID_PARAMS)`. Then, in order:
-  validate arguments (failure: `INVALID_ARGUMENT`, `reason: invalid_request`, binding `null`);
+  arguments that are an object without `checkout` give `INVALID_ARGUMENT` / `checkout_required`
+  with its hint; other validation failures give `INVALID_ARGUMENT`, `reason: invalid_request`
+  (binding `null` for both);
   resolve (failure: the code, `retryable`, `detail {"reason": "binding", "hint": ...}`,
   binding `null`); acquire (a `CoreError` gives its envelope with the binding); run the tool
   exactly as `create_server` does (`CoreError` and unexpected errors use
@@ -99,25 +106,27 @@ In `session.py`, `create_core_server(resolver)`:
   `Policy().mcp_result_bytes`; over the limit, the `LIMIT_EXCEEDED` envelope
   (`limit: mcp_result_bytes`) with the binding.
 - Server name and version as today; instructions add: "Each call follows the checkout's
-  current branch. Pass checkout when you work outside the session folder and check binding.
-  A branch or worktree change never needs a reconnect."
+  current branch. Pass checkout (your current working folder) on every call and check
+  binding. A branch or worktree change never needs a reconnect."
 
 Tests (`tests/collaborative/test_session_core.py`, in-memory `mcp.Client`):
 1. Tool list: the four author tools; schema properties exactly `{"request", "checkout"}`,
-   `required == ["request"]`, `additionalProperties` false, `checkout` string-or-null.
+   `required == ["request", "checkout"]` (in either order), `additionalProperties` false,
+   `checkout` a string.
 2. A full status, open, record evidence, read and status cycle on `feature/x`; every reply
    has the expected `binding`, and the store directory is `launch.derive`'s.
 3. Branch switch: open on `feature/x`, `git checkout -b feature/y`, status shows `series:
    null` with binding `feature/y`; switch back and the original series is still there. One
    server, no restart.
-4. `checkout` to a linked worktree reviews that worktree's branch while a call without it
-   still uses the session folder.
-5. Session folder outside any checkout: the server starts and lists tools; a call without
-   `checkout` fails with `NOT_A_GIT_CHECKOUT`, `retryable` true, a hint and `binding: null`;
-   the same call with `checkout` succeeds.
+4. `checkout` to a linked worktree reviews that worktree's branch, and `checkout` to the main
+   checkout reviews its own branch, from one server.
+5. A server started (monkeypatched working folder) outside any checkout lists tools and
+   serves calls whose `checkout` is a real checkout; a `checkout` outside any checkout fails
+   with `NOT_A_GIT_CHECKOUT`, `retryable` true, a hint and `binding: null`.
 6. Detached HEAD gives `DETACHED_HEAD`; after `git switch -c`, the next call succeeds.
-7. Invalid `checkout` and unknown top-level keys give `INVALID_ARGUMENT`; the value never
-   appears in the reply text.
+7. A call without `checkout` (for example the old `{"request": {}}`) gives `INVALID_ARGUMENT`
+   / `checkout_required` with its hint. Invalid `checkout` values and unknown top-level keys
+   give `INVALID_ARGUMENT`; the value never appears in the reply text.
 8. Pool bound: with the limit monkeypatched to 2, a third binding closes the least recently
    used idle core (its `close` observed); with both in use (a stub `acquire` holder), the third
    gives `BUSY`.
@@ -129,9 +138,9 @@ In `session.py`, `create_peer_server(resolver, timeout_seconds, extended_timeout
 - `_require_extra()` from the codex bridge server. `SdkConversation` is looked up through
   `gauntlet_review.codex_bridge.server.SdkConversation` at call time so tests can replace it.
 - Tools: `codex_status` with schema `{"type": "object", "properties": {"checkout":
-  {"anyOf": [{"type": "string"}, {"type": "null"}]}}, "additionalProperties": false}`;
-  `codex_review` with `ReviewRequest.model_json_schema()` plus the same `checkout` property.
-  Descriptions as today plus the checkout sentence.
+  {"type": "string"}}, "required": ["checkout"], "additionalProperties": false}`;
+  `codex_review` with `ReviewRequest.model_json_schema()` plus the same required `checkout`
+  property. Descriptions as today plus the checkout sentence.
 - `_PeerPool(limit=PEER_BINDINGS)`: `OrderedDict` of tuple to `[bridge, users]`, plus
   `owner(instance_id)` returning the tuple whose bridge has that instance ID. `acquire(t)`
   creates `Bridge(BridgeConfig(OperatorConfig(..., "claude-peer", "reviewer"), model,
@@ -140,7 +149,8 @@ In `session.py`, `create_peer_server(resolver, timeout_seconds, extended_timeout
   `await bridge.close()` (the bridge's own cleanup deadline); with none, a peer error
   `LIMIT_EXCEEDED`, cause `bindings`. `close()` closes every bridge.
 - `call_tool`:
-  - Arguments must be an object (else `INVALID_ARGUMENT`). Split `checkout` from the rest.
+  - Arguments must be an object (else `INVALID_ARGUMENT`). Split `checkout` from the rest; a
+    missing one is `INVALID_ARGUMENT` / `checkout_required` with its hint.
   - `codex_status`: the rest must be empty (else `INVALID_ARGUMENT`). Resolve, acquire,
     `bridge.status()`, release.
   - `codex_review`: resolve. If `rest.get("instance_id")` is owned by another tuple, return
@@ -156,21 +166,22 @@ In `session.py`, `create_peer_server(resolver, timeout_seconds, extended_timeout
 - Server name, version and instructions as today, plus the checkout sentence.
 
 Tests (`tests/codex_bridge/test_session_peer.py`, fake conversation as in `test_server.py`):
-1. Tool schemas: `codex_status` accepts `{}` and `{"checkout": null}`, rejects extra keys;
-   `codex_review` has the request fields plus optional `checkout`.
+1. Tool schemas: `codex_status` requires `checkout` and rejects extra keys; `codex_review`
+   has the request fields plus required `checkout`. `codex_status` with `{}` gives
+   `INVALID_ARGUMENT` / `checkout_required` and creates no bridge.
 2. Status gives an instance ID and binding without a turn; a review on that instance runs one
    turn; exact replay returns the same payload with no second turn.
 3. Branch switch: status on `feature/x`, switch to `feature/y`, review with the old instance
    gives `BINDING_CHANGED` naming both bindings and no turn; status now gives a new instance
    ID bound to `feature/y`.
 4. Unknown instance ID gives `ADAPTER_RESTARTED`.
-5. Two checkouts (session folder and a worktree) get distinct instance IDs and conversations,
-   each built with its own operator tuple.
+5. Two checkouts (the main checkout and a linked worktree) get distinct instance IDs and
+   conversations, each built with its own operator tuple.
 6. Pool bound: with the limit monkeypatched to 2, a third binding closes the least recently
    used idle bridge; when both are busy the third gives `LIMIT_EXCEEDED` with cause
    `bindings`.
-7. A session folder outside any checkout: status fails with `NOT_A_GIT_CHECKOUT` and a hint;
-   with `checkout` it succeeds.
+7. A `checkout` outside any checkout: status fails with `NOT_A_GIT_CHECKOUT` and a hint, and
+   creates no bridge; a later status with a real checkout succeeds.
 8. A reply that only fits without the binding is returned unchanged without it.
 9. Shutdown closes every bridge.
 
@@ -181,7 +192,7 @@ timeout check. Then:
 - `check_unredirected(state_root)` at startup (same codes as today).
 - `_log(state_root, f"{role} session cwd={Path.cwd()}" + override)` (the override suffix as
   today, only when on).
-- Build `Resolver(role, Path.cwd(), state_root)` and the session server (core or peer). A
+- Build `Resolver(role, state_root)` and the session server (core or peer). A
   `StartupError` from the pin check becomes the launcher's `MISSING_EXTRA` /
   `UNSUPPORTED_EXTRA` refusal.
 - `session.serve(server)`: `_safe_logging(root=True)`, then `anyio.run` over `stdio_server`,
@@ -190,7 +201,7 @@ timeout check. Then:
 
 Tests (`tests/collaborative/test_launch.py`):
 - Replace the hand-off tests with: `main` builds a session server for the right role with the
-  right resolver (capture `session.serve` and the factory) and logs one `session` line.
+  right resolver (state root, role) (capture `session.serve` and the factory) and logs one `session` line.
 - `main` from a folder outside any checkout now starts (no refusal) and logs `session`.
 - Timeout refusal, redirected state root, relative state root, unknown role, `check` and
   correlation-ID tests stay, adjusted only where they relied on `derive` running at startup
@@ -233,7 +244,7 @@ any returned string.
   the explicit-tuple sections as they are.
 - `gauntlet-review/SKILL.md` (Essential checks 1) and
   `gauntlet-review/references/collaborative-review.md` (Preflight): pass `checkout` with the
-  working folder when it is not the session folder; verify `binding`; a branch or worktree
+  current working folder on every call; verify `binding`; a branch or worktree
   change never needs a reconnect or host reload; do not add project or local Gauntlet
   registrations; reconnect only a failed server or after a package upgrade.
 - `docs/build-log/2026-11-22-session-follows-checkout.md`: causes, evidence, design, tests.

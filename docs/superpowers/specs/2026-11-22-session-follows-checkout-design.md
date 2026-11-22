@@ -13,10 +13,14 @@ launcher log (`<state-root>/launch.log`) and the Claude Code configuration show 
    never change it. Desktop worktree sessions start on `claude/<worktree>`; agents then create
    `feat/...`, and the server stays bound to the old branch until the operator reconnects. One
    worktree went through five branches, each needing a reconnect; another was launched 58 times.
-2. **The checkout is frozen at startup.** A session that works in a different worktree than
-   its start folder keeps reviewing the start folder. A session started outside a checkout or
-   on a detached HEAD gets no Gauntlet tools at all: the log holds 201 `NOT_A_GIT_CHECKOUT` and
-   135 `DETACHED_HEAD` refusals, each a dead server for the whole session.
+2. **The checkout is frozen at startup, and the host picks it.** A session that works in a
+   different worktree than its start folder keeps reviewing the start folder. Worse, the
+   host's start folder is not reliably the agent's folder: on 2026-11-22 a desktop worktree
+   session's reconnect started both servers in the repository's **main checkout** (on an
+   unrelated branch), not in the session's worktree, so a reconnect cannot even fix the
+   binding. A session started outside a checkout or on a detached HEAD gets no Gauntlet tools
+   at all: the log holds 201 `NOT_A_GIT_CHECKOUT` and 135 `DETACHED_HEAD` refusals, each a dead
+   server for the whole session.
 3. **Shadowing per-project registrations.** Explicit-tuple `gauntlet-core`/`gauntlet-peer`
    entries under `projects.<path>.mcpServers` in `~/.claude.json` take precedence over the
    user-scope launcher entry. Claude Code resolves a linked worktree's local scope to its main
@@ -48,17 +52,21 @@ launcher log (`<state-root>/launch.log`) and the Claude Code configuration show 
 ### Session servers
 
 `python -m gauntlet_review.launch core|peer --state-root <dir>` no longer derives a tuple and
-hands off to a fixed-tuple server. It starts a **session server** that keeps two fixed
-values: the session folder (its working folder at startup) and the state root. Startup
-refuses only what no call could fix: a bad or redirected state root, missing or unsupported
-pins, and an out-of-range peer timeout (same codes and stderr rules as today). It never
-refuses because of the session folder's Git state.
+hands off to a fixed-tuple server. It starts a **session server** whose only fixed value is
+the state root. Its own working folder is logged for diagnosis and otherwise ignored, because
+the host may start it somewhere other than the agent's folder. Startup refuses only what no
+call could fix: a bad or redirected state root, missing or unsupported pins, and an
+out-of-range peer timeout (same codes and stderr rules as today). It never refuses because of
+any folder's Git state.
 
 ### Binding per call
 
-Every tool accepts one new optional top-level argument, `checkout`: the absolute path of the
-checkout (or any folder inside it) the agent is working in. Absent or `null` means the session
-folder. On **every** call the server derives the binding from that folder with the existing
+Every tool takes one new **required** top-level argument, `checkout`: the absolute path of the
+checkout (or any folder inside it) the agent is working in, normally the agent's current
+working folder. It is required rather than defaulted because only the agent knows its folder;
+a default would silently bind whatever checkout the host happened to start the server in. A
+missing `checkout` is `INVALID_ARGUMENT` with reason `checkout_required` and a hint. On
+**every** call the server derives the binding from that folder with the existing
 `launch.derive` (fresh HEAD and origin reads, same repository ID, same state directory name)
 and makes its private state directory with the existing `ensure_private_dir`. A branch switch
 or a new worktree therefore takes effect on the next call with no restart.
@@ -81,7 +89,7 @@ needed". Git-state codes are `retryable: true`. Details go to `launch.log` only.
 ### Core session server (`gauntlet-core`)
 
 Exposes the same four author tools with the same request schemas; arguments become
-`{"request": <unchanged>, "checkout": <optional>}`. Each binding gets its own `ReviewCore`
+`{"request": <unchanged>, "checkout": <path>}`. Each binding gets its own `ReviewCore`
 (the existing `GitSource` and `Store` for that tuple, participant `claude-author`, role
 `author`), opened on first use and reused while the tuple is unchanged. At most 16 are kept;
 the least recently used one that no call is using is closed to make room, and if all 16 are in
@@ -90,7 +98,7 @@ checked against the same `mcp_result_bytes` limit (`LIMIT_EXCEEDED` when over).
 
 ### Peer session server (`gauntlet-peer`)
 
-`codex_status` and `codex_review` accept the same optional `checkout`. Each binding gets its
+`codex_status` and `codex_review` take the same required `checkout`. Each binding gets its
 own adapter `Bridge` (its own instance ID and SDK conversation, participant `claude-peer`,
 the operator's timeout settings), created by the first status or review call for it without
 starting a model turn. Status and review responses carry `binding`.
@@ -133,16 +141,18 @@ reports them.
 ### Documentation and skills
 
 `docs/collaborative-mcp.md` (Global registration) and the `gauntlet-review` skill and
-reference say: pass `checkout` with your working folder whenever it is not the session
-folder, check `binding` before trusting a result, and never ask the operator to reconnect for
-a branch or worktree change (a reconnect is for a failed server or a package upgrade). Do not
-add project or local Gauntlet registrations.
+reference say: pass `checkout` with your current working folder on every call, check
+`binding` before trusting a result, and never ask the operator to reconnect for a branch or
+worktree change (a reconnect is for a failed server or a package upgrade). Do not add project
+or local Gauntlet registrations.
 
 ## Compatibility and rollout
 
 - Same derivation, same store directory names: existing launcher stores are reused.
-- `codex_status` with `{}` and every existing request body still work; responses gain
-  `binding`.
+- Request bodies are unchanged; each call adds `checkout`, and responses gain `binding`. A
+  call written for the old servers (no `checkout`) gets `INVALID_ARGUMENT` with the
+  `checkout_required` hint, so an agent following an old skill copy corrects itself on its
+  first call instead of asking for a reconnect.
 - The explicit-tuple entry points and their tests are unchanged.
 - Rollout: update the installed source checkout the MCP venv's editable install points at,
   then run `install.ps1`. Sessions started before that keep their old servers until their
@@ -152,9 +162,10 @@ add project or local Gauntlet registrations.
 
 - Session core server through the in-memory MCP client against real Git fixtures: a branch
   switch between calls binds the new branch with no restart; `checkout` reaches a linked
-  worktree; a non-checkout session folder and a detached HEAD give per-call errors and later
-  calls succeed; invalid `checkout` values are refused; the store directory equals
-  `launch.derive`'s; the cache bound and in-use protection hold.
+  worktree whatever folder the server started in; a missing `checkout`, a folder outside any
+  checkout and a detached HEAD give per-call errors and later calls succeed; invalid
+  `checkout` values are refused; the store directory equals `launch.derive`'s; the cache bound
+  and in-use protection hold.
 - Session peer server with a fake conversation: per-binding instance IDs, `BINDING_CHANGED`
   with no turn, `ADAPTER_RESTARTED` for an unknown instance, idle eviction and the bound.
 - Launcher: startup no longer refuses for Git state; state-root, pin and timeout refusals
