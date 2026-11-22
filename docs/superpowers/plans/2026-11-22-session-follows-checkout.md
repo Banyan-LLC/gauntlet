@@ -182,17 +182,25 @@ In `session.py`, `create_peer_server(resolver, timeout_seconds, extended_timeout
   `asyncio.Lock` that serializes **admission**. `lease(t)` is an async context manager:
   - Under the lock: an existing entry is reused (move to end, `users += 1`). Otherwise, if
     the pool is full, the least recently used entry with `users == 0` and `bridge._busy`
-    false is removed from the map and moved to `closing`, and `await bridge.close()` runs
-    while the lock is still held (bounded by the bridge's own cleanup deadline), then the
-    bridge leaves `closing`. With no idle entry, a peer error `LIMIT_EXCEEDED`, cause
+    false is removed from the map, its close task is started and kept in `closing`, and the
+    evicting call waits for that task while the lock is still held (bounded; see the
+    cancellation rule below for how the close is owned).
+    With no idle entry, a peer error `LIMIT_EXCEEDED`, cause
     `bindings`. Then the new bridge is created (`Bridge(BridgeConfig(OperatorConfig(...,
     "claude-peer", "reviewer"), model, timeout_seconds, extended_timeout, result_reserve),
     SdkConversation(config))`, which starts nothing) and inserted with `users = 1`. Because
     every admission holds the lock from the capacity check to the insert, overlapping calls
     can neither exceed the bound nor create two bridges for one tuple.
-  - Cancellation during admission: the victim's close is shielded by the bridge (its cleanup
-    runs under `CancelScope(shield=True)`); a victim whose close did not finish stays in
-    `closing`, and pool shutdown closes it again. Nothing is inserted for the cancelled call.
+  - Cancellation during admission (plan review r2-708aa39e34cc7886f21b698860cc8d62):
+    `Bridge.close()` marks the bridge closed before it awaits, so a second close is a no-op
+    and an interrupted close can never be retried. The pool therefore never lets a caller own
+    a close: eviction starts `asyncio.create_task(bridge.close())`, keeps the task in
+    `closing`, and the evicting call waits for it through `asyncio.shield` up to
+    `CLEANUP_SECONDS + 1`. Cancelling the evicting call cancels only its wait; the close task
+    keeps running, and pool shutdown awaits every task still in `closing` (bounded the same
+    way, then cancelled). A finished task leaves `closing` from its done callback. Nothing is
+    inserted for the cancelled call. Test 8 cancels the evicting call while the victim's close
+    is blocked, then proves the close completes and shutdown leaves nothing running.
   - The body runs outside the lock; `users -= 1` happens exactly once in `finally`, on
     success, error and cancellation (`Bridge.call` re-raises caller cancellation after its
     own cleanup).
