@@ -24,9 +24,16 @@ functions that need them, as `collaborative/server.py` does).
   - `folder(checkout)`: a missing value (the `MISSING` sentinel) or `None` raises
     `BindingError("INVALID_ARGUMENT", reason="checkout_required")`. Otherwise the value must
     be a `str` whose UTF-8 encoding is at most `CHECKOUT_BYTES`, with no character below
-    U+0020, not starting with `\\` or `//`, and `Path(value).is_absolute()`; anything else
-    raises `BindingError("INVALID_ARGUMENT", reason="invalid_checkout")` before any
-    filesystem access.
+    U+0020 and no U+007F, and must be a **local absolute path in native form**, checked on the
+    raw string before any filesystem access (`local_absolute(value)`):
+    - Windows: with every `/` first replaced by `\`, the value must match
+      `^[A-Za-z]:\\` (a drive letter, colon and root). That one rule rejects every UNC and
+      device form whatever the separator mix (`\\server\share`, `//server/share`,
+      `\/server/share`, `/\server\share`, `\\?\C:\x`, `\\.\pipe\x`, `\??\C:\x`), rooted paths
+      without a drive (`\x`), drive-relative paths (`C:x`) and relative paths.
+    - POSIX: the value must start with exactly one `/` (not `//`, which is
+      implementation-defined) and contain no `\`.
+    Anything else raises `BindingError("INVALID_ARGUMENT", reason="invalid_checkout")`.
   - `resolve(checkout) -> LaunchTuple`: `launch.derive(folder, state_root)`, then
     `launch.ensure_private_dir(t.state_dir, failures)`. `LaunchRefused` becomes
     `BindingError(code)`; `subprocess.SubprocessError` becomes `STATE_NOT_PRIVATE`; `OSError`
@@ -61,9 +68,14 @@ Tests (`tests/collaborative/test_session.py`, reusing the `checkout` fixture pat
 4. A folder outside any checkout raises `NOT_A_GIT_CHECKOUT` with `retryable` true.
 5. Detached HEAD raises `DETACHED_HEAD`; after `git switch -c fix/z` the same call succeeds.
 6. A missing value and `None` raise `INVALID_ARGUMENT` / `checkout_required`. Invalid
-   values (`"relative/path"`, `"\\\\server\\share"`, `"//x/y"`, `"C:/a\x01b"`, 4097 bytes,
-   `7`, `True`) raise `INVALID_ARGUMENT` / `invalid_checkout` and touch nothing (no state
-   directory, no log line naming the value beyond the fixed code).
+   values raise `INVALID_ARGUMENT` / `invalid_checkout` and touch nothing (no state
+   directory, no log line naming the value beyond the fixed code). `local_absolute` is
+   tested directly for both platforms (parametrized over a `windows` flag so both rule sets
+   run on every OS): on Windows rules, `\\server\share`, `//server/share`, `\/server/share`,
+   `/\server\share`, `\\?\C:\x`, `\\.\pipe\x`, `\??\C:\x`, `\x`, `C:x`, `relative\x` are
+   refused and `C:\x`, `C:/x`, `c:\x\y` accepted; on POSIX rules, `//x/y`, `relative/x`,
+   `/a\b` are refused and `/x/y` accepted. Through `folder`: also `"C:/a\x01b"`, `"\x7f"`,
+   4097 bytes, `7`, `True`.
 7. A `_restrict` failure gives `STATE_NOT_PRIVATE`/`STATE_UNAVAILABLE`, the half-made
    directory is removed, and the log names the cleanup failure (moved from `test_launch.py`).
 8. `launch.log` holds one `bind` line per tuple however many times it is resolved.
@@ -83,8 +95,11 @@ In `session.py`, `create_core_server(resolver)`:
   ["author"])`, descriptions from `DESCRIPTIONS` plus one sentence: "checkout (required): the
   absolute path of your current working folder; every call follows that checkout's current
   branch, shown in binding."
-- `_CorePool(limit=CORE_BINDINGS)`: `OrderedDict` of tuple to `[core, users]`. `acquire(t)`
-  reuses (move to end, `users += 1`) or opens `GitSource(config)`, `Store.open(config,
+- `_CorePool(limit=CORE_BINDINGS)`: `OrderedDict` of tuple to `[core, users]`. `acquire` and
+  `release` are synchronous (opening and closing a core never awaits), so on the single event
+  loop no other call can interleave inside them; the lease is a context manager around the
+  tool call, released exactly once in `finally` on success, error and cancellation.
+  `acquire(t)` reuses (move to end, `users += 1`) or opens `GitSource(config)`, `Store.open(config,
   source.repo_binding)`, `ReviewCore(config, source, store, Policy())` with
   `OperatorConfig(t.repo, t.state_dir, t.repository_id, t.source_ref, t.target_ref,
   "claude-author", "author")`, closing the source if the store or core fails. When full, the
@@ -104,7 +119,10 @@ In `session.py`, `create_core_server(resolver)`:
   {"state": "unknown"}`, `result: null`, `error {code, retryable, detail}`).
 - Every reply is `{**payload, "binding": binding}` through `tool_result` with
   `Policy().mcp_result_bytes`; over the limit, the `LIMIT_EXCEEDED` envelope
-  (`limit: mcp_result_bytes`) with the binding.
+  (`limit: mcp_result_bytes`) with the binding, so no core reply ever lacks its binding.
+  (The core's policy, and so its internal budgets, cannot change without changing the
+  stored policy digest; the largest bounded core replies, an 80 KiB listing or a 64 KiB
+  artifact page, leave far more room than a maximal binding needs, which test 10 proves.)
 - Server name and version as today; instructions add: "Each call follows the checkout's
   current branch. Pass checkout (your current working folder) on every call and check
   binding. A branch or worktree change never needs a reconnect."
@@ -131,6 +149,12 @@ Tests (`tests/collaborative/test_session_core.py`, in-memory `mcp.Client`):
    used idle core (its `close` observed); with both in use (a stub `acquire` holder), the third
    gives `BUSY`.
 9. Shutdown closes every open core.
+10. Size boundary: with a checkout path of the maximum length, a 65536-byte artifact page
+    and a full-limit listing each return `ok` with the binding; with `mcp_result_bytes`
+    monkeypatched below a reply's size, the reply is `LIMIT_EXCEEDED` and still carries the
+    binding. An exact-key replay of a mutation also carries the binding.
+11. A call cancelled while it holds a lease releases it: the binding is then evictable and
+    shutdown closes it.
 
 ## Task 3: peer session server
 
@@ -141,28 +165,56 @@ In `session.py`, `create_peer_server(resolver, timeout_seconds, extended_timeout
   {"type": "string"}}, "required": ["checkout"], "additionalProperties": false}`;
   `codex_review` with `ReviewRequest.model_json_schema()` plus the same required `checkout`
   property. Descriptions as today plus the checkout sentence.
-- `_PeerPool(limit=PEER_BINDINGS)`: `OrderedDict` of tuple to `[bridge, users]`, plus
-  `owner(instance_id)` returning the tuple whose bridge has that instance ID. `acquire(t)`
-  creates `Bridge(BridgeConfig(OperatorConfig(..., "claude-peer", "reviewer"), model,
-  timeout_seconds, extended_timeout), SdkConversation(config))` when absent. When full, the
-  least recently used entry with `users == 0` and `bridge._busy` false is removed and
-  `await bridge.close()` (the bridge's own cleanup deadline); with none, a peer error
-  `LIMIT_EXCEEDED`, cause `bindings`. `close()` closes every bridge.
+- Result budget with the binding included (engine change, default keeps today's behavior):
+  `BridgeConfig` gains `result_reserve: int = 0`, validated as an `int` with
+  `0 <= result_reserve <= RESULT_BYTES // 4`. `engine.mcp_result(payload, reserve=0)` refuses
+  a result over `RESULT_BYTES - reserve`. `Bridge` passes `config.result_reserve` to every
+  `mcp_result` call it makes (success, `error_response`, cached replay) and `SdkConversation`
+  passes it to its own check of the final message, so a turn whose text would not fit with
+  the binding fails inside the adapter, with its existing `LIMIT_EXCEEDED` codes, before it is
+  cached. The explicit-tuple adapter keeps `result_reserve = 0`, so its limits and replies
+  are unchanged. The session server sets, per binding, `result_reserve = 3 *
+  len(_encode({"binding": public(t)})) + 64`: the binding appears once in the structured copy
+  and once in the text copy, where JSON string escaping can at most double it, so three
+  encoded copies bound its contribution to the serialized result.
+- `_PeerPool(limit=PEER_BINDINGS)`: `OrderedDict` of tuple to `[bridge, users]`, `owner(
+  instance_id)` returning the tuple whose bridge has that instance ID, a `closing` set and one
+  `asyncio.Lock` that serializes **admission**. `lease(t)` is an async context manager:
+  - Under the lock: an existing entry is reused (move to end, `users += 1`). Otherwise, if
+    the pool is full, the least recently used entry with `users == 0` and `bridge._busy`
+    false is removed from the map and moved to `closing`, and `await bridge.close()` runs
+    while the lock is still held (bounded by the bridge's own cleanup deadline), then the
+    bridge leaves `closing`. With no idle entry, a peer error `LIMIT_EXCEEDED`, cause
+    `bindings`. Then the new bridge is created (`Bridge(BridgeConfig(OperatorConfig(...,
+    "claude-peer", "reviewer"), model, timeout_seconds, extended_timeout, result_reserve),
+    SdkConversation(config))`, which starts nothing) and inserted with `users = 1`. Because
+    every admission holds the lock from the capacity check to the insert, overlapping calls
+    can neither exceed the bound nor create two bridges for one tuple.
+  - Cancellation during admission: the victim's close is shielded by the bridge (its cleanup
+    runs under `CancelScope(shield=True)`); a victim whose close did not finish stays in
+    `closing`, and pool shutdown closes it again. Nothing is inserted for the cancelled call.
+  - The body runs outside the lock; `users -= 1` happens exactly once in `finally`, on
+    success, error and cancellation (`Bridge.call` re-raises caller cancellation after its
+    own cleanup).
+  - `close()` takes the lock, then closes every entry and everything left in `closing`.
 - `call_tool`:
   - Arguments must be an object (else `INVALID_ARGUMENT`). Split `checkout` from the rest; a
     missing one is `INVALID_ARGUMENT` / `checkout_required` with its hint.
-  - `codex_status`: the rest must be empty (else `INVALID_ARGUMENT`). Resolve, acquire,
-    `bridge.status()`, release.
+  - `codex_status`: the rest must be empty (else `INVALID_ARGUMENT`). Resolve, then inside
+    `async with pool.lease(t)`: `bridge.status()`.
   - `codex_review`: resolve. If `rest.get("instance_id")` is owned by another tuple, return
     `BINDING_CHANGED` (cause `binding_changed`) with `binding` and `instance_binding`, and
-    start no turn. Else acquire, `await bridge.call(rest)` (which validates strictly and keeps
-    every existing code, including `ADAPTER_RESTARTED` for an unknown instance), release.
+    start no turn. Else inside `async with pool.lease(t)`: `await bridge.call(rest)` (which
+    validates strictly and keeps every existing code, including `ADAPTER_RESTARTED` for an
+    unknown instance).
   - Pre-bridge errors use the adapter's error shape (`code`, `cause`, `correlation_id`,
     `uncertain: false`, `partial_usable: false`, `thread_id: null`, `turn_id: null`,
     `cleanup {"status": "not_attempted", "cause": null}`) plus `hint` for binding failures.
-  - Every reply goes through `engine.mcp_result({**payload, "binding": binding})`. If that
-    raises `LIMIT_EXCEEDED`, the adapter's payload is returned unchanged without `binding`
-    (a completed turn's text is never replaced by an error; `codex_status` shows the binding).
+  - Every reply is `{**payload, "binding": binding}` (`binding` is `null` only when none was
+    derived) through `engine.mcp_result` with the full `RESULT_BYTES`. The reserve makes this
+    fit for every payload the bridge produced; if it ever does not, the reply is a bounded
+    peer error `LIMIT_EXCEEDED`, cause `binding_budget`, that still carries the binding. No
+    session reply is ever returned without `binding`.
 - Server name, version and instructions as today, plus the checkout sentence.
 
 Tests (`tests/codex_bridge/test_session_peer.py`, fake conversation as in `test_server.py`):
@@ -180,18 +232,37 @@ Tests (`tests/codex_bridge/test_session_peer.py`, fake conversation as in `test_
 6. Pool bound: with the limit monkeypatched to 2, a third binding closes the least recently
    used idle bridge; when both are busy the third gives `LIMIT_EXCEEDED` with cause
    `bindings`.
-7. A `checkout` outside any checkout: status fails with `NOT_A_GIT_CHECKOUT` and a hint, and
+7. Concurrent admission: with the limit at 2, one idle bridge and its `close` blocked on an
+   event, start two overlapping status calls for two new bindings and one for the same new
+   binding, then release the event. Assert the pool never holds more than 2 entries, the
+   same-binding calls share one bridge (one instance ID, one conversation built), and every
+   bridge that was created is closed by shutdown.
+8. Cancellation: cancel an in-flight review (fake conversation blocked on an event); the
+   lease is released, the binding becomes evictable, and shutdown closes it. Cancel a call
+   blocked in admission behind a slow eviction; nothing is inserted for it.
+9. A `checkout` outside any checkout: status fails with `NOT_A_GIT_CHECKOUT` and a hint, and
    creates no bridge; a later status with a real checkout succeeds.
-8. A reply that only fits without the binding is returned unchanged without it.
-9. Shutdown closes every bridge.
+10. Size boundary, with a checkout path of the maximum length: a fake final message sized to
+    the largest text the reserved budget admits returns `ok` with the binding, on the first
+    call and on exact replay; one byte more fails inside the adapter with `LIMIT_EXCEEDED`
+    and the reply still carries the binding; error replies carry it too. With
+    `result_reserve = 0` the explicit-tuple adapter still admits the full `RESULT_BYTES`
+    (unchanged behavior, `tests/codex_bridge/test_engine.py`).
+11. Shutdown closes every bridge.
 
 ## Task 4: launcher
 
 `launch.main` keeps argument parsing, `check`, the absolute state root rule and the peer
 timeout check. Then:
-- `check_unredirected(state_root)` at startup (same codes as today).
-- `_log(state_root, f"{role} session cwd={Path.cwd()}" + override)` (the override suffix as
-  today, only when on).
+- `ensure_private_root(state_root, cleanup_failures)` at startup: `check_unredirected`, then,
+  only if the root does not exist, create that one directory (its parent must exist, else
+  `STATE_UNAVAILABLE`) and restrict it with the same `_restrict`, removing it again if that
+  fails, exactly as `ensure_private_dir` treats a missing root today (factor the shared
+  create-restrict-or-remove step out of `ensure_private_dir` so both use it). An existing
+  root is left as it is. Refusals use today's codes and stderr rules. No Git state is read.
+- Then `_log(state_root, f"{role} session cwd={Path.cwd()}" + override)` (the override suffix
+  as today, only when on), so the line is written even on a fresh installation and even if no
+  call ever follows.
 - Build `Resolver(role, state_root)` and the session server (core or peer). A
   `StartupError` from the pin check becomes the launcher's `MISSING_EXTRA` /
   `UNSUPPORTED_EXTRA` refusal.
@@ -203,6 +274,11 @@ Tests (`tests/collaborative/test_launch.py`):
 - Replace the hand-off tests with: `main` builds a session server for the right role with the
   right resolver (state root, role) (capture `session.serve` and the factory) and logs one `session` line.
 - `main` from a folder outside any checkout now starts (no refusal) and logs `session`.
+- `main` with an absent state root (its parent present), from a folder outside any checkout,
+  with `session.serve` captured so no call is made: the root now exists and is private, it
+  holds only `launch.log`, and the log has exactly one `session` line. With the parent
+  missing too: `STATE_UNAVAILABLE`, nothing created. With `_restrict` failing: the root is
+  removed again and the code is `STATE_NOT_PRIVATE` or `STATE_UNAVAILABLE` as today.
 - Timeout refusal, redirected state root, relative state root, unknown role, `check` and
   correlation-ID tests stay, adjusted only where they relied on `derive` running at startup
   (the unexpected-failure test patches the resolver factory instead).
@@ -243,10 +319,22 @@ any returned string.
   new behavior; describe the installer's override cleanup and `-KeepProjectOverrides`; keep
   the explicit-tuple sections as they are.
 - `gauntlet-review/SKILL.md` (Essential checks 1) and
-  `gauntlet-review/references/collaborative-review.md` (Preflight): pass `checkout` with the
-  current working folder on every call; verify `binding`; a branch or worktree
-  change never needs a reconnect or host reload; do not add project or local Gauntlet
-  registrations; reconnect only a failed server or after a package upgrade.
+  `gauntlet-review/references/collaborative-review.md` (Preflight), scoped by route, because
+  the same reference reaches author hosts and the Codex reviewer:
+  - **Author session servers** (`gauntlet-core` and `gauntlet-peer` started by the launcher,
+    recognizable by the `checkout` property in their discovered schemas): pass `checkout`
+    with your current working folder on every call and verify `binding`. Preflight examples:
+    `{"request": {}, "checkout": "<absolute working folder>"}` on core `review_status` and
+    `{"checkout": "<absolute working folder>"}` on `codex_status`. A branch or worktree change
+    never needs a reconnect or host reload.
+  - **Fixed-tuple servers** (the reviewer core the adapter gives each Codex thread, and any
+    explicit `gauntlet_review.collaborative` / `codex_bridge` registration): unchanged. Calls
+    take only `request` (core) or the direct fields (adapter); never add `checkout`. Keep the
+    existing `{"request": {}}` and `{}` preflight examples for this route.
+  - Everyone: follow the discovered schemas over any example; do not add project or local
+    Gauntlet registrations; a reconnect is only for a failed server or after a package
+    upgrade.
+  - The prompt an author sends the Codex peer must not tell it to pass `checkout`.
 - `docs/build-log/2026-11-22-session-follows-checkout.md`: causes, evidence, design, tests.
 - No em-dashes in any of these.
 

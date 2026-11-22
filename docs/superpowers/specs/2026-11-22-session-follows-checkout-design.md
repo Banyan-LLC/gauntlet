@@ -44,7 +44,9 @@ launcher log (`<state-root>/launch.log`) and the Claude Code configuration show 
   stays up so the next call succeeds once a branch is checked out.
 - Any change to the review core's contract, policy, store format or limits, to the
   explicit-tuple entry points (`gauntlet_review.collaborative`, `gauntlet_review.codex_bridge`),
-  or to the reviewer core the adapter registers for each Codex thread.
+  or to the reviewer core the adapter registers for each Codex thread. The only shared-code
+  change is an optional adapter result reserve whose default of zero leaves the explicit-tuple
+  adapter exactly as it is.
 - Remote freshness, fetching, or `.mcp.json` files checked into repositories.
 
 ## Design
@@ -54,10 +56,11 @@ launcher log (`<state-root>/launch.log`) and the Claude Code configuration show 
 `python -m gauntlet_review.launch core|peer --state-root <dir>` no longer derives a tuple and
 hands off to a fixed-tuple server. It starts a **session server** whose only fixed value is
 the state root. Its own working folder is logged for diagnosis and otherwise ignored, because
-the host may start it somewhere other than the agent's folder. Startup refuses only what no
-call could fix: a bad or redirected state root, missing or unsupported pins, and an
-out-of-range peer timeout (same codes and stderr rules as today). It never refuses because of
-any folder's Git state.
+the host may start it somewhere other than the agent's folder. At startup it creates a
+missing state root privately (the same rules a first launch applies today) so its startup
+log line is never lost. Startup refuses only what no call could fix: a bad or redirected
+state root, missing or unsupported pins, and an out-of-range peer timeout (same codes and
+stderr rules as today). It never refuses because of any folder's Git state.
 
 ### Binding per call
 
@@ -71,9 +74,11 @@ missing `checkout` is `INVALID_ARGUMENT` with reason `checkout_required` and a h
 and makes its private state directory with the existing `ensure_private_dir`. A branch switch
 or a new worktree therefore takes effect on the next call with no restart.
 
-`checkout` must be a string of at most 4096 UTF-8 bytes, absolute, with no control
-characters and no UNC (`\\`, `//`) prefix; anything else is `INVALID_ARGUMENT` before any
-filesystem access.
+`checkout` must be a string of at most 4096 UTF-8 bytes with no control characters, and a
+local absolute path in native form: on Windows a drive letter, colon and root (after treating
+`/` as `\`), which rules out every UNC and device form whatever the separator mix; on POSIX a
+single leading `/` and no `\`. Anything else is `INVALID_ARGUMENT` before any filesystem
+access.
 
 Each response carries `binding`: `{"checkout", "repository_id", "source_ref", "target_ref"}`
 (the resolved checkout path and full ref names), or `null` when no binding could be derived.
@@ -102,6 +107,14 @@ checked against the same `mcp_result_bytes` limit (`LIMIT_EXCEEDED` when over).
 own adapter `Bridge` (its own instance ID and SDK conversation, participant `claude-peer`,
 the operator's timeout settings), created by the first status or review call for it without
 starting a model turn. Status and review responses carry `binding`.
+
+Every peer reply carries its binding too. Each bridge budgets its results with room reserved
+for its binding (an optional reserve in the adapter's configuration, zero for the
+explicit-tuple adapter, so its limits are unchanged), so a turn whose text would not fit with
+the binding fails inside the adapter with its existing `LIMIT_EXCEEDED` codes instead of
+being returned without it. Admission to the bridge pool is serialized, so overlapping calls
+can neither exceed the bound nor create two bridges for one binding, and every lease is
+released on success, error and cancellation.
 
 If `codex_review` carries an instance ID that belongs to another binding of this process, it
 fails with `BINDING_CHANGED` (naming both bindings) and starts no turn, so a branch switch
@@ -141,10 +154,12 @@ reports them.
 ### Documentation and skills
 
 `docs/collaborative-mcp.md` (Global registration) and the `gauntlet-review` skill and
-reference say: pass `checkout` with your current working folder on every call, check
-`binding` before trusting a result, and never ask the operator to reconnect for a branch or
-worktree change (a reconnect is for a failed server or a package upgrade). Do not add project
-or local Gauntlet registrations.
+reference say, for the author session servers: pass `checkout` with your current working
+folder on every call, check `binding` before trusting a result, and never ask the operator to
+reconnect for a branch or worktree change (a reconnect is for a failed server or a package
+upgrade). The same documents keep the fixed-tuple route (the reviewer core given to each
+Codex thread, and explicit registrations) on its unchanged request-only calls, so a reviewer
+never adds `checkout`. Do not add project or local Gauntlet registrations.
 
 ## Compatibility and rollout
 
