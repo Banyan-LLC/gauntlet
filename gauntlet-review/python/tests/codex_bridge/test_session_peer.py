@@ -338,7 +338,8 @@ async def test_a_bridge_still_closing_keeps_its_capacity_slot(monkeypatch):
     await pool.close()
 
 
-async def test_a_cancelled_shutdown_still_finishes_every_close():
+@pytest.mark.parametrize("cancels", [1, 2, 3])
+async def test_a_cancelled_shutdown_still_finishes_every_close(cancels):
     made = Made()
     pool = session._PeerPool(made, 2)
     for key in ("a", "b"):
@@ -349,7 +350,10 @@ async def test_a_cancelled_shutdown_still_finishes_every_close():
     assert set(pool.entries) == {"b"} and len(pool.closing) == 1
     closer = asyncio.create_task(pool.close())
     await asyncio.sleep(0.05)
-    closer.cancel()
+    for _ in range(cancels):                                  # repeated native cancellation of the shutdown
+        closer.cancel()
+        await asyncio.sleep(0.03)
+        assert not closer.done() or made[0].closed.is_set()
     asyncio.get_running_loop().call_later(0.1, gate.set)
     with pytest.raises(asyncio.CancelledError):
         await closer

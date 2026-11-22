@@ -412,19 +412,31 @@ class _PeerPool:
 
     async def close(self):
         """Closes every bridge and waits for every close still running, bounded. The teardown runs as its own task
-        and is protected from the caller's cancellation (an anyio shield for the lifespan's cancel scope, and a
-        bounded wait for native cancellation), so a cancelled shutdown never abandons a close."""
+        and the wait is protected from the caller's cancellation: an anyio shield for the lifespan's cancel scope,
+        and for native cancellation a drain that absorbs every cancel (however many arrive) until the teardown ends
+        or its deadline passes, and only then lets the first cancellation through. A cancelled shutdown never
+        abandons a close."""
         import asyncio
         import anyio
         from gauntlet_review.codex_bridge.engine import CLEANUP_SECONDS
+        loop = asyncio.get_running_loop()
         teardown = asyncio.ensure_future(self._close_all())
+        deadline = loop.time() + 2 * CLEANUP_SECONDS + 3      # _close_all itself is bounded below this
+        cancelled = None
         with anyio.CancelScope(shield=True):
-            try:
-                await asyncio.shield(teardown)
-            except asyncio.CancelledError:
-                if not teardown.done():
-                    await asyncio.wait({teardown}, timeout=2 * CLEANUP_SECONDS + 3)
-                raise
+            while not teardown.done():
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    break
+                try:
+                    # asyncio.wait never cancels the teardown it waits for.
+                    await asyncio.wait({teardown}, timeout=remaining)
+                except asyncio.CancelledError as error:
+                    cancelled = cancelled or error
+        if cancelled is not None:
+            raise cancelled
+        if teardown.done():
+            teardown.result()
 
 
 def _peer_error(code, cause, hint=None, correlation_id=None):
