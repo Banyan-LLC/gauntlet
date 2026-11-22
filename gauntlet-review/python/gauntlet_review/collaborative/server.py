@@ -60,21 +60,41 @@ def _safe_logging(*,root=False):
         logging.captureWarnings(True)
 
 
+def argument_models(extra=None):
+    """The strict per-tool argument models: one outer request object, plus any extra top-level fields
+    (name -> (type, default)) a caller adds."""
+    from pydantic import ConfigDict,create_model
+    from .contracts import REQUESTS
+    return {name:create_model(name+"Arguments",__config__=ConfigDict(strict=True,extra="forbid"),
+                              request=(model,...),**(extra or {})) for name,model in REQUESTS.items()}
+
+
+def tool_result(payload,limit):
+    """The SDK result for a payload (canonical text plus the structured copy), or None when its serialized
+    size is over limit, so each caller chooses its own fallback."""
+    from mcp_types import CallToolResult
+    from .contracts import encode
+    reply=CallToolResult(content=[{"type":"text","text":encode(payload).decode("utf-8")}],
+                         structured_content=payload,is_error=not payload["ok"])
+    if len(reply.model_dump_json(by_alias=True,exclude_none=True).encode("utf-8"))>limit:
+        return None
+    return reply
+
+
 def create_server(config):
     _require_extra()
     from mcp.server.lowlevel import Server
     from mcp.shared.exceptions import MCPError
-    from mcp_types import CallToolResult,ListToolsResult,Tool,INVALID_PARAMS
-    from pydantic import ConfigDict,ValidationError,create_model
-    from .contracts import CoreError,Policy,REQUESTS,encode,validate_operator_config
+    from mcp_types import ListToolsResult,Tool,INVALID_PARAMS
+    from pydantic import ValidationError
+    from .contracts import CoreError,Policy,REQUESTS,validate_operator_config
     from .core import ROLE_TOOLS,ReviewCore
     from .source import GitSource
     from .store import Store
 
     config=validate_operator_config(config)
     _safe_logging()
-    arguments={name:create_model(name+"Arguments",__config__=ConfigDict(strict=True,extra="forbid"),
-                                 request=(model,...)) for name,model in REQUESTS.items()}
+    arguments=argument_models()
 
     @asynccontextmanager
     async def lifetime(_):
@@ -90,12 +110,10 @@ def create_server(config):
             input_schema=arguments[name].model_json_schema()) for name in sorted(ROLE_TOOLS[config.role])])
 
     def result(core,payload):
-        def build(value):
-            return CallToolResult(content=[{"type":"text","text":encode(value).decode("utf-8")}],
-                                  structured_content=value,is_error=not value["ok"])
-        reply=build(payload)
-        if len(reply.model_dump_json(by_alias=True,exclude_none=True).encode("utf-8"))>Policy().mcp_result_bytes:
-            reply=build(core.error_response(CoreError("LIMIT_EXCEEDED",detail={"limit":"mcp_result_bytes"})))
+        reply=tool_result(payload,Policy().mcp_result_bytes)
+        if reply is None:
+            reply=tool_result(core.error_response(CoreError("LIMIT_EXCEEDED",detail={"limit":"mcp_result_bytes"})),
+                              float("inf"))
         return reply
 
     async def call_tool(context,params):
