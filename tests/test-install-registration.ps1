@@ -26,7 +26,16 @@ $code = & {
     if (-not $cfg.Contains('mcpServers')) { $cfg['mcpServers'] = @{} }
     switch ($args[1]) {
         'add-json' { if ($cfg.mcpServers.Contains($args[2])) { return 1 }; $cfg.mcpServers[$args[2]] = ($args[3] | ConvertFrom-Json -AsHashtable) }
-        'remove'   { if (-not $cfg.mcpServers.Contains($args[2])) { return 1 }; $cfg.mcpServers.Remove($args[2]) }
+        'remove'   {
+            if ($args -contains 'local') {                # local scope: the project entry of the current folder
+                $key = (Get-Location).ProviderPath -replace '\\', '/'
+                $project = if ($cfg.Contains('projects')) { $cfg.projects[$key] } else { $null }
+                if (-not $project -or -not $project.mcpServers -or -not $project.mcpServers.Contains($args[2])) { return 1 }
+                $project.mcpServers.Remove($args[2])
+            } else {
+                if (-not $cfg.mcpServers.Contains($args[2])) { return 1 }; $cfg.mcpServers.Remove($args[2])
+            }
+        }
         default    { return 2 }
     }
     $cfg | ConvertTo-Json -Depth 32 | Set-Content $store
@@ -304,6 +313,69 @@ $b = New-Bench
 Set-Content (Join-Path $b.Root 'no-write.txt') 'x'
 $message = Get-Failure { Register-GauntletMcp -McpPython $b.Python -Claude $b.Claude -ClaudeConfig $b.Config }
 Assert-True ($message -match 'does not show the new gauntlet-core and gauntlet-peer') "registration is checked by reading the configuration back"
+
+# Per-project entries with the same names override the user-scope launcher; the installer backs them up and removes
+# them through the CLI, run in each project's folder.
+function Add-ProjectEntries($Bench, [hashtable]$Projects) {
+    $cfg = Get-Store $Bench
+    foreach ($folder in $Projects.Keys) { $cfg.projects[($folder -replace '\\', '/')] = @{ mcpServers = $Projects[$folder] } }
+    $cfg | ConvertTo-Json -Depth 32 | Set-Content $Bench.Config
+}
+$secretCore = @{ type = 'stdio'; command = 'C:\old\python.exe'; args = @('-m', 'gauntlet_review.collaborative'); env = @{ TOKEN = 'SECRET-VALUE-1' } }
+$secretPeer = @{ type = 'stdio'; command = 'C:\old\python.exe'; args = @('-m', 'gauntlet_review.codex_bridge'); env = @{ TOKEN = 'SECRET-VALUE-2' } }
+$b = New-Bench -Servers @{ 'gauntlet-core' = $oldCore }
+$projA = Join-Path $b.Root 'proj-a'; $projB = Join-Path $b.Root 'proj-b'; $gone = Join-Path $b.Root 'gone'
+New-Item -ItemType Directory $projA, $projB | Out-Null
+Add-ProjectEntries $b @{ $projA = @{ 'gauntlet-core' = $secretCore; 'gauntlet-peer' = $secretPeer; keep = @{ type = 'stdio'; command = 'k.exe' } }
+                         $projB = @{ 'gauntlet-peer' = $secretPeer }; $gone = @{ 'gauntlet-core' = $secretCore } }
+$r = Remove-GauntletProjectOverrides -Claude $b.Claude
+Assert-Eq $r.Found.Count 4 "every per-project gauntlet entry is found"
+Assert-Eq (@($r.Removed | ForEach-Object { "$($_.Name)@$(Split-Path -Leaf $_.Project)" }) -join ',') 'gauntlet-core@proj-a,gauntlet-peer@proj-a,gauntlet-peer@proj-b' "entries in existing folders are removed"
+Assert-Eq (@($r.Left | ForEach-Object { "$($_.Name)@$(Split-Path -Leaf $_.Project)" }) -join ',') 'gauntlet-core@gone' "an entry whose folder is missing is reported as left"
+$after = Get-Store $b
+Assert-Eq (@($after.projects[($projA -replace '\\', '/')].mcpServers.Keys) -join ',') 'keep' "an unrelated project server is kept"
+Assert-Eq $after.mcpServers['gauntlet-core'].command 'C:\old\python.exe' "the user-scope entry is untouched"
+Assert-True ($r.Backup -and (Test-Path -LiteralPath $r.Backup)) "a backup is made before anything is removed"
+$saved = Get-Content -Raw $r.Backup | ConvertFrom-Json -AsHashtable
+Assert-Eq $saved.Count 4 "the backup holds every found definition"
+Assert-Eq $saved["$($projA -replace '\\', '/')|gauntlet-core"].env.TOKEN 'SECRET-VALUE-1' "the backup keeps definitions exactly"
+Assert-True ((ConvertTo-Json -InputObject $r -Depth 8) -notmatch 'SECRET-VALUE') "no definition appears in the result"
+Assert-True (@(Get-Calls $b | Where-Object { $_ -like 'mcp | remove | * | -s | local' }).Count -eq 3) "removal goes through the CLI's local scope"
+
+# -KeepProjectOverrides only reports.
+$b = New-Bench
+$projA = Join-Path $b.Root 'proj-a'; New-Item -ItemType Directory $projA | Out-Null
+Add-ProjectEntries $b @{ $projA = @{ 'gauntlet-core' = $secretCore } }
+$before = Get-Content -Raw $b.Config
+$r = Remove-GauntletProjectOverrides -Claude $b.Claude -KeepProjectOverrides
+Assert-Eq $r.Found.Count 1 "kept entries are still reported"
+Assert-Eq $r.Removed.Count 0 "nothing is removed when asked to keep"
+Assert-Eq $r.Left.Count 1 "kept entries are left"
+Assert-True (-not $r.Backup) "no backup when nothing is removed"
+Assert-Eq (Get-Content -Raw $b.Config) $before "-KeepProjectOverrides leaves the file byte-identical"
+Assert-Eq (Get-Calls $b).Count 0 "-KeepProjectOverrides makes no CLI call"
+
+# A backup that cannot be written removes nothing.
+$b = New-Bench
+$projA = Join-Path $b.Root 'proj-a'; New-Item -ItemType Directory $projA | Out-Null
+Add-ProjectEntries $b @{ $projA = @{ 'gauntlet-core' = $secretCore } }
+$before = Get-Content -Raw $b.Config
+$realWrite = ${function:Write-GauntletBackupText}
+try {
+    ${function:Write-GauntletBackupText} = { param($Path, $Text) throw 'disk full' }
+    $r = Remove-GauntletProjectOverrides -Claude $b.Claude
+} finally { ${function:Write-GauntletBackupText} = $realWrite }
+Assert-Eq $r.Removed.Count 0 "a failed backup removes nothing"
+Assert-Eq $r.Left.Count 1 "a failed backup leaves the entry reported"
+Assert-True (-not $r.Backup) "a failed backup is not reported as a backup"
+Assert-Eq (Get-Content -Raw $b.Config) $before "a failed backup leaves the configuration unchanged"
+Assert-Eq (@(Get-ChildItem -LiteralPath $b.Root -Filter '*.gauntlet-mcp-backup-*').Count) 0 "a failed backup leaves no file behind"
+
+# Nothing to find: nothing done.
+$b = New-Bench
+$r = Remove-GauntletProjectOverrides -Claude $b.Claude
+Assert-Eq $r.Found.Count 0 "no per-project entries found"
+Assert-True (-not $r.Backup -and (Get-Calls $b).Count -eq 0) "no backup and no CLI call when there is nothing to remove"
 
 } finally { $env:CLAUDE_CONFIG_DIR = $savedConfigDir }
 Write-TestResult

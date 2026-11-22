@@ -9,7 +9,9 @@ param(
     [string]$StateRoot,
     # Optional confirmation of the Claude Code configuration the claude command changes (<CLAUDE_CONFIG_DIR>\.claude.json,
     # else ~\.claude.json); any other path stops the registration before any change.
-    [string]$ClaudeConfig
+    [string]$ClaudeConfig,
+    # Report, but do not remove, per-project gauntlet-core/gauntlet-peer entries that override the global registration.
+    [switch]$KeepProjectOverrides
 )
 $src = $PSScriptRoot
 . "$src\gauntlet-review\scripts\lib.ps1"
@@ -54,10 +56,12 @@ if (-not (Test-Path $claudeMd) -or -not ((Get-Content -Raw $claudeMd) -match [re
 } else { Write-Host "pointer already present" }
 
 # Collaborative route (docs/collaborative-mcp.md, "Global registration"): one user-scope Claude Code registration
-# of each server, through the launcher, which binds every session to the checkout and branch it starts in. A
-# project or local entry with the same name still takes precedence. Anything missing, or a -ClaudeConfig that is not
-# the claude command's configuration, skips this step with a warning; a failed replacement undoes its changes, checks
-# the result and stops the install, naming any entry that is not as it was.
+# of each server, through the launcher, whose session servers bind every call to the checkout the agent names, so
+# branch and worktree changes never need a reconnect. A project or local entry with the same name would take
+# precedence and pin one checkout, so after registering, such entries are backed up privately and removed (only
+# reported with -KeepProjectOverrides). Anything missing, or a -ClaudeConfig that is not the claude command's
+# configuration, skips this step with a warning; a failed replacement undoes its changes, checks the result and
+# stops the install, naming any entry that is not as it was.
 if ($SkipMcpRegistration) { Write-Host "skipped Claude Code MCP registration (-SkipMcpRegistration)"; return }
 . "$src\mcp-registration.ps1"
 $registrationArgs = @{ McpPython = $McpPython; StateRoot = $StateRoot }
@@ -66,6 +70,18 @@ try { $registration = Register-GauntletMcp @registrationArgs }
 catch { Write-Error $_.Exception.Message; exit 1 }
 if ($registration.Registered) {
     Write-Host "registered gauntlet-core and gauntlet-peer with Claude Code (user scope, $($registration.Python), review state under $($registration.StateRoot)); start a new session to load them"
+    try {
+        $overrides = Remove-GauntletProjectOverrides -KeepProjectOverrides:$KeepProjectOverrides
+        if ($overrides.Removed.Count) {
+            Write-Host "removed per-project gauntlet entries that overrode the global registration in: $((@($overrides.Removed.Project) | Sort-Object -Unique) -join ', ') (definitions backed up to $($overrides.Backup), readable by you only)"
+        }
+        if ($overrides.Left.Count) {
+            $why = if ($KeepProjectOverrides) { ' (kept: -KeepProjectOverrides)' } else { '' }
+            Write-Warning "per-project gauntlet entries still override the global registration in: $((@($overrides.Left.Project) | Sort-Object -Unique) -join ', ')$why. Remove each with 'claude mcp remove <name> -s local' run in that folder."
+        }
+    } catch {
+        Write-Warning "could not check for per-project gauntlet entries: $($_.Exception.Message)"
+    }
 } else {
     Write-Warning "skipped Claude Code MCP registration: $($registration.Reason)"
 }

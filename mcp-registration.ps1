@@ -82,6 +82,68 @@ function Save-GauntletMcpBackup([string]$ClaudeConfig, [hashtable]$Definitions) 
     }
 }
 
+function Find-GauntletProjectOverrides([string]$ClaudeConfig, [string[]]$Names = @('gauntlet-core', 'gauntlet-peer')) {
+    # Per-project definitions of $Names (projects.<path>.mcpServers): each [pscustomobject]@{ Project; Name; Raw }.
+    # Such an entry takes precedence over the user-scope launcher entry and pins a fixed checkout and branch. The
+    # same strict read as Read-GauntletUserEntries: only a file that does not exist means none.
+    $ErrorActionPreference = 'Stop'
+    $found = [System.Collections.Generic.List[object]]::new()
+    try { $text = [IO.File]::ReadAllText($ClaudeConfig) }
+    catch [System.IO.FileNotFoundException], [System.IO.DirectoryNotFoundException] { return }
+    $config = ConvertFrom-Json -InputObject $text -AsHashtable -ErrorAction Stop
+    $projects = if ($config -is [System.Collections.IDictionary]) { $config['projects'] } else { $null }
+    if ($projects -is [System.Collections.IDictionary]) {
+        foreach ($project in ($projects.Keys | Sort-Object)) {
+            $entry = $projects[$project]
+            $servers = if ($entry -is [System.Collections.IDictionary]) { $entry['mcpServers'] } else { $null }
+            if ($servers -isnot [System.Collections.IDictionary]) { continue }
+            foreach ($name in $Names) {
+                if ($servers.Contains($name)) {
+                    $found.Add([pscustomobject]@{ Project = $project; Name = $name
+                                                  Raw = ConvertTo-Json -InputObject $servers[$name] -Compress -Depth 32 })
+                }
+            }
+        }
+    }
+    $found.ToArray()                                   # one item each; callers collect with @()
+}
+
+function Remove-GauntletProjectOverrides {
+    <#
+    Finds per-project gauntlet-core/gauntlet-peer entries in the claude command's configuration, which override the
+    user-scope launcher (the launcher's session servers follow each call's checkout; an explicit per-project entry
+    pins one checkout and branch). Unless -KeepProjectOverrides, it first saves every found definition to a backup
+    only the current user can read (nothing is removed if that fails), then removes each entry whose project folder
+    exists with `claude mcp remove <name> -s local` run in that folder, and reads the configuration back. Returns
+    [pscustomobject]@{ Found; Removed; Left; Backup }: lists of @{ Project; Name } (never a definition) and the
+    backup path or $null.
+    #>
+    param([string]$Claude = 'claude', [switch]$KeepProjectOverrides)
+    $config = Get-GauntletClaudeProfile
+    $found = @(Find-GauntletProjectOverrides $config)
+    $plain = { param($items) , @($items | ForEach-Object { [pscustomobject]@{ Project = $_.Project; Name = $_.Name } }) }
+    if (-not $found.Count -or $KeepProjectOverrides) {
+        return [pscustomobject]@{ Found = (& $plain $found); Removed = @(); Left = (& $plain $found); Backup = $null }
+    }
+    $definitions = @{}
+    foreach ($entry in $found) { $definitions["$($entry.Project)|$($entry.Name)"] = $entry.Raw }
+    $backup = Save-GauntletMcpBackup $config $definitions
+    if (-not $backup) {
+        return [pscustomobject]@{ Found = (& $plain $found); Removed = @(); Left = (& $plain $found); Backup = $null }
+    }
+    foreach ($entry in $found) {
+        if (-not (Test-Path -LiteralPath $entry.Project -PathType Container)) { continue }
+        Push-Location -LiteralPath $entry.Project
+        try { & $Claude mcp remove $entry.Name -s local *> $null } catch { }   # judged by the read-back below
+        finally { Pop-Location }
+    }
+    $still = @{}
+    foreach ($entry in @(Find-GauntletProjectOverrides $config)) { $still["$($entry.Project)|$($entry.Name)"] = $true }
+    $removed = @($found | Where-Object { -not $still.ContainsKey("$($_.Project)|$($_.Name)") })
+    $left = @($found | Where-Object { $still.ContainsKey("$($_.Project)|$($_.Name)") })
+    [pscustomobject]@{ Found = (& $plain $found); Removed = (& $plain $removed); Left = (& $plain $left); Backup = $backup }
+}
+
 function Register-GauntletMcp {
     <#
     Returns [pscustomobject]@{ Registered; Reason; Python; StateRoot }. Every check runs before the host is changed:
