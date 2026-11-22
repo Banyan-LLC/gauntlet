@@ -325,7 +325,9 @@ class _PeerPool:
     the insert, so overlapping calls can neither exceed the bound nor make two bridges for one binding. Bridge.close
     marks a bridge closed before it awaits, so an interrupted close could never be retried: the pool runs every
     close as its own task, kept in `closing` until it finishes. An evicting call only waits for that task (bounded,
-    shielded from the caller's cancellation), and close() waits for whatever is still closing."""
+    shielded from the caller's cancellation), and close() waits for whatever is still closing. Once close() starts,
+    every admission is refused (cause shutdown), and the teardown never waits for the admission lock, so admissions
+    queued behind a slow eviction cannot delay it."""
     def __init__(self, create, limit):
         import asyncio
         self._create = create
@@ -333,6 +335,8 @@ class _PeerPool:
         self.entries = OrderedDict()                # binding -> [bridge, users]
         self.closing = set()
         self._lock = asyncio.Lock()
+        self._shutting_down = False
+        self._teardown = None
 
     def owner(self, instance_id):
         for key, (bridge, _) in self.entries.items():
@@ -367,6 +371,8 @@ class _PeerPool:
     async def lease(self, key):
         from gauntlet_review.codex_bridge.engine import BridgeError
         async with self._lock:
+            if self._shutting_down:
+                raise BridgeError("CANCELLED", cause="shutdown")
             entry = self.entries.get(key)
             if entry is not None:
                 self.entries.move_to_end(key)
@@ -384,6 +390,8 @@ class _PeerPool:
                 if self._occupied() >= self.limit:
                     await self._wait(set(self.closing))
                     self._prune()
+                if self._shutting_down:                # shutdown began while this admission waited
+                    raise BridgeError("CANCELLED", cause="shutdown")
                 if self._occupied() >= self.limit:
                     raise BridgeError("LIMIT_EXCEEDED", cause="bindings")
                 bridge = self._create(key)
@@ -396,19 +404,20 @@ class _PeerPool:
                 entry[1] -= 1
 
     async def _close_all(self):
+        # No admission lock: admissions are already refused (_shutting_down), and an admission still inside the lock
+        # rechecks the flag before it inserts, so every bridge that will ever exist is in entries or closing here.
         import asyncio
-        async with self._lock:
-            bridges, self.entries = [bridge for bridge, _ in self.entries.values()], OrderedDict()
-            for bridge in bridges:
-                self._close_task(bridge)
-            pending = set(self.closing)
-            await self._wait(pending)
-            for task in pending:
-                if not task.done():
-                    task.cancel()
-            if pending:
-                await asyncio.wait(pending, timeout=1)
-            self._prune()
+        bridges, self.entries = [bridge for bridge, _ in self.entries.values()], OrderedDict()
+        for bridge in bridges:
+            self._close_task(bridge)
+        pending = set(self.closing)
+        await self._wait(pending)
+        for task in pending:
+            if not task.done():
+                task.cancel()
+        if pending:
+            await asyncio.wait(pending, timeout=1)
+        self._prune()
 
     async def close(self):
         """Closes every bridge and waits for every close still running, bounded. The teardown runs as its own task
@@ -420,7 +429,11 @@ class _PeerPool:
         import anyio
         from gauntlet_review.codex_bridge.engine import CLEANUP_SECONDS
         loop = asyncio.get_running_loop()
-        teardown = asyncio.ensure_future(self._close_all())
+        self._shutting_down = True                     # before any await: no admission gets past this point
+        if self._teardown is None:
+            self._teardown = asyncio.ensure_future(self._close_all())
+            self._teardown.add_done_callback(_consume)     # observed even if every wait below gives up
+        teardown = self._teardown
         deadline = loop.time() + 2 * CLEANUP_SECONDS + 3      # _close_all itself is bounded below this
         cancelled = None
         with anyio.CancelScope(shield=True):

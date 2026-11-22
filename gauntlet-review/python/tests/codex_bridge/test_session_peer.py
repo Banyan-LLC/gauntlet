@@ -361,6 +361,34 @@ async def test_a_cancelled_shutdown_still_finishes_every_close(cancels):
     assert not pool.closing and not pool.entries
 
 
+async def test_shutdown_stops_queued_admissions_instead_of_waiting_behind_them(monkeypatch):
+    from gauntlet_review.codex_bridge import engine
+    monkeypatch.setattr(engine, "CLEANUP_SECONDS", 0)        # every bounded wait becomes one second
+    made = Made()
+    pool = session._PeerPool(made, 1)
+    await enter(pool, "a")
+    made[0].gate = asyncio.Event()                            # "a" is slow to close
+    outcomes = []
+
+    async def admit(key):
+        try:
+            await enter(pool, key)
+            outcomes.append((key, "admitted"))
+        except BridgeError as error:
+            outcomes.append((key, error.cause))
+    queued = [asyncio.create_task(admit(key)) for key in ("b", "c", "d")]   # "b" evicts "a"; "c", "d" queue
+    await asyncio.sleep(0.05)
+    loop = asyncio.get_running_loop()
+    loop.call_later(0.3, made[0].gate.set)
+    started = loop.time()
+    await pool.close()
+    assert loop.time() - started < 1.5                        # never waits behind the queued admissions
+    await asyncio.gather(*queued)
+    assert len(made) == 1 and made[0].closed.is_set()         # no bridge is created once shutdown begins
+    assert sorted(outcomes) == [("b", "shutdown"), ("c", "shutdown"), ("d", "shutdown")]
+    assert not pool.entries and not pool.closing
+
+
 async def test_shutdown_waits_for_closes_still_running():
     made = Made()
     pool = session._PeerPool(made, 1)
