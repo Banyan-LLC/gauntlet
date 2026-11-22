@@ -13,21 +13,44 @@ Confirm that the intended spec, plan or code is included in the pinned diff.
 For a PR, compare the live PR head, base branch name and base tip with the local
 configured refs. Record any merge-base used for the actual diff. Repeat live
 checks after pushes and before handoff; matching local refs alone proves no
-remote freshness. If the configured source ref still names `main`, report the
-mismatch instead of reviewing an empty installation-check diff. Changing an
-operator tuple requires a host reload and a compatible private state directory;
-never overwrite or reset a previously bound store to make it accept new refs.
+remote freshness. If the bound source ref still names `main`, report the
+mismatch instead of reviewing an empty installation-check diff. Never overwrite
+or reset a previously bound store to make it accept new refs.
 
-Use the host-discovered schemas. Core calls take one outer `request` object.
-SDK bridge calls take direct fields. Begin with:
+Use the host-discovered schemas; there are two routes.
+
+**Author session servers** (the global `gauntlet-core` and `gauntlet-peer`, whose
+schemas have a `checkout` property). Every call takes `checkout`, the absolute
+path of your current working folder (the worktree you are working in), because
+the host may have started the servers somewhere else. Each call derives its
+binding from that checkout's current branch and returns it as `binding`; check
+it before trusting a result. A branch switch or another worktree takes effect on
+the next call: it never needs a reconnect or host reload, so never ask the
+operator for one for that. Binding errors carry a hint (`DETACHED_HEAD`: check out
+a branch; `NOT_A_GIT_CHECKOUT`: pass the right folder; `NO_TARGET_REF`: fetch
+origin), then call again. On the peer, `BINDING_CHANGED` means the branch changed
+since `codex_status`: call it again for the new binding. Begin with:
 
 ```json
-{"request":{}}
+{"request":{},"checkout":"C:/absolute/working/folder"}
 ```
 
-on core `review_status`, and `{}` on bridge `codex_status`. Status calls do not
-start a model turn. On an empty store, `series: null` and `store_version: 0` are
-healthy readiness results, not completion. Preserve nonempty state.
+on core `review_status`, and `{"checkout":"C:/absolute/working/folder"}` on
+`codex_status`; `codex_review` takes its direct fields plus the same `checkout`.
+
+**Fixed-tuple servers** (the reviewer core the SDK adapter gives each Codex
+thread, and any explicit `gauntlet_review.collaborative` or `codex_bridge`
+registration). Their tuple is fixed by the operator; changing it requires a host
+reload and a compatible private state directory. Core calls take one outer
+`request` object and adapter calls take direct fields, never `checkout`; a
+prompt sent to the Codex peer must not tell it to pass `checkout`. Begin with
+`{"request":{}}` on core `review_status` and `{}` on `codex_status`.
+
+Do not add project or local Gauntlet registrations: they override the global
+session servers and pin one checkout. Reconnect only a failed server, or after a
+package upgrade. Status calls do not start a model turn. On an empty store,
+`series: null` and `store_version: 0` are healthy readiness results, not
+completion. Preserve nonempty state.
 
 ## Pin and record
 

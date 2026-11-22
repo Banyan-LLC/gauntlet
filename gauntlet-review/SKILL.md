@@ -39,6 +39,19 @@ verdict from the author role.
    state and distinct participant roles match the intended review. A healthy
    empty store is not a review verdict. A `main` versus `origin/main` installation
    check is not a feature-branch review. Hosts own fetching and PR freshness.
+   **Author session servers** (the global `gauntlet-core`/`gauntlet-peer`, whose
+   discovered schemas have a `checkout` property): pass `checkout`, the absolute
+   path of your current working folder, on **every** call and check the reply's
+   `binding` (checkout, repository ID, source and target refs) before trusting it.
+   Each call follows that checkout's current branch, so a branch switch or another
+   worktree never needs a reconnect or host reload: never ask the operator for one
+   for that. A binding error (`DETACHED_HEAD`, `NOT_A_GIT_CHECKOUT`, `NO_TARGET_REF`)
+   carries a hint; fix the checkout and call again. **Fixed-tuple servers** (the
+   reviewer core the adapter gives each Codex thread, and explicit registrations)
+   take `request` or the adapter's direct fields only: never add `checkout` there,
+   and never tell the Codex peer to. Follow the discovered schemas over any
+   example. Do not add project or local Gauntlet registrations; reconnect only a
+   failed server or after a package upgrade.
 2. Open a pinned revision using the current store version and a new operation
    key. Record exact commit IDs, returned bindings and verification evidence.
    Use the existing series for that repository/ref pair; never reset history.
