@@ -104,6 +104,8 @@ this work's to fix).
   - `without_fields(settings, repository_id: str | None, fields: tuple[str, ...]) -> Settings`
     (drops an entry that becomes empty)
   - `to_document(settings) -> dict` (the version-1 JSON object, keys sorted, empty parts omitted)
+  - `encode_document(settings) -> bytes` (UTF-8 JSON of `to_document`, `indent=2`, LF line
+    endings, one trailing newline; the exact bytes `save` validates and writes)
   - `save(root: Path, settings: Settings) -> None`
   - `scope_name(repository_id: str | None) -> str` (`"global"` or `"repository:<id>"`)
 
@@ -134,8 +136,8 @@ this work's to fix).
     (`_winapi.CreateJunction` on Windows, which needs no privilege) or a directory symlink
     (POSIX) raises; so does a directory named `peer-model.json`.
   - `test_save_round_trips_privately`: `save` into a missing root creates it, `load` returns
-    equal settings, `to_document` is what is on disk (parsed), no `*.tmp` file remains, and on
-    POSIX the file mode is `0o600`.
+    equal settings, the destination's raw bytes equal `encode_document(settings)` exactly (no
+    newline translation), no `*.tmp` file remains, and on POSIX the file mode is `0o600`.
   - `test_save_refuses_candidates_beyond_the_limits`: a 257th repository; and 256 valid
     entries (long IDs and models) whose compact form fits 64 KiB but whose written form does
     not. Each raises `SettingsError` code `CONFIGURATION_ERROR`, the existing file keeps its
@@ -170,7 +172,7 @@ this work's to fix).
   - `save`: build the document, run `_validate` on it and encode it (UTF-8, `indent=2`,
     trailing newline); refuse before touching the disk when validation fails or the bytes
     exceed `SETTINGS_BYTES`. Then `ensure_private_dir(root)`; write the bytes to
-    `root / f"{SETTINGS_NAME}.{uuid4().hex}.tmp"` opened with mode `"x"`; on POSIX
+    `root / f"{SETTINGS_NAME}.{uuid4().hex}.tmp"` opened with exclusive binary mode `"xb"` and receiving exactly the validated buffer; on POSIX
     `chmod 0o600`; `os.replace` onto the target, retrying `PermissionError` up to 5 attempts
     in all, 50 ms apart (Windows readers); remove the temporary file on any failure and
     re-raise. Other `OSError`s propagate (the CLI maps them).
