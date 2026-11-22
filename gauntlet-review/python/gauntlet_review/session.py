@@ -286,3 +286,189 @@ def create_core_server(resolver):
                                "local review; it is not CI success, hermetic certification, human approval or merge "
                                "permission." + INSTRUCTIONS_SUFFIX,
                   lifespan=lifetime, on_list_tools=list_tools, on_call_tool=call_tool)
+
+
+def _consume(task):
+    if not task.cancelled():
+        task.exception()
+
+
+class _PeerPool:
+    """At most `limit` adapter bridges, one per binding. One lock serializes admission from the capacity check to
+    the insert, so overlapping calls can neither exceed the bound nor make two bridges for one binding. Bridge.close
+    marks a bridge closed before it awaits, so an interrupted close could never be retried: the pool runs every
+    close as its own task, kept in `closing` until it finishes. An evicting call only waits for that task (bounded,
+    shielded from the caller's cancellation), and close() waits for whatever is still closing."""
+    def __init__(self, create, limit):
+        import asyncio
+        self._create = create
+        self.limit = limit
+        self.entries = OrderedDict()                # binding -> [bridge, users]
+        self.closing = set()
+        self._lock = asyncio.Lock()
+
+    def owner(self, instance_id):
+        for key, (bridge, _) in self.entries.items():
+            if bridge.instance_id == instance_id:
+                return key
+        return None
+
+    def _close_task(self, bridge):
+        import asyncio
+        task = asyncio.create_task(bridge.close())
+        self.closing.add(task)
+        task.add_done_callback(self.closing.discard)
+        task.add_done_callback(_consume)
+        return task
+
+    @staticmethod
+    async def _wait(tasks):
+        import asyncio
+        from gauntlet_review.codex_bridge.engine import CLEANUP_SECONDS
+        if tasks:
+            # asyncio.wait never cancels what it waits for: a cancelled or timed-out wait leaves the close running.
+            await asyncio.wait(tasks, timeout=CLEANUP_SECONDS + 1)
+
+    @asynccontextmanager
+    async def lease(self, key):
+        from gauntlet_review.codex_bridge.engine import BridgeError
+        async with self._lock:
+            entry = self.entries.get(key)
+            if entry is not None:
+                self.entries.move_to_end(key)
+                entry[1] += 1
+                bridge = entry[0]
+            else:
+                if len(self.entries) >= self.limit:
+                    victim = next((name for name, (candidate, users) in self.entries.items()
+                                   if users == 0 and not candidate._busy), None)
+                    if victim is None:
+                        raise BridgeError("LIMIT_EXCEEDED", cause="bindings")
+                    await self._wait({self._close_task(self.entries.pop(victim)[0])})
+                bridge = self._create(key)
+                self.entries[key] = [bridge, 1]
+        try:
+            yield bridge
+        finally:                                     # success, error and cancellation alike
+            entry = self.entries.get(key)
+            if entry is not None and entry[0] is bridge:
+                entry[1] -= 1
+
+    async def close(self):
+        import asyncio
+        async with self._lock:
+            bridges, self.entries = [bridge for bridge, _ in self.entries.values()], OrderedDict()
+            for bridge in bridges:
+                self._close_task(bridge)
+            pending = set(self.closing)
+            await self._wait(pending)
+            for task in pending:
+                if not task.done():
+                    task.cancel()
+            if pending:
+                await asyncio.wait(pending, timeout=1)
+
+
+def _peer_error(code, cause, hint=None, correlation_id=None):
+    error = {"code": code, "cause": cause, "correlation_id": correlation_id or uuid.uuid4().hex, "uncertain": False,
+             "partial_usable": False, "thread_id": None, "turn_id": None,
+             "cleanup": {"status": "not_attempted", "cause": None}}
+    if hint:
+        error["hint"] = hint
+    return {"ok": False, "error": error}
+
+
+def binding_reserve(binding):
+    """RESULT_BYTES kept free per bridge so `binding` always fits beside a reply: it appears once in the structured
+    copy and once in the text copy, where JSON string escaping can at most double it."""
+    from gauntlet_review.codex_bridge.engine import _encode
+    return 3 * len(_encode({"binding": binding})) + 64
+
+
+def create_peer_server(resolver, timeout_seconds, extended_timeout, model=None):
+    """The peer session server: codex_status {checkout} and codex_review {request fields..., checkout}."""
+    from gauntlet_review.codex_bridge import server as peer_server
+    peer_server._require_extra()
+    from importlib import metadata
+    from mcp.server.lowlevel import Server
+    from mcp.shared.exceptions import MCPError
+    from mcp_types import ListToolsResult, Tool, INVALID_PARAMS
+    from gauntlet_review.collaborative.contracts import OperatorConfig
+    from gauntlet_review.collaborative.server import _safe_logging
+    from gauntlet_review.codex_bridge.engine import Bridge, BridgeConfig, BridgeError, ReviewRequest, mcp_result
+
+    _safe_logging()
+    checkout_schema = {"type": "string", "description": "Absolute path of your current working folder."}
+    status_schema = {"type": "object", "properties": {"checkout": checkout_schema}, "required": ["checkout"],
+                     "additionalProperties": False}
+    review_schema = ReviewRequest.model_json_schema()
+    review_schema["properties"]["checkout"] = checkout_schema
+    review_schema["required"] = [*review_schema.get("required", []), "checkout"]
+
+    def reply(payload, binding):
+        try:
+            return mcp_result({**payload, "binding": binding})
+        except BridgeError:
+            return mcp_result({**_peer_error("LIMIT_EXCEEDED", "binding_budget"), "binding": binding})
+
+    def create(bound):
+        config = BridgeConfig(OperatorConfig(bound.repo, bound.state_dir, bound.repository_id, bound.source_ref,
+                                             bound.target_ref, "claude-peer", "reviewer"),
+                              model=model, timeout_seconds=timeout_seconds, extended_timeout=extended_timeout,
+                              result_reserve=binding_reserve(public(bound)))
+        return Bridge(config, peer_server.SdkConversation(config))
+
+    @asynccontextmanager
+    async def lifetime(_):
+        pool = _PeerPool(create, PEER_BINDINGS)
+        try:
+            yield pool
+        finally:
+            await pool.close()
+
+    async def list_tools(context, params):
+        return ListToolsResult(tools=[
+            Tool(name="codex_status", description="Get the adapter instance, owned thread and state for this checkout's "
+                 "binding without starting a model turn." + CHECKOUT_SENTENCE, input_schema=status_schema),
+            Tool(name="codex_review", description="Run or exactly replay one Codex peer turn for this checkout's binding. "
+                 "Echo the current instance and owned thread. After restart, stop and explicitly begin a fresh "
+                 "conversation that rereads all existing review history and findings. Never silently replay uncertain "
+                 "turns. Completion comes only from fresh core review_status." + CHECKOUT_SENTENCE,
+                 input_schema=review_schema)])
+
+    async def call_tool(context, params):
+        pool = context.lifespan_context
+        if params.name not in ("codex_status", "codex_review"):
+            raise MCPError(INVALID_PARAMS, "Unknown tool")
+        raw = params.arguments
+        if not isinstance(raw, dict):
+            return reply(_peer_error("INVALID_ARGUMENT", "validation"), None)
+        try:
+            resolver.folder(raw.get("checkout", MISSING))
+        except BindingError as error:
+            return reply(_peer_error(error.code, error.reason, error.hint), None)
+        rest = {key: value for key, value in raw.items() if key != "checkout"}
+        if params.name == "codex_status" and rest:
+            return reply(_peer_error("INVALID_ARGUMENT", "validation"), None)
+        try:
+            bound = resolver.resolve(raw["checkout"])
+        except BindingError as error:
+            return reply(_peer_error(error.code, error.reason, error.hint, error.correlation_id), None)
+        binding = public(bound)
+        if params.name == "codex_review" and type(rest.get("instance_id")) is str:
+            owner = pool.owner(rest["instance_id"])
+            if owner is not None and owner != bound:            # never a turn on another branch's conversation
+                return reply({**_peer_error("BINDING_CHANGED", "binding_changed"), "instance_binding": public(owner)},
+                             binding)
+        try:
+            async with pool.lease(bound) as bridge:
+                payload = bridge.status() if params.name == "codex_status" else await bridge.call(rest)
+        except BridgeError as error:
+            payload = _peer_error(error.code, error.cause)
+        return reply(payload, binding)
+
+    return Server("gauntlet-codex", version=metadata.version("gauntlet-review"),
+                  instructions="One SDK conversation per checkout binding. Native authentication and runtime lifecycle "
+                               "remain native-host responsibilities. Preserve existing core history after restart. No "
+                               "automatic retry, approval or merge." + INSTRUCTIONS_SUFFIX,
+                  lifespan=lifetime, on_list_tools=list_tools, on_call_tool=call_tool)

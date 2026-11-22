@@ -46,6 +46,9 @@ class BridgeConfig:
     model: str|None=None
     timeout_seconds: int=600
     extended_timeout: bool=False
+    # Bytes of RESULT_BYTES kept free for what a host adds to every reply (a session server's binding).
+    # Zero for the explicit-tuple adapter, whose limits are unchanged.
+    result_reserve: int=0
 
 
 @dataclass(frozen=True)
@@ -84,6 +87,8 @@ def validate_config(config):
         if config.operator.role!="reviewer":
             raise BridgeError("CONFIGURATION_ERROR")
         if type(config.extended_timeout) is not bool or type(config.timeout_seconds) is not int:
+            raise BridgeError("CONFIGURATION_ERROR")
+        if type(config.result_reserve) is not int or not 0<=config.result_reserve<=RESULT_BYTES//4:
             raise BridgeError("CONFIGURATION_ERROR")
         if timeout_refusal(config.timeout_seconds,config.extended_timeout) is not None:
             raise BridgeError("CONFIGURATION_ERROR",cause="timeout_range")
@@ -135,12 +140,12 @@ def _encode(value):
     return json.dumps(value,ensure_ascii=False,allow_nan=False,separators=(",",":")).encode("utf-8","strict")
 
 
-def mcp_result(payload):
-    """Build the actual SDK result; measure both text and structured copies."""
+def mcp_result(payload,reserve=0):
+    """Build the actual SDK result; measure both text and structured copies against RESULT_BYTES less reserve."""
     from mcp_types import CallToolResult
     result=CallToolResult(content=[{"type":"text","text":_encode(payload).decode("utf-8")}],
         structured_content=payload,is_error=not payload["ok"])
-    if len(result.model_dump_json(by_alias=True,exclude_none=True).encode("utf-8"))>RESULT_BYTES:
+    if len(result.model_dump_json(by_alias=True,exclude_none=True).encode("utf-8"))>RESULT_BYTES-reserve:
         raise BridgeError("LIMIT_EXCEEDED",cause="result_limit")
     return result
 
@@ -184,7 +189,7 @@ class Bridge:
             "thread_id":_safe_id(error.thread_id) or self._owned_thread(),
             "turn_id":_safe_id(error.turn_id) or _safe_id(getattr(self.conversation,"turn_id",None)),
             "cleanup":cleanup or {"status":"not_attempted","cause":None}}}
-        mcp_result(payload)
+        mcp_result(payload,self.config.result_reserve)
         return payload
 
     async def _cleanup(self,deadline):
@@ -226,7 +231,7 @@ class Bridge:
             if digest!=record["request_digest"]:
                 return self.error_response(BridgeError("CONFLICT",cause="key_conflict"))
             payload=record["response"]
-            mcp_result(payload)
+            mcp_result(payload,self.config.result_reserve)
             return payload
         if self._busy:
             return self.error_response(BridgeError("BUSY",cause="concurrent_call"))
@@ -265,7 +270,7 @@ class Bridge:
             if size>TEXT_BYTES:
                 raise BridgeError("LIMIT_EXCEEDED",cause="text_limit",turn_id=reply.turn_id)
             payload={"ok":True,"thread_id":reply.thread_id,"turn_id":reply.turn_id,"text":reply.text}
-            mcp_result(payload)
+            mcp_result(payload,self.config.result_reserve)
         except (Exception,asyncio.CancelledError) as original:
             if isinstance(original,asyncio.CancelledError):
                 cancelled=original
