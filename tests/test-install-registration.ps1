@@ -342,6 +342,22 @@ Assert-Eq $saved["$($projA -replace '\\', '/')|gauntlet-core"].env.TOKEN 'SECRET
 Assert-True ((ConvertTo-Json -InputObject $r -Depth 8) -notmatch 'SECRET-VALUE') "no definition appears in the result"
 Assert-True (@(Get-Calls $b | Where-Object { $_ -like 'mcp | remove | * | -s | local' }).Count -eq 3) "removal goes through the CLI's local scope"
 
+# Project keys that differ only in case are distinct entries (distinct folders on a case-sensitive filesystem):
+# both are backed up and both are judged separately, never collapsed into one identity.
+$b = New-Bench
+$upper = Join-Path $b.Root 'proj-A'; $lower = Join-Path $b.Root 'proj-a'
+New-Item -ItemType Directory -Force $upper, $lower | Out-Null
+Add-ProjectEntries $b @{ $upper = @{ 'gauntlet-core' = $secretCore } }
+$cfg = Get-Store $b; $cfg.projects[($lower -replace '\\', '/')] = @{ mcpServers = @{ 'gauntlet-core' = $secretPeer } }
+$cfg | ConvertTo-Json -Depth 32 | Set-Content $b.Config
+$r = Remove-GauntletProjectOverrides -Claude $b.Claude
+Assert-Eq $r.Found.Count 2 "case-distinct project keys are two entries"
+$saved = Get-Content -Raw $r.Backup | ConvertFrom-Json -AsHashtable
+Assert-Eq $saved.Count 2 "both case-distinct definitions are backed up"
+Assert-Eq $saved["$($upper -replace '\\', '/')|gauntlet-core"].env.TOKEN 'SECRET-VALUE-1' "the upper-case key keeps its own definition"
+Assert-Eq $saved["$($lower -replace '\\', '/')|gauntlet-core"].env.TOKEN 'SECRET-VALUE-2' "the lower-case key keeps its own definition"
+Assert-Eq ($r.Removed.Count + $r.Left.Count) 2 "each case-distinct entry is judged on its own"
+
 # -KeepProjectOverrides only reports.
 $b = New-Bench
 $projA = Join-Path $b.Root 'proj-a'; New-Item -ItemType Directory $projA | Out-Null

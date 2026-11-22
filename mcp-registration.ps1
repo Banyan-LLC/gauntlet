@@ -51,10 +51,12 @@ function Write-GauntletBackupText([string]$Path, [string]$Text) {
     [IO.File]::WriteAllText($Path, $Text, [Text.UTF8Encoding]::new($false))
 }
 
-function Save-GauntletMcpBackup([string]$ClaudeConfig, [hashtable]$Definitions) {
+function Save-GauntletMcpBackup([string]$ClaudeConfig, [System.Collections.IDictionary]$Definitions) {
     # Keeps original definitions that could not be put back in a new file only the current user can read, next to the
     # configuration, and returns its path once its content reads back exactly; $null when it could not be made
     # private or written (then nothing is left behind). Definitions can hold credentials, so they never go into a message.
+    # Keys are compared ordinally throughout: two keys differing only in case (case-distinct POSIX project paths) are
+    # two definitions, so callers pass an ordinal dictionary and the body keeps both.
     $ErrorActionPreference = 'Stop'                       # any failed step below fails the backup, whatever the caller's
     $path = "$ClaudeConfig.gauntlet-mcp-backup-$((Get-Date).ToString('yyyyMMddTHHmmssfff')).json"
     $created = $false
@@ -70,8 +72,10 @@ function Save-GauntletMcpBackup([string]$ClaudeConfig, [hashtable]$Definitions) 
             & chmod 600 $path
             if ($LASTEXITCODE -ne 0) { throw "chmod exited $LASTEXITCODE" }
         }
-        $body = [ordered]@{}
-        foreach ($name in ($Definitions.Keys | Sort-Object)) { $body[$name] = $Definitions[$name] | ConvertFrom-Json -AsHashtable }
+        $body = [System.Collections.Specialized.OrderedDictionary]::new([StringComparer]::Ordinal)
+        $names = [string[]]@($Definitions.Keys)
+        [Array]::Sort($names, [StringComparer]::Ordinal)
+        foreach ($name in $names) { $body[$name] = $Definitions[$name] | ConvertFrom-Json -AsHashtable }
         $text = ConvertTo-Json -InputObject $body -Depth 32
         Write-GauntletBackupText $path $text
         if ([IO.File]::ReadAllText($path) -cne $text) { throw 'the backup does not read back as written' }
@@ -125,7 +129,8 @@ function Remove-GauntletProjectOverrides {
     if (-not $found.Count -or $KeepProjectOverrides) {
         return [pscustomobject]@{ Found = (& $plain $found); Removed = @(); Left = (& $plain $found); Backup = $null }
     }
-    $definitions = @{}
+    # Ordinal keys: project paths that differ only in case are distinct entries and must never collapse.
+    $definitions = [System.Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
     foreach ($entry in $found) { $definitions["$($entry.Project)|$($entry.Name)"] = $entry.Raw }
     $backup = Save-GauntletMcpBackup $config $definitions
     if (-not $backup) {
@@ -137,10 +142,10 @@ function Remove-GauntletProjectOverrides {
         try { & $Claude mcp remove $entry.Name -s local *> $null } catch { }   # judged by the read-back below
         finally { Pop-Location }
     }
-    $still = @{}
-    foreach ($entry in @(Find-GauntletProjectOverrides $config)) { $still["$($entry.Project)|$($entry.Name)"] = $true }
-    $removed = @($found | Where-Object { -not $still.ContainsKey("$($_.Project)|$($_.Name)") })
-    $left = @($found | Where-Object { $still.ContainsKey("$($_.Project)|$($_.Name)") })
+    $still = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($entry in @(Find-GauntletProjectOverrides $config)) { [void]$still.Add("$($entry.Project)|$($entry.Name)") }
+    $removed = @($found | Where-Object { -not $still.Contains("$($_.Project)|$($_.Name)") })
+    $left = @($found | Where-Object { $still.Contains("$($_.Project)|$($_.Name)") })
     [pscustomobject]@{ Found = (& $plain $found); Removed = (& $plain $removed); Left = (& $plain $left); Backup = $backup }
 }
 

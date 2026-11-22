@@ -340,6 +340,13 @@ class _PeerPool:
                 return key
         return None
 
+    def _occupied(self):
+        return len(self.entries) + len(self.closing)
+
+    def _prune(self):
+        for task in [task for task in self.closing if task.done()]:
+            self.closing.discard(task)
+
     def _close_task(self, bridge):
         import asyncio
         task = asyncio.create_task(bridge.close())
@@ -366,12 +373,19 @@ class _PeerPool:
                 entry[1] += 1
                 bridge = entry[0]
             else:
-                if len(self.entries) >= self.limit:
+                # A bridge still closing keeps its slot until its close task ends: live plus retiring bridges never
+                # exceed the bound, even after an evicting call was cancelled mid-close.
+                if self._occupied() >= self.limit and not self.closing:
                     victim = next((name for name, (candidate, users) in self.entries.items()
                                    if users == 0 and not candidate._busy), None)
                     if victim is None:
                         raise BridgeError("LIMIT_EXCEEDED", cause="bindings")
-                    await self._wait({self._close_task(self.entries.pop(victim)[0])})
+                    self._close_task(self.entries.pop(victim)[0])
+                if self._occupied() >= self.limit:
+                    await self._wait(set(self.closing))
+                    self._prune()
+                if self._occupied() >= self.limit:
+                    raise BridgeError("LIMIT_EXCEEDED", cause="bindings")
                 bridge = self._create(key)
                 self.entries[key] = [bridge, 1]
         try:
@@ -381,7 +395,7 @@ class _PeerPool:
             if entry is not None and entry[0] is bridge:
                 entry[1] -= 1
 
-    async def close(self):
+    async def _close_all(self):
         import asyncio
         async with self._lock:
             bridges, self.entries = [bridge for bridge, _ in self.entries.values()], OrderedDict()
@@ -394,6 +408,23 @@ class _PeerPool:
                     task.cancel()
             if pending:
                 await asyncio.wait(pending, timeout=1)
+            self._prune()
+
+    async def close(self):
+        """Closes every bridge and waits for every close still running, bounded. The teardown runs as its own task
+        and is protected from the caller's cancellation (an anyio shield for the lifespan's cancel scope, and a
+        bounded wait for native cancellation), so a cancelled shutdown never abandons a close."""
+        import asyncio
+        import anyio
+        from gauntlet_review.codex_bridge.engine import CLEANUP_SECONDS
+        teardown = asyncio.ensure_future(self._close_all())
+        with anyio.CancelScope(shield=True):
+            try:
+                await asyncio.shield(teardown)
+            except asyncio.CancelledError:
+                if not teardown.done():
+                    await asyncio.wait({teardown}, timeout=2 * CLEANUP_SECONDS + 3)
+                raise
 
 
 def _peer_error(code, cause, hint=None, correlation_id=None):

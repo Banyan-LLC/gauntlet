@@ -302,6 +302,61 @@ async def test_cancelling_the_evicting_call_never_abandons_the_close():
     assert made[0].closes == 1                             # never closed twice
 
 
+async def enter(pool, key):
+    async with pool.lease(key):
+        pass
+
+
+async def cancel_an_eviction(pool, key):
+    """Starts an admission that must evict, lets it block on the victim's close, and cancels it."""
+    task = asyncio.create_task(enter(pool, key))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+async def test_a_bridge_still_closing_keeps_its_capacity_slot(monkeypatch):
+    from gauntlet_review.codex_bridge import engine
+    monkeypatch.setattr(engine, "CLEANUP_SECONDS", 0)        # every bounded wait becomes one second
+    made = Made()
+    pool = session._PeerPool(made, 2)
+    for key in ("a", "b"):
+        await enter(pool, key)
+    made[0].gate = asyncio.Event()                            # "a", least recently used, stalls while closing
+    await cancel_an_eviction(pool, "c")
+    assert set(pool.entries) == {"b"} and len(pool.closing) == 1
+    with pytest.raises(BridgeError) as full:                  # "a" still holds its slot: no third live bridge
+        await enter(pool, "d")
+    assert full.value.code == "LIMIT_EXCEEDED" and full.value.cause == "bindings"
+    assert "d" not in pool.entries and len(pool.entries) + len(pool.closing) <= 2
+    made[0].gate.set()
+    await asyncio.wait_for(made[0].closed.wait(), 1)
+    await asyncio.sleep(0)
+    async with pool.lease("d"):                               # the slot is free once the close has finished
+        assert set(pool.entries) == {"b", "d"} and not pool.closing
+    await pool.close()
+
+
+async def test_a_cancelled_shutdown_still_finishes_every_close():
+    made = Made()
+    pool = session._PeerPool(made, 2)
+    for key in ("a", "b"):
+        await enter(pool, key)
+    gate = asyncio.Event()
+    made[0].gate = made[1].gate = gate                        # a retiring bridge and a live one, both slow to close
+    await cancel_an_eviction(pool, "c")
+    assert set(pool.entries) == {"b"} and len(pool.closing) == 1
+    closer = asyncio.create_task(pool.close())
+    await asyncio.sleep(0.05)
+    closer.cancel()
+    asyncio.get_running_loop().call_later(0.1, gate.set)
+    with pytest.raises(asyncio.CancelledError):
+        await closer
+    assert made[0].closed.is_set() and made[1].closed.is_set()   # teardown finished before cancellation went on
+    assert not pool.closing and not pool.entries
+
+
 async def test_shutdown_waits_for_closes_still_running():
     made = Made()
     pool = session._PeerPool(made, 1)
