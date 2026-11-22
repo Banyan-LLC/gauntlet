@@ -81,8 +81,14 @@ this work's to fix).
   - constants `DEFAULT_MODEL`, `DEFAULT_EFFORT`, `SETTINGS_NAME = "peer-model.json"`,
     `SETTINGS_BYTES = 64 * 1024`, `MAX_REPOSITORIES = 256`, `FIELDS = ("model", "effort")`,
     compiled `MODEL_RE`, `EFFORT_RE`, `REPOSITORY_RE` (all `fullmatch` rules above).
-  - `class SettingsError(Exception)` with `.code = "MODEL_SETTINGS_INVALID"` and `.detail: str`
-    (detail is for the CLI's message and logs only; adapters never echo it).
+  - `class SettingsError(Exception)` with `.code: str` and `.detail: str` (detail is for the
+    CLI's message and logs only; adapters never echo it). `load` raises code
+    `MODEL_SETTINGS_INVALID`; `save` raises code `CONFIGURATION_ERROR` for a candidate beyond the
+    limits (the CLI's existing code for a change it refuses).
+  - `read_regular_nofollow(path: Path, limit: int) -> bytes | None`: `None` when the file does
+    not exist; refuses at open time (never by a separate earlier stat) anything that is not a
+    regular file, so a link, junction, reparse point, directory or FIFO swapped in at any moment
+    is refused and never blocks. Raises `SettingsError` (code `MODEL_SETTINGS_INVALID`).
   - `@dataclass(frozen=True) class Selection: model: str; effort: str; model_source: str;
     effort_source: str` with `public() -> dict` returning exactly
     `{"model", "model_source", "effort", "effort_source"}`.
@@ -117,28 +123,57 @@ this work's to fix).
     `"bad model"`; effort `"High"`; repository key `"a/b"`; 257 repositories; `NaN` value; a
     file of `SETTINGS_BYTES + 1` bytes; invalid UTF-8.
   - `test_a_bom_is_accepted`: the valid example file written with a leading UTF-8 BOM loads.
-  - `test_a_linked_file_or_redirected_root_is_refused`: a symbolic link named
-    `peer-model.json` pointing at a valid file, and a state root reached through a directory
-    link (skip each with `pytest.skip` when the platform refuses to create the link), raise
-    `SettingsError`; a directory named `peer-model.json` also raises.
-  - `test_save_round_trips_atomically_and_privately`: `save` into a missing root creates it,
-    `load` returns equal settings, `to_document` is what is on disk (parsed), no
-    `*.tmp` file remains, and on POSIX the file mode is `0o600`.
+  - `test_the_open_refuses_a_link`: `peer-model.json` as a symbolic link to a valid file raises
+    `SettingsError` (POSIX always; Windows when `os.symlink` is permitted, else skip).
+  - `test_a_reparse_point_seen_on_the_handle_is_refused` (Windows, deterministic, no privilege):
+    monkeypatch the helper's handle-attribute query to report `FILE_ATTRIBUTE_REPARSE_POINT`
+    for a real regular file; `load` raises. A second case reports `FILE_ATTRIBUTE_DIRECTORY`.
+  - `test_a_fifo_is_refused_without_blocking` (POSIX): `os.mkfifo` at the settings path;
+    `load` raises within one second (run it in a thread with a timeout).
+  - `test_a_redirected_state_root_is_refused`: the root reached through a junction
+    (`_winapi.CreateJunction` on Windows, which needs no privilege) or a directory symlink
+    (POSIX) raises; so does a directory named `peer-model.json`.
+  - `test_save_round_trips_privately`: `save` into a missing root creates it, `load` returns
+    equal settings, `to_document` is what is on disk (parsed), no `*.tmp` file remains, and on
+    POSIX the file mode is `0o600`.
+  - `test_save_refuses_candidates_beyond_the_limits`: a 257th repository; and 256 valid
+    entries (long IDs and models) whose compact form fits 64 KiB but whose written form does
+    not. Each raises `SettingsError` code `CONFIGURATION_ERROR`, the existing file keeps its
+    exact bytes and no `*.tmp` file remains. A candidate that fits exactly is written and loads.
+  - `test_save_retries_transient_replace_failures`: `os.replace` (monkeypatched in the module)
+    raises `PermissionError` twice, then succeeds: three calls, new content on disk.
+  - `test_save_gives_up_after_bounded_retries`: `os.replace` always raises `PermissionError`:
+    `save` raises after exactly 5 attempts, the destination keeps its original bytes, no
+    `*.tmp` file remains.
+  - `test_a_failed_temporary_write_keeps_the_original`: the temporary file's write raises
+    `OSError`: the original bytes are intact, `os.replace` was never called, no `*.tmp` remains.
   - `test_with_and_without_fields`: `with_fields(EMPTY, "r", effort="high")` sets only
     `repositories["r"]["effort"]`; `without_fields(that, "r", ("effort",))` equals `EMPTY`;
     `without_fields(s, None, ("model",))` leaves the global effort.
 - [ ] **Step 2: Run** `& $py -m pytest tests/test_peer_model.py -q`. Expected: fails on import.
 - [ ] **Step 3: Implement `peer_model.py`.** Notes the tests do not pin:
+  - `read_regular_nofollow`: POSIX opens with `os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK |
+    os.O_CLOEXEC` (a link fails with `ELOOP`, a FIFO does not block) and requires
+    `S_ISREG(fstat(fd).st_mode)`. Windows opens through `ctypes` `CreateFileW` with
+    `GENERIC_READ`, share read, write and delete, `OPEN_EXISTING` and
+    `FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS` (the link itself is opened, never
+    its target), requires `GetFileType == FILE_TYPE_DISK` and `GetFileInformationByHandle`
+    attributes without `FILE_ATTRIBUTE_REPARSE_POINT` or `FILE_ATTRIBUTE_DIRECTORY` (the
+    attribute query is a module function the test can replace), then wraps the handle with
+    `msvcrt.open_osfhandle`. Both read at most `limit + 1` bytes from the vetted handle and
+    close it in `finally`. Not-found errors give `None`.
   - `load`: `check_unredirected(root)` (`LaunchRefused` becomes `SettingsError`); a missing
-    root or file is `EMPTY`. `lstat` the file: anything but a regular file, or one with the
-    reparse-point attribute, is refused. Open it, `fstat`, and refuse when `(st_dev, st_ino)`
-    differs from the `lstat` result. Read at most `SETTINGS_BYTES + 1` bytes; decode
-    `utf-8-sig` strictly; `json.loads` with an `object_pairs_hook` that refuses duplicate keys
-    and a `parse_constant` that refuses `NaN`/`Infinity`. Any `OSError` is `SettingsError`.
-  - `save`: `ensure_private_dir(root)`; write `to_document` (UTF-8, `indent=2`, trailing
-    newline) to `root / f"{SETTINGS_NAME}.{uuid4().hex}.tmp"` opened with mode `"x"`; on POSIX
-    `chmod 0o600`; `os.replace` onto the target, retrying `PermissionError` up to 5 times
-    50 ms apart (Windows readers); remove the temporary file on any failure and re-raise.
+    root or file is `EMPTY`. Decode `utf-8-sig` strictly; `json.loads` with an
+    `object_pairs_hook` that refuses duplicate keys and a `parse_constant` that refuses
+    `NaN`/`Infinity`; validate with the same `_validate(document) -> Settings` that `save`
+    uses. Any `OSError` is `SettingsError`.
+  - `save`: build the document, run `_validate` on it and encode it (UTF-8, `indent=2`,
+    trailing newline); refuse before touching the disk when validation fails or the bytes
+    exceed `SETTINGS_BYTES`. Then `ensure_private_dir(root)`; write the bytes to
+    `root / f"{SETTINGS_NAME}.{uuid4().hex}.tmp"` opened with mode `"x"`; on POSIX
+    `chmod 0o600`; `os.replace` onto the target, retrying `PermissionError` up to 5 attempts
+    in all, 50 ms apart (Windows readers); remove the temporary file on any failure and
+    re-raise. Other `OSError`s propagate (the CLI maps them).
 - [ ] **Step 4: Run** the same command. Expected: all pass.
 - [ ] **Step 5: Commit** `feat: add the peer model settings store`.
 
@@ -256,7 +291,7 @@ this work's to fix).
 
 - [ ] **Step 1: Update the fakes and write the failing tests.** `Native.turn(prompt, **options)`
   records options; `Native.models(include_hidden)` returns a configurable
-  `ModelListResponse` or raises. Every existing `peer.run("…")` call passes
+  `ModelListResponse` or raises; `Native.__aenter__()` counts calls and can raise. Every existing `peer.run("…")` call passes
   `SELECTION = Selection("gpt-6-sol","high","global","global")`. Change the assertion
   `options["model"] is None` to `== "gpt-6-sol"`. New tests:
   - `test_every_turn_receives_the_model_and_effort`: two turns with different selections;
@@ -266,15 +301,25 @@ this work's to fix).
     `ModelCheckRefusal("MODEL_UNAVAILABLE")`; unsupported effort is `EFFORT_NOT_SUPPORTED`; an
     incomplete catalog without the model and a `JsonRpcError` are `CATALOG_UNAVAILABLE`; a
     `TransportClosedError` propagates as a non-refusal `BridgeError("SDK_FAILURE")`. `check`
-    asked with `include_hidden=True` and started the client only once across calls.
+    asked with `include_hidden=True` and initialized the client only once across calls.
+  - `test_an_initialize_failure_is_not_a_catalog_refusal`: through a real `Bridge` over
+    `SdkConversation`, `Native.__aenter__` raises `JsonRpcError` on the first check. The reply
+    is `SDK_FAILURE`, `uncertain: true`, state `poisoned`, no turn was started, cleanup ran
+    (`native.closed`), and an exact replay of the same key returns the identical cached
+    payload. A separate case, initialization succeeding and `models` raising `JsonRpcError`,
+    stays the recoverable `CATALOG_UNAVAILABLE`.
   - `test_a_matching_reroute_is_reported`: a `model/rerouted` notification
     (`ModelReroutedNotification`, same thread and turn, `toModel` `gpt-6-luna`, reason
     `highRiskCyberActivity`) before the terminal gives `reply.rerouted ==
     ("gpt-6-luna","highRiskCyberActivity")`; a foreign turn's notification gives `None`.
 - [ ] **Step 2: Run** `& $py -m pytest tests/codex_bridge/test_sdk.py tests/codex_bridge/test_sdk_stream_cleanup.py -q`. Expected: fail.
 - [ ] **Step 3: Implement.** Factor client creation from `run` into `_ensure_client()` used by
-  both methods. `check` maps `JsonRpcError` to `CATALOG_UNAVAILABLE` and lets other errors
-  through the same mapping `run` uses for transport and SDK failures. `run` passes
+  both methods: it builds `AsyncCodex(...)` once and awaits its public `__aenter__()`, which
+  runs the SDK's start and initialize now (in 0.163.0 `models()` would otherwise initialize
+  lazily, and an initialize error is a broken client, not a catalog answer). Errors from
+  `_ensure_client()` take the same mapping `run` uses (`SDK_FAILURE`). `check` catches
+  `JsonRpcError` only around the `models(include_hidden=True)` call itself and maps it to
+  `CATALOG_UNAVAILABLE`; everything else propagates through that same mapping. `run` passes
   `model=selection.model` to `thread_start` and `model=selection.model,
   effort=ReasoningEffort(selection.effort)` to `thread.turn`. A reroute's `to_model` is kept
   only when it matches `MODEL_RE` and its reason only when it matches `[A-Za-z0-9_.-]{1,64}`
@@ -366,6 +411,11 @@ this work's to fix).
     `CONFIGURATION_ERROR` and writes nothing.
   - `test_invalid_settings_are_reported`: an invalid file gives `MODEL_SETTINGS_INVALID` for
     show and for a change.
+  - `test_a_change_beyond_the_limits_writes_nothing`: with 256 repositories, a 257th; and a
+    near-limit file plus an ordinary model change whose written form crosses 64 KiB. Each gives
+    `CONFIGURATION_ERROR` naming the limit, leaves the file byte-identical and logs nothing.
+  - `test_a_failed_save_reports_and_logs_nothing`: `peer_model.save` raises `OSError`; the
+    command gives `STATE_UNAVAILABLE`, exit 2, and `launch.log` gains no `peer-model` line.
   - `test_launch_dispatches_the_subcommands`: `launch.main(["models", ...])` reaches
     `model_cli.main`; `launch.main(["check"])` still runs the pin check.
 - [ ] **Step 2: Run** `& $py -m pytest tests/collaborative/test_model_cli.py -q`. Expected: fail.
@@ -377,34 +427,50 @@ this work's to fix).
   with `with_fields`, resolve the scope's pair, and check it with the catalog (mapping
   `MODEL_UNAVAILABLE` to `UNKNOWN_MODEL`); for a global change, check every repository's new
   effective pair and report failures as warnings. Catalog exceptions of any kind become
-  `CATALOG_UNAVAILABLE` with the hint "check that Codex is installed and signed in".
+  `CATALOG_UNAVAILABLE` with the hint "check that Codex is installed and signed in". Save,
+  then log: a `SettingsError` from `save` is reported with its code, an `OSError` as
+  `STATE_UNAVAILABLE`, and the log line is written only after `save` returns.
 - [ ] **Step 4: Run** the new tests and `tests/collaborative/test_launch.py`. Expected: pass.
 - [ ] **Step 5: Commit** `feat: add launcher commands to list and switch the peer model`.
 
 ### Task 7: `/gauntlet-model` skill and installer
 
 **Files:**
-- Create: `gauntlet-model/SKILL.md` (repository root)
+- Create: `gauntlet-model/SKILL.md` and `gauntlet-model/registration.ps1` (repository root)
 - Modify: `install.ps1` (the skill copy loop: `'gauntlet-review','gauntlet-dev','gauntlet-model'`)
-- Test: `tests/test_skill_files.py` (Python, under `gauntlet-review/python/tests`)
+- Test: `tests/test_skill_files.py` (Python, under `gauntlet-review/python/tests`) and
+  `tests/test-gauntlet-model-registration.ps1` (repository root, run with `pwsh`)
 
 **Interfaces:**
 - Consumes: Task 6's command lines and JSON output.
-- Produces: the skill; nothing else depends on it.
+- Produces: `registration.ps1 [-HomeDir <dir>]`, which prints one JSON line
+  `{"python": "<command>", "state_root": "<value after --state-root>"}` for the active
+  profile's `gauntlet-peer` entry and exits 0, or prints one line naming the profile file it
+  read and exits 1. The active profile follows the installer's rule
+  (`Get-GauntletClaudeProfile` in `mcp-registration.ps1`): `$env:CLAUDE_CONFIG_DIR/.claude.json`
+  when that is set, else `<HomeDir>/.claude.json` (`-HomeDir` defaults to `$HOME`). It never
+  falls back to the other profile.
 
 - [ ] **Step 1: Write the failing test** `test_gauntlet_model_skill_is_user_only_and_installed`:
   the skill's frontmatter (parsed between the first two `---` lines) has `name:
   gauntlet-model`, `disable-model-invocation: true` and no `allowed-tools` key; its body
   contains `gauntlet_review.launch models` and `gauntlet_review.launch model` and no em-dash character (U+2014, `chr(0x2014)`);
   `install.ps1`'s skill loop names `gauntlet-model`.
-- [ ] **Step 2: Run** `& $py -m pytest tests/test_skill_files.py -q`. Expected: fail.
+  And `tests/test-gauntlet-model-registration.ps1` (fixtures: a home folder and a custom
+  profile folder whose `.claude.json` files register different `command` and `--state-root`
+  values): with `CLAUDE_CONFIG_DIR` set, the custom profile's values are printed; with it
+  unset, the home folder's; with `CLAUDE_CONFIG_DIR` set to a profile lacking the entry while
+  the home profile has one, exit 1 naming the custom profile file (no fallback); an
+  unparseable profile exits 1. The test restores `CLAUDE_CONFIG_DIR` in `finally`.
+- [ ] **Step 2: Run** `& $py -m pytest tests/test_skill_files.py -q` and
+  `pwsh tests/test-gauntlet-model-registration.ps1`. Expected: fail.
 - [ ] **Step 3: Write the skill.** Frontmatter: `name`, a `description` ("Show, list or switch
   the Codex model and reasoning effort Gauntlet's peer reviewer uses"),
   `disable-model-invocation: true`, `argument-hint: [model] [effort] [for this repository] |
-  effort <e> | reset [model|effort]`. Body: read `mcpServers.gauntlet-peer` from
-  `$env:USERPROFILE\.claude.json` with `ConvertFrom-Json -AsHashtable` (command, and the value
-  after `--state-root` in args); stop with "Gauntlet is not registered; run install.ps1" if
-  absent. Run `& $py -I -m gauntlet_review.launch …` with `--json` and summarize. Map the
+  effort <e> | reset [model|effort]`. `registration.ps1` reads the active profile with
+  `ConvertFrom-Json -AsHashtable`. Body: run `& "$skillDir/registration.ps1"` (the skill's own
+  folder) and stop, relaying its message and "Gauntlet is not registered in this profile; run
+  install.ps1", when it exits 1. Run `& $py -I -m gauntlet_review.launch …` with `--json` and summarize. Map the
   argument forms in the spec; "this repository" is `--repo (Get-Location)`. With no
   arguments run `model --json`, `model --repo . --json` and `models --json`. Say a change
   applies from the next peer turn, and relay warnings.
@@ -439,7 +505,8 @@ this work's to fix).
 - [ ] **Step 1:** Full suite: `& $py -m pytest tests -q -p no:cacheprovider` from
   `gauntlet-review/python`. Expected: every test passes except failures also present on the
   pre-change baseline (record the baseline list from `main` in the build log).
-- [ ] **Step 2:** `pwsh tests/run-tests.ps1` and `pwsh tests/test-install-registration.ps1`
+- [ ] **Step 2:** `pwsh tests/run-tests.ps1`, `pwsh tests/test-install-registration.ps1` and
+  `pwsh tests/test-gauntlet-model-registration.ps1`
   from the repository root. Expected: same results as on the baseline.
 - [ ] **Step 3: Live catalog check** (no model turn): with a scratch state root,
   `& $py -I -m gauntlet_review.launch models --state-root <scratch>` lists the real catalog;
