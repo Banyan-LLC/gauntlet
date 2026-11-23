@@ -147,8 +147,10 @@ OpenAI Codex to act as an independent reviewer:
 The skills are developed and verified in this repository, but they are not limited to this
 repository. The setup in [collaborative-mcp.md](docs/collaborative-mcp.md) is required
 for the default MCP route; once its venv exists, `install.ps1` registers the two servers
-with Claude Code once, at user scope, through a launcher that binds each session to the
-checkout and branch it starts in ([Global registration](docs/collaborative-mcp.md#global-registration)).
+with Claude Code once, at user scope, through a launcher whose session servers bind every
+call to the checkout the agent names and that checkout's current branch, so branch and
+worktree changes never need a reconnect ([Global registration](docs/collaborative-mcp.md#global-registration)).
+It also removes per-project Gauntlet entries that would override that registration.
 Copy each skill's `SKILL.md`, `LEGACY.md` and referenced
 resources together into the host's skill directory (`~/.claude/skills` for Claude,
 `~/.agents/skills` for Codex). Back up existing files first and preserve runtime

@@ -147,7 +147,7 @@ class SdkConversation:
                     if not _safe_id(self.thread_id) or not _safe_id(self.turn_id):
                         raise BridgeError("INVALID_FINAL_MESSAGE",cause="invalid_identity")
                     reply=PeerReply(self.thread_id,self.turn_id,final,rerouted)
-                    mcp_result(reply_payload(reply,selection))
+                    mcp_result(reply_payload(reply,selection),self.config.result_reserve)
                     return reply
             raise BridgeError("MISSING_TERMINAL",cause="unterminated_stream")
         except BaseException as original:
