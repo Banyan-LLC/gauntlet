@@ -186,7 +186,9 @@ saying `skip codex review`.
 
 - Windows and PowerShell 7 (`pwsh`).
 - Claude Code.
-- OpenAI Codex CLI with access to `gpt-6.1-sol` and an authenticated Codex session.
+- OpenAI Codex CLI with access to `gpt-6.1-sol` and an authenticated Codex session. The
+  collaborative peer defaults to `gpt-6.1-sol` at `xhigh` effort; the operator can switch its
+  model or effort with `/gauntlet-model`. Legacy mode keeps its own pinned model.
 - Git.
 - Permission to clone this private repository.
 

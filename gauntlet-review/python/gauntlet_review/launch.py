@@ -6,6 +6,10 @@ One user-scope host registration serves every checkout. The host starts this mod
     python -m gauntlet_review.launch core --state-root <dir>
     python -m gauntlet_review.launch peer --state-root <dir> [--timeout-seconds N] [--allow-extended-timeout]
     python -m gauntlet_review.launch check
+    python -m gauntlet_review.launch models|model --state-root <dir> ...   (operator commands, see model_cli)
+
+The peer session server reads the operator's model and effort choice (<state-root>/peer-model.json, see
+gauntlet_review.peer_model and model_cli) fresh for every turn of every binding; the launcher has no model flags.
 
 The host may start this process in a folder that is not the agent's (a desktop worktree session's servers can
 start in the repository's main checkout), so nothing is derived at startup. Every tool call names the agent's
@@ -290,6 +294,11 @@ def _refuse(state_root, code, detail, correlation=None, fields=None):
 
 
 def main(argv=None):
+    words = sys.argv[1:] if argv is None else list(argv)
+    if words and words[0] in ("models", "model"):
+        # The operator's model commands never start a server; they have their own parser and refusals.
+        from gauntlet_review import model_cli
+        return model_cli.main(words)
     state_root = None
     cleanup_failures = []
     try:

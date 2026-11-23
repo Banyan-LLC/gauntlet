@@ -183,13 +183,15 @@ limits, receipts and the review contract are unchanged.
   idle one is closed (the pool owns that close and finishes it even if the call that
   caused it is cancelled), and with none idle a call is `LIMIT_EXCEEDED`. Each conversation
   reserves room for its binding inside the adapter's result limit, so every reply carries
-  it.
+  it. Every turn reads the operator's model and effort choice for that binding's repository
+  ([Peer model and effort](#peer-model-and-effort)).
 
 The explicit-tuple servers keep the rule that clients cannot select repositories, refs or
 state. The session servers relax exactly one thing, for the author host only: it names a
 checkout. Refs are still derived from that checkout, the state path is still derived under
 the operator's state root, and identity, role, executables, models and permissions stay
-fixed. Naming a checkout grants nothing beyond starting a session in that folder. The Codex
+fixed (the operator chooses the peer's model outside MCP; see
+[Peer model and effort](#peer-model-and-effort)). Naming a checkout grants nothing beyond starting a session in that folder. The Codex
 reviewer cannot reach these tools: the reviewer core the adapter registers for each thread
 stays a fixed tuple with request-only calls.
 
@@ -262,9 +264,12 @@ Claude Code can read a user-owned JSON configuration supplied with
 ```
 
 The SDK adapter registers its required reviewer-role core automatically with
-the fixed operator tuple, read-only sandbox and escalation denied. It uses the
-native host's configured model unless the operator supplies `--model` on the
-adapter CLI; MCP clients cannot change that choice or any permissions/paths/refs.
+the fixed operator tuple, read-only sandbox and escalation denied. It always passes
+a model and reasoning effort to the SDK: fixed by `--model`/`--effort` on the adapter
+CLI, read from the operator's settings with `--model-settings-root DIR`, or Gauntlet's
+built-in default `gpt-6.1-sol` at `xhigh`; the native configuration no longer decides
+([Peer model and effort](#peer-model-and-effort)). MCP clients cannot change that choice
+or any permissions/paths/refs.
 Its thread-local server configuration allows exactly `read_review`,
 `record_evidence`, `review_status` and `submit_review`, with explicit per-tool
 approval and a 262,144-token output allowance for bounded complete core replies.
@@ -371,8 +376,8 @@ response loss after COMMIT may require exact-key recovery.
 Claude calls the separate adapter's `codex_status` with `{}` (on the session server,
 `{"checkout":"<current working folder>"}`, and `checkout` on every `codex_review` too) to
 obtain a fresh
-`instance_id`, nullable owned `thread_id`, and `ready`, `busy` or `poisoned` state.
-This does not start a model turn. Its `codex_review` arguments are direct fields,
+`instance_id`, nullable owned `thread_id`, `ready`, `busy` or `poisoned` state, and the
+`peer_model` the next turn will use. This does not start a model turn. Its `codex_review` arguments are direct fields,
 without the core's outer `request` wrapper:
 
 ```json
@@ -380,8 +385,8 @@ without the core's outer `request` wrapper:
 ```
 
 Supply the actual pinned IDs in the prompt. A successful reply contains
-`thread_id`, `turn_id` and the complete final text; it has no `peer_complete`
-field. Read the peer's canonical finding event bodies through the core. Commit a
+`thread_id`, `turn_id`, the complete final text and the `peer_model` that turn used;
+it has no `peer_complete` field. Read the peer's canonical finding event bodies through the core. Commit a
 verified fix, open the next core revision, record current evidence, then call
 `codex_review` with a new key, the same instance and the returned thread ID as
 `expected_thread_id`. The peer must reread complete source/history/evidence and
@@ -504,6 +509,109 @@ launcher refuses it before the hand-off, creating nothing, with this body on std
 prints the same body without `operation`. `opt_in` appears only for a value the override
 would accept: with the override on, a value over 7200 is refused with
 `"accepted":{"min":10,"max":7200}` alone, and a value under 10 never names the flag.
+
+### Peer model and effort
+
+The peer reviews with Gauntlet's own default, `gpt-6.1-sol` at reasoning effort `xhigh`, and
+always passes both to the SDK, so the native `~/.codex/config.toml` no longer decides the
+reviewer. (Before this, the adapter passed no model and inherited the native configuration;
+Codex's own catalog default is a different model at a lower effort.) The operator can change
+the model, the effort or both, globally or for one repository. A change applies from the
+**next peer turn** of every running peer, including an open conversation, with no reconnect.
+
+The choice lives in `<state-root>/peer-model.json`, beside `launch.log`, outside every
+repository:
+
+```json
+{"version": 1, "default": {"effort": "max"}, "repositories": {"banyan-llc-gauntlet": {"model": "gpt-6-sol"}}}
+```
+
+Each field resolves on its own: the repository's value (keyed by the launcher's repository ID,
+for every checkout and branch of that repository), else the global value, else the built-in
+default. So the example reviews `banyan-llc-gauntlet` with `gpt-6-sol` at `max` and everything
+else with `gpt-6.1-sol` at `max`. A missing file means the built-in default. The file is read
+without following links (a link, junction, reparse point, directory or FIFO in its place is
+refused when it is opened) and is limited to 64 KiB and 256 repositories. An unreadable or
+invalid file is never ignored: status reports `{"error":"MODEL_SETTINGS_INVALID"}` and turns are
+refused (below) until it is fixed.
+
+The operator changes it with two launcher commands, using the registration's interpreter and
+state root (or with `/gauntlet-model`, below):
+
+```powershell
+& $py -I -m gauntlet_review.launch models --state-root $root            # Codex's models, efforts and the selection
+& $py -I -m gauntlet_review.launch model --state-root $root             # the global selection and every override
+& $py -I -m gauntlet_review.launch model --state-root $root gpt-6-sol --effort high
+& $py -I -m gauntlet_review.launch model --state-root $root --effort max --repo C:/work/project
+& $py -I -m gauntlet_review.launch model --state-root $root --reset effort --repository-id banyan-llc-gauntlet
+```
+
+- `models` asks Codex for its catalog (`model/list`, which starts no model turn); `--all` adds
+  the models Codex hides from its picker.
+- `model MODEL`, `--effort EFFORT` or both set exactly the named fields in the scope (global,
+  or one repository with `--repo PATH`, whose ID is derived as the launcher derives it, or
+  `--repository-id ID`, a lowercase slug). A model can be given by its name or by the name
+  Codex displays (`GPT-6.1 Terra`), ignoring case and spacing, and is stored as Codex's model
+  name; a display name shared by several models is refused. The scope's resulting model and effort must be in the
+  catalog, with that effort supported by that model, or the change is refused
+  (`UNKNOWN_MODEL`, `EFFORT_NOT_SUPPORTED`, which lists the model's efforts, or
+  `CATALOG_UNAVAILABLE` when Codex cannot be reached or is not signed in). A global change also
+  warns about every repository it leaves with an unsupported pair; it is still written, and
+  those repositories' turns are refused until the operator fixes them.
+- `model --reset [model|effort|all]` removes those fields from the scope, so they follow the
+  next scope up again. It does not contact Codex.
+- `--json` prints one JSON document. A refusal prints one `CODE: message` line on stderr and
+  exits 2, and a refused change writes nothing. Each change appends one line to `launch.log`,
+  for example `peer-model set scope=repository:banyan-llc-gauntlet model=gpt-6-sol`.
+
+Before every turn the adapter resolves the selection for the call's binding and checks it
+against Codex's catalog, on the conversation's own SDK client and without starting a turn.
+Four refusals are **certain**: no turn ran, `uncertain` is false, the conversation is not
+poisoned and nothing is cached under the key, so the same request succeeds once the operator
+fixes the cause:
+
+- `MODEL_SETTINGS_INVALID` (cause `model_settings`): the settings file is invalid.
+- `MODEL_UNAVAILABLE`, `EFFORT_NOT_SUPPORTED`, `CATALOG_UNAVAILABLE` (cause `model_check`): Codex
+  no longer lists the model, the model lacks the effort, or the catalog request failed or came
+  back without the model on a partial page.
+
+Any other failure during the check (the SDK client failing to start, a closed transport, the
+deadline) keeps today's uncertain, poisoned path. A model Codex lists but the account cannot
+use still fails when its turn starts (`SDK_FAILURE`): the check cannot see that.
+
+`codex_status` reports the selection the next turn will use, and every completed
+`codex_review` reply names the one that turn used, with where each field came from
+(`built_in`, `global`, `repository`, or `operator` for fixed adapter flags):
+
+```json
+"peer_model": {"model": "gpt-6-sol", "model_source": "repository", "effort": "max", "effort_source": "global"}
+```
+
+A completed reply adds `"rerouted": {"to", "reason"}` inside `peer_model` when Codex rerouted
+that turn to another model. An exact replay returns the original reply, with the model it used
+then, even after a switch.
+
+**The `/gauntlet-model` skill.** `install.ps1` installs a user-only skill (it sets
+`disable-model-invocation`, so an agent cannot invoke it on its own, and pre-approves no
+commands). `/gauntlet-model` shows the selection and the model list; `/gauntlet-model gpt-6-sol
+high`, `/gauntlet-model effort max`, `/gauntlet-model gpt-6-sol for this repository` and
+`/gauntlet-model reset effort` run the commands above. It finds the interpreter and state root
+from the active profile's user-scope `gauntlet-peer` entry (`<CLAUDE_CONFIG_DIR>/.claude.json`
+when that is set, else `~/.claude.json`, as the installer does) and reports a missing
+registration instead of guessing.
+
+**Who can change it.** Only the operator, through these commands or the skill. No MCP tool
+changes it: `codex_status` and `codex_review` only report it, and the author host still cannot
+select a model. The Codex reviewer cannot change its own model: its thread is read-only with
+every approval denied and only the four reviewer core tools, and the file is in the state
+root, outside every repository. Agents are told to leave the setting to the user.
+
+**Explicit-tuple adapter.** `python -m gauntlet_review.codex_bridge` takes `--model` and
+`--effort` (fixed for the process; either one alone keeps the built-in default for the other),
+or `--model-settings-root DIR` to read the same settings file from `DIR` for its
+`--repository-id`. Giving `--model-settings-root` with `--model` or `--effort`, or a relative
+`DIR`, is refused at startup with `{"code":"CONFIGURATION_ERROR","cause":"model_mode"}`. With
+none of them it uses the built-in default.
 
 ## Limits and state operations
 

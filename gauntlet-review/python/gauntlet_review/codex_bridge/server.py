@@ -76,7 +76,11 @@ def main(argv=None):
         parser=_Parser(prog="gauntlet-codex",description="SDK-backed local stdio conversation host")
         for name in ("repo","state-dir","repository-id","source-ref","target-ref","participant"):
             parser.add_argument("--"+name,required=True)
+        # Fixed --model/--effort, or the operator's settings file under --model-settings-root; with neither,
+        # the built-in default (gauntlet_review.peer_model). The native configuration never chooses.
         parser.add_argument("--model")
+        parser.add_argument("--effort")
+        parser.add_argument("--model-settings-root")
         parser.add_argument("--timeout-seconds",type=int,default=600)
         parser.add_argument("--allow-extended-timeout",action="store_true")
         args=parser.parse_args(argv)
@@ -85,6 +89,11 @@ def main(argv=None):
         from mcp.server.stdio import stdio_server
         from gauntlet_review.collaborative.contracts import OperatorConfig
         from .engine import BridgeConfig,timeout_refusal
+        settings_root=Path(args.model_settings_root) if args.model_settings_root is not None else None
+        if settings_root is not None and (not settings_root.is_absolute() or args.model is not None
+                or args.effort is not None):
+            sys.stderr.write(json.dumps({"code":"CONFIGURATION_ERROR","cause":"model_mode"},separators=(",",":"))+"\n")
+            return 2
         refusal=timeout_refusal(args.timeout_seconds,args.allow_extended_timeout)
         if refusal is not None:
             # Fixed fields only: the accepted range and, when it would help, the opt-in flag.
@@ -92,7 +101,8 @@ def main(argv=None):
             return 2
         config=BridgeConfig(OperatorConfig(Path(args.repo),Path(args.state_dir),args.repository_id,
             args.source_ref.encode("utf-8","strict"),args.target_ref.encode("utf-8","strict"),args.participant,"reviewer"),
-            model=args.model,timeout_seconds=args.timeout_seconds,extended_timeout=args.allow_extended_timeout)
+            model=args.model,timeout_seconds=args.timeout_seconds,extended_timeout=args.allow_extended_timeout,
+            effort=args.effort,model_settings_root=settings_root)
         server=create_server(config)
         async def serve():
             async with stdio_server() as (read,write):

@@ -9,6 +9,7 @@ import asyncio
 from dataclasses import dataclass
 import hashlib
 import json
+from pathlib import Path
 import re
 import uuid
 from typing import Protocol
@@ -16,6 +17,7 @@ from typing import Protocol
 import anyio
 from pydantic import BaseModel,ConfigDict,ValidationError,field_validator
 
+from gauntlet_review import peer_model
 from gauntlet_review.collaborative.contracts import CoreError,OperatorConfig,validate_operator_config
 
 PROMPT_BYTES=64*1024
@@ -40,6 +42,11 @@ class BridgeError(Exception):
         super().__init__(code)
 
 
+class ModelCheckRefusal(BridgeError):
+    """A certain refusal from the catalog check before a turn: MODEL_UNAVAILABLE, EFFORT_NOT_SUPPORTED or
+    CATALOG_UNAVAILABLE. Only Conversation.check raises it; the bridge treats it as certain only from there."""
+
+
 @dataclass(frozen=True)
 class BridgeConfig:
     operator: OperatorConfig
@@ -49,6 +56,10 @@ class BridgeConfig:
     # Bytes of RESULT_BYTES kept free for what a host adds to every reply (a session server's binding).
     # Zero for the explicit-tuple adapter, whose limits are unchanged.
     result_reserve: int=0
+    # Appended so positional construction stays valid. Fixed mode uses model/effort (or the built-in default);
+    # settings mode reads the operator's peer-model.json under this root for every turn and status.
+    effort: str|None=None
+    model_settings_root: Path|None=None
 
 
 @dataclass(frozen=True)
@@ -56,11 +67,21 @@ class PeerReply:
     thread_id: str
     turn_id: str
     text: str
+    rerouted: tuple[str|None,str|None]|None=None
 
 
 class Conversation(Protocol):
-    async def run(self,prompt: str)->PeerReply: ...
+    async def check(self,selection: peer_model.Selection)->None: ...
+    async def run(self,prompt: str,selection: peer_model.Selection)->PeerReply: ...
     async def close(self)->None: ...
+
+
+def reply_payload(reply,selection):
+    """A completed turn's reply, naming the model and effort that turn used."""
+    model=selection.public()
+    if reply.rerouted is not None:
+        model["rerouted"]={"to":reply.rerouted[0],"reason":reply.rerouted[1]}
+    return {"ok":True,"thread_id":reply.thread_id,"turn_id":reply.turn_id,"text":reply.text,"peer_model":model}
 
 
 def timeout_ceiling(extended):
@@ -93,8 +114,16 @@ def validate_config(config):
         if timeout_refusal(config.timeout_seconds,config.extended_timeout) is not None:
             raise BridgeError("CONFIGURATION_ERROR",cause="timeout_range")
         if config.model is not None and (type(config.model) is not str or
-                not re.fullmatch(r"[A-Za-z0-9_./:-]{1,128}",config.model)):
+                not peer_model.MODEL_RE.fullmatch(config.model)):
             raise BridgeError("CONFIGURATION_ERROR")
+        if config.effort is not None and (type(config.effort) is not str or
+                not peer_model.EFFORT_RE.fullmatch(config.effort)):
+            raise BridgeError("CONFIGURATION_ERROR")
+        if config.model_settings_root is not None:
+            if not isinstance(config.model_settings_root,Path) or not config.model_settings_root.is_absolute():
+                raise BridgeError("CONFIGURATION_ERROR",cause="model_mode")
+            if config.model is not None or config.effort is not None:
+                raise BridgeError("CONFIGURATION_ERROR",cause="model_mode")
     except CoreError as error:
         raise BridgeError("CONFIGURATION_ERROR") from error
     return config
@@ -171,9 +200,21 @@ class Bridge:
         self._closed=False
         self._cache={}
 
+    def selection(self):
+        if self.config.model_settings_root is None:
+            return peer_model.fixed(self.config.model,self.config.effort)
+        try:
+            return peer_model.selection_for(self.config.model_settings_root,self.config.operator.repository_id)
+        except peer_model.SettingsError as error:
+            raise BridgeError("MODEL_SETTINGS_INVALID",cause="model_settings") from error
+
     def status(self):
         payload={"ok":True,"instance_id":self.instance_id,"thread_id":self._owned_thread(),
             "state":"poisoned" if self._poisoned else "busy" if self._busy else "ready"}
+        try:
+            payload["peer_model"]=self.selection().public()
+        except BridgeError as error:
+            payload["peer_model"]={"error":error.code}
         # Shown only when the operator opted in, so the default status is unchanged.
         if self.config.extended_timeout:
             payload["extended_timeout"]={"timeout_seconds":self.config.timeout_seconds,
@@ -243,9 +284,23 @@ class Bridge:
         reservation=RESULT_BYTES+2048
         if len(self._cache)>=MAX_KEYS or sum(map(len,self._cache.values()))+reservation>CACHE_BYTES:
             return self.error_response(BridgeError("LIMIT_EXCEEDED",cause="cache_limit"))
+        try:
+            # Fresh for every turn, so an operator's switch reaches the next turn of an open conversation.
+            selection=self.selection()
+        except BridgeError as error:
+            return self.error_response(error)
         self._busy=True
         deadline=asyncio.get_running_loop().time()+self.config.timeout_seconds
-        task=asyncio.create_task(self.conversation.run(parsed.prompt))
+
+        async def attempt():
+            try:
+                await self.conversation.check(selection)
+            except ModelCheckRefusal as refusal:
+                # Returned, not raised: only a refusal from the check itself is certain (no turn started).
+                return refusal
+            return await self.conversation.run(parsed.prompt,selection)
+
+        task=asyncio.create_task(attempt())
         cancelled=None
         try:
             done,_=await asyncio.wait({task},timeout=max(0,deadline-CLEANUP_SECONDS-asyncio.get_running_loop().time()))
@@ -257,6 +312,9 @@ class Bridge:
                 # This is cancellation of the SDK task, not cancellation of
                 # the caller waiting above. Return an uncertain receipt.
                 raise BridgeError("SDK_FAILURE",cause="cancellation") from error
+            if isinstance(reply,ModelCheckRefusal):
+                # Certain: nothing ran, nothing to clean up, nothing cached, the conversation stays usable.
+                return self.error_response(reply)
             if (not isinstance(reply,PeerReply) or not _safe_id(reply.thread_id) or not _safe_id(reply.turn_id)
                     or self.thread_id is not None and self.thread_id!=reply.thread_id):
                 raise BridgeError("INVALID_FINAL_MESSAGE",cause="invalid_identity")
@@ -269,7 +327,7 @@ class Bridge:
                 raise BridgeError("INVALID_FINAL_MESSAGE",cause="invalid_final") from error
             if size>TEXT_BYTES:
                 raise BridgeError("LIMIT_EXCEEDED",cause="text_limit",turn_id=reply.turn_id)
-            payload={"ok":True,"thread_id":reply.thread_id,"turn_id":reply.turn_id,"text":reply.text}
+            payload=reply_payload(reply,selection)
             mcp_result(payload,self.config.result_reserve)
         except (Exception,asyncio.CancelledError) as original:
             if isinstance(original,asyncio.CancelledError):

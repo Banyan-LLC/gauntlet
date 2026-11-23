@@ -5,7 +5,8 @@ import json
 
 import pytest
 
-from gauntlet_review.codex_bridge.engine import Bridge,BridgeConfig,BridgeError,PeerReply
+from gauntlet_review import peer_model
+from gauntlet_review.codex_bridge.engine import Bridge,BridgeConfig,BridgeError,ModelCheckRefusal,PeerReply
 
 pytestmark=pytest.mark.anyio
 
@@ -19,9 +20,18 @@ class Conversation:
         self.entered=asyncio.Event()
         self.release=None
         self.close_failure=None
+        self.checks=[]
+        self.check_failure=None
+        self.selections=[]
 
-    async def run(self,prompt):
+    async def check(self,selection):
+        self.checks.append(selection)
+        if self.check_failure:
+            raise self.check_failure
+
+    async def run(self,prompt,selection):
         self.calls+=1
+        self.selections.append(selection)
         self.entered.set()
         if self.release:
             await self.release.wait()
@@ -33,6 +43,9 @@ class Conversation:
         self.closed+=1
         if self.close_failure:
             raise self.close_failure
+
+
+BUILT_IN={"model":"gpt-6.1-sol","model_source":"built_in","effort":"xhigh","effort_source":"built_in"}
 
 
 def request(bridge,key="first",prompt="private-prompt",thread=None):
@@ -56,7 +69,7 @@ async def test_exact_delayed_retry_and_same_thread_continuation(config):
     assert bridge.status()["state"]=="ready" and bridge.status()["thread_id"] is None
     initial=request(bridge)
     first=await bridge.call(initial)
-    assert first=={"ok":True,"thread_id":"fixture-thread","turn_id":"turn-1","text":"complete"}
+    assert first=={"ok":True,"thread_id":"fixture-thread","turn_id":"turn-1","text":"complete","peer_model":BUILT_IN}
     second=await bridge.call(request(bridge,"fix",thread="fixture-thread"))
     assert second["turn_id"]=="turn-2" and second["thread_id"]==first["thread_id"]
     assert await bridge.call(initial)==first
@@ -116,10 +129,10 @@ async def test_concurrent_calls_refuse_busy_without_poisoning(config):
 
 async def test_busy_status_and_refusals_include_already_owned_native_thread(config):
     class Started(Conversation):
-        async def run(self,prompt):
+        async def run(self,prompt,selection):
             self.thread_id="fixture-thread"
             self.turn_id="turn-1"
-            return await super().run(prompt)
+            return await super().run(prompt,selection)
     peer=Started(); peer.release=asyncio.Event(); bridge=Bridge(config,peer)
     running=asyncio.create_task(bridge.call(request(bridge)))
     await peer.entered.wait()
@@ -214,7 +227,7 @@ async def test_operator_timeout_is_strict_and_bounded(config,timeout):
 @pytest.mark.parametrize("timeout",[10,600,1800])
 async def test_default_ceiling_keeps_the_status_shape(config,timeout):
     bridge=Bridge(replace(config,timeout_seconds=timeout),Conversation())
-    assert set(bridge.status())=={"ok","instance_id","thread_id","state"}
+    assert set(bridge.status())=={"ok","instance_id","thread_id","state","peer_model"}
 
 
 @pytest.mark.parametrize("timeout",[1801,5400])
@@ -283,13 +296,114 @@ async def test_operator_cannot_use_author_role_or_relative_paths(config):
         assert error.value.code=="CONFIGURATION_ERROR"
 
 
+def settings_mode(config,tmp_path):
+    return replace(config,model_settings_root=tmp_path/"model-root")
+
+
+def write_settings(root,document):
+    root.mkdir(parents=True,exist_ok=True)
+    (root/peer_model.SETTINGS_NAME).write_text(document if isinstance(document,str) else json.dumps(document))
+
+
+async def test_status_reports_the_selection_for_each_mode(config,tmp_path):
+    assert Bridge(config,Conversation()).status()["peer_model"]==BUILT_IN
+    assert Bridge(replace(config,model="gpt-6-sol"),Conversation()).status()["peer_model"]=={
+        "model":"gpt-6-sol","model_source":"operator","effort":"xhigh","effort_source":"built_in"}
+    settings=settings_mode(config,tmp_path)
+    write_settings(settings.model_settings_root,{"version":1,"default":{"effort":"max"},
+        "repositories":{"fixture":{"model":"gpt-6-astra"}}})
+    bridge=Bridge(settings,Conversation())
+    assert bridge.status()["peer_model"]=={"model":"gpt-6-astra","model_source":"repository",
+        "effort":"max","effort_source":"global"}
+    write_settings(settings.model_settings_root,"{not json")
+    status=bridge.status()
+    assert status["ok"] is True and status["peer_model"]=={"error":"MODEL_SETTINGS_INVALID"}
+
+
+async def test_a_switch_between_turns_reaches_the_next_turn(config,tmp_path):
+    settings=settings_mode(config,tmp_path); root=settings.model_settings_root
+    peer=Conversation(); bridge=Bridge(settings,peer)
+    first=await bridge.call(request(bridge))
+    peer_model.save(root,peer_model.with_fields(peer_model.EMPTY,"fixture",model="gpt-6-sol",effort="high"))
+    second=await bridge.call(request(bridge,"second",thread="fixture-thread"))
+    assert [s.public() for s in peer.selections]==[BUILT_IN,{"model":"gpt-6-sol","model_source":"repository",
+        "effort":"high","effort_source":"repository"}]
+    assert peer.checks==peer.selections
+    assert first["peer_model"]==BUILT_IN and second["peer_model"]["model"]=="gpt-6-sol"
+    assert second["peer_model"]["effort"]=="high"
+
+
+async def test_an_invalid_settings_file_refuses_cleanly(config,tmp_path):
+    settings=settings_mode(config,tmp_path); root=settings.model_settings_root
+    write_settings(root,'{"version":1,"default":{"effort":"High"}}')
+    peer=Conversation(); bridge=Bridge(settings,peer); initial=request(bridge)
+    result=await bridge.call(initial)
+    refused(result,"MODEL_SETTINGS_INVALID")
+    assert result["error"]["cause"]=="model_settings"
+    assert peer.calls==0 and peer.checks==[] and bridge.status()["state"]=="ready"
+    write_settings(root,{"version":1,"default":{"effort":"high"}})
+    retried=await bridge.call(initial)
+    assert retried["ok"] and retried["peer_model"]["effort"]=="high" and peer.calls==1
+
+
+@pytest.mark.parametrize("code",["MODEL_UNAVAILABLE","EFFORT_NOT_SUPPORTED","CATALOG_UNAVAILABLE"])
+async def test_catalog_refusals_are_certain_and_recoverable(config,code):
+    peer=Conversation(); peer.check_failure=ModelCheckRefusal(code,cause="model_check")
+    bridge=Bridge(config,peer); initial=request(bridge)
+    result=await bridge.call(initial)
+    refused(result,code)
+    assert result["error"]["cause"]=="model_check"
+    assert peer.calls==0 and peer.closed==0 and bridge.status()["state"]=="ready"
+    peer.check_failure=None
+    retried=await bridge.call(initial)
+    assert retried["ok"] and retried["thread_id"]=="fixture-thread" and peer.calls==1 and peer.closed==0
+
+
+async def test_a_failing_check_poisons_as_today(config):
+    peer=Conversation(); peer.check_failure=RuntimeError("private-prompt")
+    bridge=Bridge(config,peer); initial=request(bridge)
+    result=await bridge.call(initial)
+    refused(result,"SDK_FAILURE",uncertain=True,cleanup="succeeded")
+    assert peer.calls==0 and peer.closed==1 and bridge.status()["state"]=="poisoned"
+    assert await bridge.call(initial)==result
+
+
+async def test_a_model_check_refusal_from_run_is_not_certain(config):
+    peer=Conversation(failure=ModelCheckRefusal("MODEL_UNAVAILABLE",cause="model_check"))
+    bridge=Bridge(config,peer)
+    result=await bridge.call(request(bridge))
+    assert result["error"]["uncertain"] is True and bridge.status()["state"]=="poisoned" and peer.closed==1
+
+
+async def test_replay_after_a_switch_returns_the_original_model(config,tmp_path):
+    settings=settings_mode(config,tmp_path); root=settings.model_settings_root
+    peer=Conversation(); bridge=Bridge(settings,peer); initial=request(bridge)
+    first=await bridge.call(initial)
+    peer_model.save(root,peer_model.with_fields(peer_model.EMPTY,None,model="gpt-6-sol"))
+    assert await bridge.call(initial)==first and first["peer_model"]==BUILT_IN and peer.calls==1
+
+
+@pytest.mark.parametrize("change",[{"effort":"High"},{"effort":7},{"model":"m","model_settings_root":"ROOT"},
+    {"effort":"high","model_settings_root":"ROOT"},{"model_settings_root":"relative"},{"model_settings_root":"text"}],
+    ids=["bad-effort","effort-type","settings-with-model","settings-with-effort","relative-root","root-not-path"])
+async def test_configuration_refusals(config,tmp_path,change):
+    from pathlib import Path
+    values={key:(tmp_path if value=="ROOT" else Path("relative") if value=="relative" else value)
+        for key,value in change.items()}
+    with pytest.raises(BridgeError) as error:
+        Bridge(replace(config,**values),Conversation())
+    assert error.value.code=="CONFIGURATION_ERROR"
+
+
 def largest_text(reserve):
     """The longest final text mcp_result admits for a successful turn under this reserve."""
     from gauntlet_review.codex_bridge.engine import TEXT_BYTES,mcp_result
 
     def fits(size):
         try:
-            mcp_result({"ok":True,"thread_id":"fixture-thread","turn_id":"turn-1","text":"x"*size},reserve)
+            # A completed reply also names the peer model it used (the built-in default here).
+            mcp_result({"ok":True,"thread_id":"fixture-thread","turn_id":"turn-1","text":"x"*size,
+                "peer_model":BUILT_IN},reserve)
             return True
         except BridgeError:
             return False
@@ -318,3 +432,29 @@ def test_an_invalid_result_reserve_is_a_configuration_error(config,reserve):
     with pytest.raises(BridgeError) as error:
         Bridge(replace(config,result_reserve=reserve),Conversation())
     assert error.value.code=="CONFIGURATION_ERROR"
+
+
+
+@pytest.mark.parametrize("failure",["deep","root"])
+async def test_unreadable_settings_refuse_cleanly_and_recover(config,tmp_path,monkeypatch,failure):
+    # R4-F1: parser exhaustion and filesystem errors are MODEL_SETTINGS_INVALID, never an escaping exception.
+    settings=settings_mode(config,tmp_path); root=settings.model_settings_root
+    if failure=="deep":
+        write_settings(root,"[" * 30000 + "]" * 30000)
+    else:
+        write_settings(root,{"version":1,"default":{"effort":"high"}})
+        from gauntlet_review import launch
+        original=launch.check_unredirected
+        def unreadable(path):
+            raise PermissionError("access denied")
+        monkeypatch.setattr(launch,"check_unredirected",unreadable)
+    peer=Conversation(); bridge=Bridge(settings,peer); initial=request(bridge)
+    assert bridge.status()["peer_model"]=={"error":"MODEL_SETTINGS_INVALID"}
+    refused(await bridge.call(initial),"MODEL_SETTINGS_INVALID")
+    assert peer.calls==0 and peer.checks==[] and bridge.status()["state"]=="ready"
+    if failure=="deep":
+        write_settings(root,{"version":1,"default":{"effort":"high"}})
+    else:
+        monkeypatch.setattr(launch,"check_unredirected",original)
+    retried=await bridge.call(initial)
+    assert retried["ok"] and retried["peer_model"]["effort"]=="high" and peer.calls==1

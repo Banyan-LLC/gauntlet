@@ -495,10 +495,13 @@ def create_peer_server(resolver, timeout_seconds, extended_timeout, model=None):
             return mcp_result({**_peer_error("LIMIT_EXCEEDED", "binding_budget"), "binding": binding})
 
     def create(bound):
+        # Without a fixed model, every turn reads the operator's choice under the state root for this binding's
+        # repository (gauntlet_review.peer_model); the author host can never select a model.
         config = BridgeConfig(OperatorConfig(bound.repo, bound.state_dir, bound.repository_id, bound.source_ref,
                                              bound.target_ref, "claude-peer", "reviewer"),
                               model=model, timeout_seconds=timeout_seconds, extended_timeout=extended_timeout,
-                              result_reserve=binding_reserve(public(bound)))
+                              result_reserve=binding_reserve(public(bound)),
+                              model_settings_root=None if model is not None else resolver.state_root)
         return Bridge(config, peer_server.SdkConversation(config))
 
     @asynccontextmanager

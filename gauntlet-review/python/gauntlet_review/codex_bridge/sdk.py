@@ -3,18 +3,42 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import asdict
+import re
 import sys
 
 from openai_codex import AsyncCodex,ApprovalMode,CodexConfig,Sandbox
 from openai_codex.errors import JsonRpcError,TransportClosedError
 from openai_codex.generated.v2_all import (
-    AgentMessageThreadItem,ItemCompletedNotification,MessagePhase,
-    TurnCompletedNotification,TurnStatus,
+    AgentMessageThreadItem,ItemCompletedNotification,MessagePhase,ModelReroutedNotification,
+    ReasoningEffort,TurnCompletedNotification,TurnStatus,
 )
 
-from .engine import BridgeError,PeerReply,TEXT_BYTES,_consume,_encode,_safe_id,mcp_result,validate_config
+from gauntlet_review.peer_model import MODEL_RE
+from . import catalog
+from .engine import (BridgeError,ModelCheckRefusal,PeerReply,TEXT_BYTES,_consume,_encode,_safe_id,mcp_result,
+    reply_payload,validate_config)
 
 EVENT_BYTES=64*1024*1024
+_REASON=re.compile(r"[A-Za-z0-9_.-]{1,64}\Z")
+
+
+def _sdk_error(original):
+    """The adapter's typed failure for an SDK exception, or None for cancellation and process interrupts."""
+    if isinstance(original,BridgeError):
+        return original
+    if isinstance(original,JsonRpcError):
+        return BridgeError("SDK_FAILURE",cause="rpc")
+    if isinstance(original,TransportClosedError):
+        return BridgeError("SDK_FAILURE",cause="transport")
+    if isinstance(original,Exception):
+        return BridgeError("SDK_FAILURE",cause="sdk")
+    return None
+
+
+def _rerouted(payload):
+    to=payload.to_model if type(payload.to_model) is str and MODEL_RE.fullmatch(payload.to_model) else None
+    reason=getattr(payload.reason,"root",payload.reason)
+    return to,reason if type(reason) is str and _REASON.fullmatch(reason) else None
 
 
 def reviewer_config(config):
@@ -43,19 +67,48 @@ class SdkConversation:
         self.thread_id=None
         self.turn_id=None
         self._stream_close_failure=None
+        self._initialized=False
 
-    async def run(self,prompt):
+    async def _ensure_client(self):
+        # Start and initialize explicitly: models() would otherwise initialize lazily, and an initialize error
+        # means a broken client, never a catalog answer.
+        if self.client is None:
+            self.client=AsyncCodex(CodexConfig(cwd=str(self.config.operator.repo_path)))
+        if not self._initialized:
+            await self.client.__aenter__()
+            self._initialized=True
+
+    async def check(self,selection):
+        """Refuses (ModelCheckRefusal) a selection the catalog does not list; starts no turn."""
+        try:
+            await self._ensure_client()
+            try:
+                response=await self.client.models(include_hidden=True)
+            except JsonRpcError as error:
+                raise ModelCheckRefusal("CATALOG_UNAVAILABLE",cause="model_check") from error
+            code=catalog.check(catalog.from_response(response),selection.model,selection.effort)
+        except BaseException as original:
+            error=_sdk_error(original)
+            if error is None:
+                raise
+            if error is original:
+                raise
+            raise error from original
+        if code is not None:
+            raise ModelCheckRefusal(code,cause="model_check")
+
+    async def run(self,prompt,selection):
         stream=None
         primary=None
+        rerouted=None
         try:
-            if self.client is None:
-                self.client=AsyncCodex(CodexConfig(cwd=str(self.config.operator.repo_path)))
+            await self._ensure_client()
             if self.thread is None:
                 self.thread=await self.client.thread_start(cwd=str(self.config.operator.repo_path),
-                    config=reviewer_config(self.config),model=self.config.model,
+                    config=reviewer_config(self.config),model=selection.model,
                     approval_mode=ApprovalMode.deny_all,sandbox=Sandbox.read_only)
                 self.thread_id=self.thread.id
-            self.active=await self.thread.turn(prompt)
+            self.active=await self.thread.turn(prompt,model=selection.model,effort=ReasoningEffort(selection.effort))
             self.turn_id=self.active.id
             if self.active.thread_id!=self.thread_id:
                 raise BridgeError("INVALID_TERMINAL",cause="thread_mismatch")
@@ -69,6 +122,9 @@ class SdkConversation:
                 decoded+=len(_encode({"method":event.method,"payload":data}))
                 if decoded>EVENT_BYTES:
                     raise BridgeError("LIMIT_EXCEEDED",cause="event_limit")
+                if (event.method=="model/rerouted" and isinstance(payload,ModelReroutedNotification)
+                        and payload.thread_id==self.thread_id and payload.turn_id==self.turn_id):
+                    rerouted=_rerouted(payload)
                 if (event.method=="item/completed" and isinstance(payload,ItemCompletedNotification)
                         and payload.thread_id==self.thread_id and payload.turn_id==self.turn_id):
                     item=payload.item.root
@@ -90,22 +146,16 @@ class SdkConversation:
                     # result, whose escaped duplicate copies can exceed text size.
                     if not _safe_id(self.thread_id) or not _safe_id(self.turn_id):
                         raise BridgeError("INVALID_FINAL_MESSAGE",cause="invalid_identity")
-                    mcp_result({"ok":True,"thread_id":self.thread_id,
-                        "turn_id":self.turn_id,"text":final},self.config.result_reserve)
-                    return PeerReply(self.thread_id,self.turn_id,final)
+                    reply=PeerReply(self.thread_id,self.turn_id,final,rerouted)
+                    mcp_result(reply_payload(reply,selection),self.config.result_reserve)
+                    return reply
             raise BridgeError("MISSING_TERMINAL",cause="unterminated_stream")
         except BaseException as original:
-            if isinstance(original,BridgeError):
-                error=original
-            elif isinstance(original,JsonRpcError):
-                error=BridgeError("SDK_FAILURE",cause="rpc")
-            elif isinstance(original,TransportClosedError):
-                error=BridgeError("SDK_FAILURE",cause="transport")
-            elif isinstance(original,UnicodeError):
+            if isinstance(original,UnicodeError):
                 error=BridgeError("INVALID_FINAL_MESSAGE",cause="invalid_final")
-            elif isinstance(original,Exception):
-                error=BridgeError("SDK_FAILURE",cause="sdk")
             else:
+                error=_sdk_error(original)
+            if error is None:
                 # Cancellation and process interrupts remain primary even if
                 # closing the stream also fails.
                 primary=original

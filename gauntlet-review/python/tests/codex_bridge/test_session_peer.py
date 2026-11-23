@@ -12,14 +12,20 @@ from gauntlet_review.codex_bridge import server as peer_server
 from gauntlet_review.codex_bridge.engine import BridgeError, PeerReply
 
 pytestmark = pytest.mark.anyio
+BUILT_IN = {"model": "gpt-6.1-sol", "model_source": "built_in", "effort": "xhigh", "effort_source": "built_in"}
 
 
 class Peer:
     def __init__(self, config):
         self.config, self.calls, self.closed = config, 0, 0
         self.text, self.release, self.entered = "complete", None, asyncio.Event()
+        self.selections = []
 
-    async def run(self, prompt):
+    async def check(self, selection):
+        pass
+
+    async def run(self, prompt, selection):
+        self.selections.append(selection)
         self.calls += 1
         self.entered.set()
         if self.release:
@@ -108,6 +114,24 @@ async def test_a_branch_switch_between_status_and_review_is_binding_changed(serv
         assert new["instance_id"] != old["instance_id"] and new["binding"] == binding_of(work, "feature/y")
 
 
+async def test_each_binding_uses_its_repositorys_override(server, peers, make_checkout, run_git, tmp_path):
+    from gauntlet_review import peer_model
+    work = make_checkout()
+    other = make_checkout("other")
+    run_git(other, "remote", "set-url", "origin", "git@github.com:Other/Thing.git")
+    peer_model.save(tmp_path / "state", peer_model.with_fields(peer_model.EMPTY, "owner-repo", model="gpt-6-sol"))
+    async with server() as client:
+        mine = await call(client, "codex_status", {"checkout": str(work)})
+        theirs = await call(client, "codex_status", {"checkout": str(other)})
+        reply = await call(client, "codex_review", {"checkout": str(work), "instance_id": mine["instance_id"],
+                                                    "key": "k", "prompt": "review", "expected_thread_id": None})
+    assert mine["peer_model"] == {"model": "gpt-6-sol", "model_source": "repository", "effort": "xhigh",
+                                  "effort_source": "built_in"}
+    assert theirs["peer_model"] == BUILT_IN and theirs["binding"]["repository_id"] == "other-thing"
+    assert reply["peer_model"]["model"] == "gpt-6-sol" and peers[0].selections[0].model == "gpt-6-sol"
+    assert all(p.config.model is None and p.config.model_settings_root == tmp_path / "state" for p in peers)
+
+
 async def test_an_unknown_instance_is_adapter_restarted(server, peers, make_checkout):
     work = make_checkout()
     async with server() as client:
@@ -147,7 +171,8 @@ async def test_replies_carry_the_binding_at_the_size_boundary(server, peers, mak
 
     def fits(size):
         try:
-            mcp_result({"ok": True, "thread_id": "thread-1", "turn_id": "turn-1", "text": "x" * size}, reserve)
+            mcp_result({"ok": True, "thread_id": "thread-1", "turn_id": "turn-1", "text": "x" * size,
+                        "peer_model": BUILT_IN}, reserve)
             return True
         except BridgeError:
             return False

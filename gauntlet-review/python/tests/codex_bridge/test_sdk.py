@@ -9,11 +9,16 @@ import pytest
 pytest.importorskip("openai_codex")
 from openai_codex import ApprovalMode,Sandbox
 from openai_codex.errors import JsonRpcError,TransportClosedError
-from openai_codex.generated.v2_all import ItemCompletedNotification,TurnCompletedNotification
+from openai_codex.generated.v2_all import (ItemCompletedNotification,ModelListResponse,ModelReroutedNotification,
+    ReasoningEffort,TurnCompletedNotification)
 from openai_codex.models import Notification,UnknownNotification
 
-from gauntlet_review.codex_bridge.engine import Bridge,BridgeError
+from gauntlet_review.codex_bridge.engine import Bridge,BridgeError,ModelCheckRefusal
 from gauntlet_review.codex_bridge import sdk
+from gauntlet_review.peer_model import Selection
+from .test_catalog import model as catalog_model,response as catalog_response
+
+SELECTION=Selection("gpt-6-sol","high","global","global")
 
 pytestmark=pytest.mark.anyio
 
@@ -51,7 +56,20 @@ class Native:
     def __init__(self,events):
         self.events=events; self.config=None; self.options=None; self.starts=0
         self.handles=[]; self.closed=False; self.failure=None; self.close_failure=None
-        self.id="thread-1"
+        self.id="thread-1"; self.turn_options=[]; self.entered=0; self.enter_failure=None
+        self.catalog=catalog_response(); self.catalog_failure=None; self.catalog_requests=[]
+
+    async def __aenter__(self):
+        self.entered+=1
+        if self.enter_failure:
+            raise self.enter_failure
+        return self
+
+    async def models(self,*,include_hidden=False):
+        self.catalog_requests.append(include_hidden)
+        if self.catalog_failure:
+            raise self.catalog_failure
+        return self.catalog
 
     def create(self,config):
         self.config=config
@@ -63,7 +81,8 @@ class Native:
             raise self.failure
         return self
 
-    async def turn(self,prompt):
+    async def turn(self,prompt,**options):
+        self.turn_options.append(options)
         number=len(self.handles)+1
         events=self.events(number) if callable(self.events) else self.events
         handle=Handle(events,number); self.handles.append(handle)
@@ -84,13 +103,13 @@ def conversation(config,monkeypatch,events):
 async def test_public_sdk_start_configuration_and_same_thread_are_locked(config,monkeypatch):
     peer,native=conversation(config,monkeypatch,lambda n:[message(turn=f"turn-{n}"),terminal(turn=f"turn-{n}")])
     assert native.config is None
-    first=await peer.run("review")
-    second=await peer.run("fix")
+    first=await peer.run("review",SELECTION)
+    second=await peer.run("fix",SELECTION)
     assert (first.thread_id,first.turn_id,second.thread_id,second.turn_id)==("thread-1","turn-1","thread-1","turn-2")
     assert native.starts==1
     options=native.options
     assert options["approval_mode"] is ApprovalMode.deny_all and options["sandbox"] is Sandbox.read_only
-    assert options["model"] is None and options["cwd"]==str(config.operator.repo_path)
+    assert options["model"]=="gpt-6-sol" and options["cwd"]==str(config.operator.repo_path)
     required=options["config"]["mcp_servers"]["gauntlet-reviewer"]
     assert required["required"] is True and required["command"]==sys.executable
     assert required["enabled_tools"]==["read_review","record_evidence","review_status","submit_review"]
@@ -145,10 +164,10 @@ async def test_exact_decoded_event_limit_and_immediate_overflow_stop(config,monk
     peer,native=conversation(config,monkeypatch,[full,final,end,AssertionError("consumed after terminal/overflow")])
     if overflow:
         with pytest.raises(BridgeError) as error:
-            await peer.run("review")
+            await peer.run("review",SELECTION)
         assert error.value.code=="LIMIT_EXCEEDED"
     else:
-        assert (await peer.run("review")).text=="complete"
+        assert (await peer.run("review",SELECTION)).text=="complete"
     await peer.close()
     assert native.handles[0].consumed==3 and native.handles[0].closed
 
@@ -157,7 +176,7 @@ async def test_one_oversized_decoded_event_stops_before_following_message(config
     huge=Notification("unknown",UnknownNotification({"body":"x"*(64*1024*1024)}))
     peer,native=conversation(config,monkeypatch,[huge,AssertionError("read past overflow")])
     with pytest.raises(BridgeError) as error:
-        await peer.run("review")
+        await peer.run("review",SELECTION)
     assert error.value.code=="LIMIT_EXCEEDED" and native.handles[0].consumed==1
     await peer.close()
     assert native.handles[0].interrupted
@@ -168,7 +187,7 @@ async def test_one_oversized_decoded_event_stops_before_following_message(config
 async def test_sdk_typed_causes_are_chained_without_leaking_native_messages(config,monkeypatch,failure,cause):
     peer,native=conversation(config,monkeypatch,[]); native.failure=failure
     with pytest.raises(BridgeError) as error:
-        await peer.run("review")
+        await peer.run("review",SELECTION)
     assert error.value.__cause__ is failure and error.value.cause==cause
     bridge=Bridge(config,peer)
     result=await bridge.call({"instance_id":bridge.instance_id,"key":"first","prompt":"review","expected_thread_id":None})
@@ -179,7 +198,7 @@ async def test_sdk_typed_causes_are_chained_without_leaking_native_messages(conf
 async def test_interrupt_and_close_failures_both_retain_typed_causes(config,monkeypatch):
     peer,native=conversation(config,monkeypatch,[message()])
     with pytest.raises(BridgeError):
-        await peer.run("review")
+        await peer.run("review",SELECTION)
     interrupt_error=JsonRpcError(-1,"private-interrupt")
     close_error=TransportClosedError("private-close")
     async def failed_interrupt():
@@ -198,7 +217,7 @@ async def test_interrupt_and_close_failures_both_retain_typed_causes(config,monk
 async def test_cancelled_interrupt_task_still_attempts_sdk_close(config,monkeypatch):
     peer,native=conversation(config,monkeypatch,[])
     with pytest.raises(BridgeError):
-        await peer.run("review")
+        await peer.run("review",SELECTION)
     cancelled=asyncio.CancelledError("private-interrupt")
     async def cancelled_interrupt():
         raise cancelled
@@ -208,3 +227,90 @@ async def test_cancelled_interrupt_task_still_attempts_sdk_close(config,monkeypa
     assert native.closed
     assert caught.value.code=="CLEANUP_FAILURE" and caught.value.cause=="interrupt_failure"
     assert caught.value.__cause__ is cancelled
+
+
+def rerouted(thread="thread-1",turn="turn-1"):
+    return Notification("model/rerouted",ModelReroutedNotification.model_validate({"threadId":thread,
+        "turnId":turn,"fromModel":"gpt-6-sol","toModel":"gpt-6-luna","reason":"highRiskCyberActivity"}))
+
+
+async def test_every_turn_receives_the_model_and_effort(config,monkeypatch):
+    peer,native=conversation(config,monkeypatch,lambda n:[message(turn=f"turn-{n}"),terminal(turn=f"turn-{n}")])
+    await peer.run("review",SELECTION)
+    await peer.run("fix",Selection("gpt-6-luna","max","repository","repository"))
+    assert [(o["model"],o["effort"]) for o in native.turn_options]==[("gpt-6-sol",ReasoningEffort("high")),
+        ("gpt-6-luna",ReasoningEffort("max"))]
+    assert native.turn_options[1]["effort"].value=="max"
+    assert native.starts==1 and native.options["model"]=="gpt-6-sol"
+    await peer.close()
+
+
+def listing(*models,next_cursor=None):
+    return ModelListResponse.model_validate({"data":list(models),"nextCursor":next_cursor})
+
+
+SOL=catalog_model("gpt-6-sol","GPT-6-Sol",("low","medium","high","xhigh"))
+LUNA=catalog_model("gpt-6-luna","GPT-6-Luna",("low","medium"))
+
+
+@pytest.mark.parametrize("catalog,failure,code",[
+    (listing(SOL),None,None),
+    (listing(LUNA),None,"MODEL_UNAVAILABLE"),
+    (listing(catalog_model("gpt-6-sol","GPT-6-Sol",("low",))),None,"EFFORT_NOT_SUPPORTED"),
+    (listing(LUNA,next_cursor="more"),None,"CATALOG_UNAVAILABLE"),
+    (listing(SOL),JsonRpcError(-1,"private-catalog"),"CATALOG_UNAVAILABLE"),
+],ids=["listed","unknown-model","unsupported-effort","paged","rpc-error"])
+async def test_check_answers_from_the_catalog(config,monkeypatch,catalog,failure,code):
+    peer,native=conversation(config,monkeypatch,[])
+    native.catalog,native.catalog_failure=catalog,failure
+    for _ in range(2):
+        if code is None:
+            assert await peer.check(SELECTION) is None
+        else:
+            with pytest.raises(ModelCheckRefusal) as refused:
+                await peer.check(SELECTION)
+            assert (refused.value.code,refused.value.cause)==(code,"model_check")
+    assert native.catalog_requests==[True,True] and native.entered==1 and native.handles==[]
+
+
+async def test_a_transport_failure_during_the_check_is_not_a_refusal(config,monkeypatch):
+    peer,native=conversation(config,monkeypatch,[])
+    native.catalog_failure=TransportClosedError("private-transport")
+    with pytest.raises(BridgeError) as error:
+        await peer.check(SELECTION)
+    assert not isinstance(error.value,ModelCheckRefusal)
+    assert (error.value.code,error.value.cause)==("SDK_FAILURE","transport")
+
+
+async def test_an_initialize_failure_is_not_a_catalog_refusal(config,monkeypatch):
+    peer,native=conversation(config,monkeypatch,[message(),terminal()])
+    native.enter_failure=JsonRpcError(-1,"private-initialize")
+    bridge=Bridge(config,peer)
+    request={"instance_id":bridge.instance_id,"key":"first","prompt":"review","expected_thread_id":None}
+    result=await bridge.call(request)
+    assert result["ok"] is False and result["error"]["code"]=="SDK_FAILURE"
+    assert result["error"]["uncertain"] is True and result["error"]["cleanup"]["status"]=="succeeded"
+    assert bridge.status()["state"]=="poisoned" and native.handles==[] and native.catalog_requests==[]
+    assert native.closed and await bridge.call(request)==result
+    # Initialization succeeding and the catalog request failing stays a recoverable refusal.
+    peer,native=conversation(config,monkeypatch,[message(),terminal()])
+    native.catalog_failure=JsonRpcError(-1,"private-catalog")
+    bridge=Bridge(config,peer)
+    request={"instance_id":bridge.instance_id,"key":"first","prompt":"review","expected_thread_id":None}
+    result=await bridge.call(request)
+    assert result["error"]["code"]=="CATALOG_UNAVAILABLE" and result["error"]["uncertain"] is False
+    assert bridge.status()["state"]=="ready" and not native.closed and native.handles==[]
+    native.catalog_failure=None
+    assert (await bridge.call(request))["ok"]
+
+
+@pytest.mark.parametrize("events,expected",[
+    ([rerouted(),message(),terminal()],("gpt-6-luna","highRiskCyberActivity")),
+    ([rerouted(turn="turn-9"),message(),terminal()],None),
+    ([rerouted(thread="thread-9"),message(),terminal()],None),
+],ids=["matching","foreign-turn","foreign-thread"])
+async def test_a_matching_reroute_is_reported(config,monkeypatch,events,expected):
+    peer,native=conversation(config,monkeypatch,events)
+    reply=await peer.run("review",SELECTION)
+    assert reply.rerouted==expected
+    await peer.close()
