@@ -78,9 +78,11 @@ sandbox. Treat database contents and source/evidence captures as sensitive.
 
 ## Required configuration
 
-Each process has one immutable repository, ref pair and participant/role. Every
-flag is required; there are no environment overrides, remote transports, command
-execution options or quota overrides:
+An explicit-tuple process (the entry points in this section, and the reviewer core
+the SDK adapter gives each Codex thread) has one immutable repository, ref pair and
+participant/role. The [global registration](#global-registration) instead runs session
+servers that derive the binding on every call. Every flag is required; there are no
+environment overrides, remote transports, command execution options or quota overrides:
 
 ```powershell
 & 'C:/Users/YOU/AppData/Local/Gauntlet/mcp-venv/Scripts/python.exe' -m gauntlet_review.collaborative --repo 'C:/work/project' --state-dir 'C:/Users/YOU/AppData/Local/Gauntlet/state/project-review' --repository-id project --source-ref refs/heads/feature --target-ref refs/heads/main --participant claude-author --role author
@@ -108,46 +110,101 @@ every host configuration untouched. It rewrites nothing else.
 ## Global registration
 
 One user-scope registration of each server serves every Claude Code project. Both
-entries start the launcher, which runs in the session's working folder, works out
-that session's operator tuple there and then starts the ordinary server in the same
-process, so every process still has exactly one immutable tuple:
+entries start the launcher, which starts a **session server** in the same process:
 
 ```powershell
 & 'C:/Users/YOU/AppData/Local/Gauntlet/mcp-venv/Scripts/python.exe' -I -m gauntlet_review.launch core --state-root 'C:/Users/YOU/AppData/Local/Gauntlet/state'
 & 'C:/Users/YOU/AppData/Local/Gauntlet/mcp-venv/Scripts/python.exe' -I -m gauntlet_review.launch peer --state-root 'C:/Users/YOU/AppData/Local/Gauntlet/state'
 ```
 
-- `--repo` is the checkout containing the working folder; a linked worktree is its own checkout.
-- `--source-ref` is the branch that checkout has checked out. A detached HEAD is refused.
-- `--target-ref` is origin's default branch (`refs/remotes/origin/HEAD`), else
-  `refs/remotes/origin/main` or `refs/remotes/origin/master`. Hosts still own fetching.
-- `--repository-id` is `<owner>-<repository>` from origin's URL (lowercase, at most 64
-  characters), else the main checkout's folder name.
-- `--state-dir` is `<state-root>/<repository-id>--<branch>-<digest>`. The digest covers the
-  checkout path, the ID and both refs, so each checkout and ref pair has its own store and a
-  store is never rebound to other refs. The state root is never resolved: every existing
-  component of it, from the drive or filesystem root down, must be a real directory (no
-  symbolic link, junction or other reparse point), checked before anything is created or
-  logged, and the unresolved path is what the core receives and checks again. A new
-  directory (and a missing state root) is created restricted to the current account:
-  `icacls /inheritance:r /grant:r` on Windows, mode `0700` elsewhere; if that fails it is
-  removed again and the original failure is reported.
-- The participants are `claude-author` (role `author`) for `core` and `claude-peer` for `peer`;
-  `peer` passes `--timeout-seconds` (default 600) to the adapter, and `--allow-extended-timeout`
-  only when the operator gives it ([Longer peer turns](#longer-peer-turns-explicit-override)).
-  The core ignores both.
+A session server derives nothing at startup, because the host may start it in a folder
+that is not the agent's: a desktop worktree session's servers can start in the
+repository's main checkout. Instead every tool takes a required top-level `checkout`, the
+absolute path of the agent's current working folder, and the server derives that call's
+**binding** from it:
 
-Every failure before the hand-off prints one fixed code on stderr and nothing else: no
-path, argument or traceback (`NOT_A_GIT_CHECKOUT`, `DETACHED_HEAD`, `NO_TARGET_REF`,
-`UNSUPPORTED_REF`, `STATE_INSIDE_REPOSITORY`, `REDIRECTED_STATE_COMPONENT`,
+- the checkout is the one containing that folder; a linked worktree is its own checkout;
+- the source ref is the branch that checkout has checked out **now**, read on every call;
+- the target ref is origin's default branch (`refs/remotes/origin/HEAD`), else
+  `refs/remotes/origin/main` or `refs/remotes/origin/master`. Hosts still own fetching;
+- the repository ID is `<owner>-<repository>` from origin's URL (lowercase, at most 64
+  characters), else the main checkout's folder name;
+- the state directory is `<state-root>/<repository-id>--<branch>-<digest>`. The digest
+  covers the checkout path, the ID and both refs, so each checkout and ref pair has its own
+  store and a store is never rebound to other refs. These are the names earlier launcher
+  versions used, so existing stores are reused. The state root is never resolved: every
+  existing component of it, from the drive or filesystem root down, must be a real directory
+  (no symbolic link, junction or other reparse point), and the unresolved path is what the
+  core receives and checks again. A new directory (and, at startup, a missing state root) is
+  created restricted to the current account: `icacls /inheritance:r /grant:r` on Windows,
+  mode `0700` elsewhere; if that fails it is removed again and the original failure is
+  reported;
+- the participants are `claude-author` (role `author`) for `core` and `claude-peer` for
+  `peer`; `peer` passes `--timeout-seconds` (default 600) and, only when the operator gives
+  it, `--allow-extended-timeout` to each conversation
+  ([Longer peer turns](#longer-peer-turns-explicit-override)). The core ignores both.
+
+A branch switch or another worktree therefore takes effect on the next call. **No branch
+or worktree change ever needs a reconnect or a new session.** Every reply carries
+`binding`: `{"checkout", "repository_id", "source_ref", "target_ref"}`, or `null` when no
+binding could be derived. Check it before trusting a result. The state directory is never
+shown or selectable.
+
+`checkout` must be at most 4096 UTF-8 bytes with no control characters, and a local
+absolute path in native form: on Windows a drive letter, colon and root (with `/` treated
+as `\`), which rules out every UNC and device form; on POSIX one leading `/` and no `\`.
+A missing `checkout` is `INVALID_ARGUMENT` with reason `checkout_required`; an invalid one,
+reason `invalid_checkout`. Neither touches the filesystem.
+
+A binding that cannot be derived is an ordinary tool error, never a dead server. Its code
+is one of `NOT_A_GIT_CHECKOUT`, `DETACHED_HEAD`, `NO_TARGET_REF` (these three are
+`retryable`: fix the checkout and call again), `UNSUPPORTED_REF`,
+`UNSUPPORTED_REPOSITORY_ID`, `STATE_INSIDE_REPOSITORY`, `REDIRECTED_STATE_COMPONENT`,
+`STATE_COMPONENT_NOT_DIRECTORY`, `STATE_NOT_PRIVATE`, `STATE_UNAVAILABLE` or
+`INTERNAL_ERROR` (with a correlation ID), and its detail carries a fixed `hint`, such as
+"check out a branch, then call again; no reconnect is needed". Details go only to
+`<state-root>/launch.log`.
+
+Arguments become `{"request": <unchanged>, "checkout": "<path>"}` for the core and the
+adapter's direct fields plus `checkout` for the peer (see [Review flow](#review-flow) and
+[Native conversation](#native-conversation-through-the-python-sdk)). Request bodies,
+limits, receipts and the review contract are unchanged.
+
+- **Core.** Each binding gets its own review core, opened on first use and reused while the
+  binding is unchanged. At most 16 are kept; the least recently used one that no call is
+  using is closed to make room, and with all 16 in use a call is `BUSY` (retryable). A
+  reply over the result limit becomes `LIMIT_EXCEEDED`, still with its binding.
+- **Peer.** Each binding gets its own adapter instance and SDK conversation, created by its
+  first `codex_status` or `codex_review` without starting a model turn. A `codex_review`
+  whose `instance_id` belongs to another binding of the process is `BINDING_CHANGED`
+  (naming both bindings) and starts no turn, so a branch switch between status and review
+  can never send a turn to the wrong branch; call `codex_status` again. An unknown instance
+  is still `ADAPTER_RESTARTED`. At most 8 conversations are kept; the least recently used
+  idle one is closed (the pool owns that close and finishes it even if the call that
+  caused it is cancelled), and with none idle a call is `LIMIT_EXCEEDED`. Each conversation
+  reserves room for its binding inside the adapter's result limit, so every reply carries
+  it.
+
+The explicit-tuple servers keep the rule that clients cannot select repositories, refs or
+state. The session servers relax exactly one thing, for the author host only: it names a
+checkout. Refs are still derived from that checkout, the state path is still derived under
+the operator's state root, and identity, role, executables, models and permissions stay
+fixed. Naming a checkout grants nothing beyond starting a session in that folder. The Codex
+reviewer cannot reach these tools: the reviewer core the adapter registers for each thread
+stays a fixed tuple with request-only calls.
+
+Startup refuses only what no call could fix, with one fixed code on stderr and nothing
+else (no path, argument or traceback): `REDIRECTED_STATE_COMPONENT`,
 `STATE_COMPONENT_NOT_DIRECTORY`, `STATE_NOT_PRIVATE`, `STATE_UNAVAILABLE`, `MISSING_EXTRA`,
 `UNSUPPORTED_EXTRA`, `CONFIGURATION_ERROR`, `TIMEOUT_OUT_OF_RANGE`, or `INTERNAL_ERROR` with a
-correlation ID), so the host reports the server as failed and the skills report a setup gap.
-`TIMEOUT_OUT_OF_RANGE` also carries fixed fields naming the accepted range and, when it would
-help, the opt-in flag; never the refused value. Details go to
-`<state-root>/launch.log` (bounded), which the operator owns, and only when that root is a
-real directory. `python -m gauntlet_review.launch check` runs both servers' model-free
-dependency checks, their exact pins included, and starts nothing.
+correlation ID, so the host reports the server as failed and the skills report a setup gap.
+It never refuses because of any folder's Git state. `TIMEOUT_OUT_OF_RANGE` also carries fixed
+fields naming the accepted range and, when it would help, the opt-in flag; never the refused
+value. `launch.log` (bounded, owned by the operator, written only when the root is a real
+directory) gets one `core session cwd=...` or `peer session cwd=...` line at startup, one
+`bind` line the first time a process opens each binding, and one line per refused call.
+`python -m gauntlet_review.launch check` runs both servers' model-free dependency checks,
+their exact pins included, and starts nothing.
 
 `install.ps1` (through `mcp-registration.ps1`) resolves the interpreter to an absolute path,
 runs that check in it, and reads the current user-scope definitions of both names from the
@@ -163,14 +220,26 @@ both names are as they were (absent, or their original definition), or the names
 file next to the configuration, made readable by the current user alone before anything is
 written to it and reported only once it reads back exactly. Definitions can hold credentials,
 so no message shows them. A missing `claude` command, venv or configuration, or a failed check,
-skips the step with nothing changed. The host loads servers when
-a session starts: start a new session after registering, and after checking out another
-branch in the same folder. A project or local registration with the same name takes
-precedence over the user-scope one, which keeps a review bound to an older explicit tuple
-on its existing store. Register by hand with
-`claude mcp add-json gauntlet-core '<entry>' -s user` (and `gauntlet-peer`), where the
-entry's `args` are the launcher arguments above. A separately operated Codex host keeps its
-own explicit configuration.
+skips the step with nothing changed.
+
+A project or local registration with the same name takes precedence over the user-scope one
+and pins one explicit checkout and branch, which is exactly what makes agents ask for a
+reconnect. Claude Code also resolves a linked worktree's local scope to its main repository's
+entry, so one such entry pins every worktree session of that repository. After a successful
+registration, `install.ps1` therefore finds every per-project definition of both names in the
+same configuration, saves them all to a backup readable only by the current user (removing
+nothing if that fails), removes each one whose project folder exists with
+`claude mcp remove <name> -s local` run in that folder, reads the configuration back, and
+reports the project paths it removed and any it left (never a definition).
+`install.ps1 -KeepProjectOverrides` only reports them. Do not add project or local Gauntlet
+registrations; `.mcp.json` files checked into a repository are not touched and are the
+repository owner's to change.
+
+The host loads servers when a session starts: start a new session after registering or
+upgrading the package. Sessions started before an upgrade keep their old servers until
+their next start. Register by hand with `claude mcp add-json gauntlet-core '<entry>' -s user`
+(and `gauntlet-peer`), where the entry's `args` are the launcher arguments above. A
+separately operated Codex host keeps its own explicit configuration.
 
 Claude Code can read a user-owned JSON configuration supplied with
 `--mcp-config /absolute/path/gauntlet-hosts.json --strict-mcp-config`:
@@ -239,10 +308,13 @@ and [Claude Code stdio configuration](https://code.claude.com/docs/en/mcp).
 | `review_status` | both | Check current objects/local refs and derive current peer status. |
 
 Every core call has one strict outer `request` object. Requests cannot select another
-identity, role, repository, state path or ref. Discover exact input schemas from
-the configured host's tool list.
+identity, role, repository, state path or ref. A session server (the global
+registration) also takes a top-level `checkout`, the author's current working folder, on
+every call: `{"request":{},"checkout":"C:/work/project"}`; an explicit-tuple server and the
+reviewer core given to Codex take `request` alone and refuse `checkout`. Discover exact
+input schemas from the configured host's tool list.
 
-1. Read `review_status` with `{"request":{}}`. Use its `store_version` when the
+1. Read `review_status` with `{"request":{}}` (plus `checkout` on a session server). Use its `store_version` when the
    author calls `open_review` with, for example,
    `{"request":{"key":"initial-001","expected_version":0}}`.
    Retain the returned `review_id`, `revision_id`, `snapshot_digest` and version.
@@ -296,7 +368,9 @@ response loss after COMMIT may require exact-key recovery.
 
 ## Native conversation through the Python SDK
 
-Claude calls the separate adapter's `codex_status` with `{}` to obtain a fresh
+Claude calls the separate adapter's `codex_status` with `{}` (on the session server,
+`{"checkout":"<current working folder>"}`, and `checkout` on every `codex_review` too) to
+obtain a fresh
 `instance_id`, nullable owned `thread_id`, and `ready`, `busy` or `poisoned` state.
 This does not start a model turn. Its `codex_review` arguments are direct fields,
 without the core's outer `request` wrapper:

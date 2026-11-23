@@ -281,3 +281,40 @@ async def test_operator_cannot_use_author_role_or_relative_paths(config):
         with pytest.raises(BridgeError) as error:
             Bridge(replace(config,operator=operator),Conversation())
         assert error.value.code=="CONFIGURATION_ERROR"
+
+
+def largest_text(reserve):
+    """The longest final text mcp_result admits for a successful turn under this reserve."""
+    from gauntlet_review.codex_bridge.engine import TEXT_BYTES,mcp_result
+
+    def fits(size):
+        try:
+            mcp_result({"ok":True,"thread_id":"fixture-thread","turn_id":"turn-1","text":"x"*size},reserve)
+            return True
+        except BridgeError:
+            return False
+    low,high=0,TEXT_BYTES
+    while low<high:
+        middle=(low+high+1)//2
+        low,high=(middle,high) if fits(middle) else (low,middle-1)
+    return low
+
+
+async def test_a_result_reserve_lowers_what_one_turn_may_return(config):
+    reserve=4096
+    size=largest_text(reserve)
+    assert 0<size<largest_text(0)
+    fits=Bridge(replace(config,result_reserve=reserve),Conversation(text="x"*size))
+    assert (await fits.call(request(fits)))["ok"]
+    over=Bridge(replace(config,result_reserve=reserve),Conversation(text="x"*(size+1)))
+    result=await over.call(request(over))
+    assert result["ok"] is False and result["error"]["code"]=="LIMIT_EXCEEDED"
+    unchanged=Bridge(config,Conversation(text="x"*(size+1)))           # the default reserve is zero
+    assert (await unchanged.call(request(unchanged)))["ok"]
+
+
+@pytest.mark.parametrize("reserve",[-1,256*1024//4+1,True,"64",None])
+def test_an_invalid_result_reserve_is_a_configuration_error(config,reserve):
+    with pytest.raises(BridgeError) as error:
+        Bridge(replace(config,result_reserve=reserve),Conversation())
+    assert error.value.code=="CONFIGURATION_ERROR"
