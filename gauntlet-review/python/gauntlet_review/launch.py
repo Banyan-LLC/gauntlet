@@ -283,6 +283,11 @@ def _refuse(state_root, code, detail, correlation=None, fields=None):
 
 
 def main(argv=None):
+    words = sys.argv[1:] if argv is None else list(argv)
+    if words and words[0] in ("models", "model"):
+        # The operator's model commands never start a server; they have their own parser and refusals.
+        from gauntlet_review import model_cli
+        return model_cli.main(words)
     state_root = None
     cleanup_failures = []
     try:
