@@ -16,7 +16,10 @@ class Peer:
     def __init__(self,config):
         self.calls=0; self.closed=False
 
-    async def run(self,prompt):
+    async def check(self,selection):
+        pass
+
+    async def run(self,prompt,selection):
         self.calls+=1
         return PeerReply("thread-1",f"turn-{self.calls}","complete")
 
@@ -57,7 +60,7 @@ async def test_status_shows_the_extended_timeout_only_when_opted_in(config,monke
     for cfg,block in ((config,None),(extended,{"timeout_seconds":5400,"max_seconds":7200})):
         async with Client(server.create_server(cfg),raise_exceptions=True) as client:
             status=(await client.call_tool("codex_status",{})).structured_content
-        assert set(status)=={"ok","instance_id","thread_id","state"}|({"extended_timeout"} if block else set())
+        assert set(status)=={"ok","instance_id","thread_id","state","peer_model"}|({"extended_timeout"} if block else set())
         assert status.get("extended_timeout")==block
 
 
@@ -118,7 +121,7 @@ async def test_wrong_or_missing_sdk_pin_refuses_before_native_configuration(conf
 
 async def test_actual_mcp_cap_applies_to_success_errors_and_replays(config,monkeypatch):
     class LargePeer(Peer):
-        async def run(self,prompt):
+        async def run(self,prompt,selection):
             self.calls+=1
             return PeerReply("thread-1","turn-1", "\0"*30000 if prompt=="large" else '"\\😀'*4000)
     monkeypatch.setattr(server,"SdkConversation",LargePeer)
@@ -135,3 +138,36 @@ async def test_actual_mcp_cap_applies_to_success_errors_and_replays(config,monke
         assert again.structured_content==error.structured_content
         for result in (good,replay,error,again):
             assert len(result.model_dump_json(by_alias=True,exclude_none=True).encode("utf-8"))<=262144
+
+
+@pytest.mark.parametrize("extra, model, effort, root",[
+    ([],None,None,None),
+    (["--model","gpt-6-sol","--effort","high"],"gpt-6-sol","high",None),
+    (["--effort","max"],None,"max",None),
+    (["--model-settings-root","ABSOLUTE"],None,None,"ABSOLUTE"),
+],ids=["built-in","fixed-both","fixed-effort","settings"])
+def test_cli_model_flags_build_the_config(config,monkeypatch,tmp_path,extra,model,effort,root):
+    seen={}
+    def create(cfg):
+        seen["config"]=cfg
+        raise SystemExit(0)
+    monkeypatch.setattr(server,"create_server",create)
+    extra=[str(tmp_path) if item=="ABSOLUTE" else item for item in extra]
+    assert server.main(_cli(config,*extra))==0
+    cfg=seen["config"]
+    assert (cfg.model,cfg.effort)==(model,effort)
+    assert cfg.model_settings_root==(tmp_path if root else None)
+
+
+@pytest.mark.parametrize("extra",[
+    ["--model-settings-root","ABSOLUTE","--model","gpt-6-sol"],
+    ["--model-settings-root","ABSOLUTE","--effort","high"],
+    ["--model-settings-root","relative"],
+],ids=["with-model","with-effort","relative"])
+def test_cli_refuses_mixed_or_relative_model_settings(config,monkeypatch,tmp_path,capsys,extra):
+    def create(cfg):
+        raise AssertionError("refused before building the server")
+    monkeypatch.setattr(server,"create_server",create)
+    extra=[str(tmp_path) if item=="ABSOLUTE" else item for item in extra]
+    assert server.main(_cli(config,*extra))==2
+    assert json.loads(capsys.readouterr().err)=={"code":"CONFIGURATION_ERROR","cause":"model_mode"}

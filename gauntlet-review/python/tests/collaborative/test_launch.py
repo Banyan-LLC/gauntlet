@@ -143,7 +143,8 @@ def test_refuses_a_redirected_state_component(tmp_path):
 
 @pytest.mark.parametrize("role, prog, tail", [
     ("core", "gauntlet-mcp", ["--participant", "claude-author", "--role", "author"]),
-    ("peer", "gauntlet-codex", ["--participant", "claude-peer", "--timeout-seconds", "900"]),
+    ("peer", "gauntlet-codex", ["--model-settings-root", "ROOT", "--participant", "claude-peer",
+                                "--timeout-seconds", "900"]),
 ])
 def test_main_hands_the_derived_tuple_to_the_server(checkout, tmp_path, monkeypatch, role, prog, tail):
     seen = {}
@@ -162,7 +163,8 @@ def test_main_hands_the_derived_tuple_to_the_server(checkout, tmp_path, monkeypa
     expected = launch.derive(checkout, root)
     assert seen["argv"] == [prog, "--repo", str(expected.repo), "--state-dir", str(expected.state_dir),
                             "--repository-id", "owner-repo", "--source-ref", "refs/heads/feature/x",
-                            "--target-ref", "refs/remotes/origin/main", *tail]
+                            "--target-ref", "refs/remotes/origin/main",
+                            *[str(root) if item == "ROOT" else item for item in tail]]
     assert expected.state_dir.is_dir()
     assert "core" in (root / "launch.log").read_text() or "peer" in (root / "launch.log").read_text()
     assert "extended_timeout" not in (root / "launch.log").read_text()

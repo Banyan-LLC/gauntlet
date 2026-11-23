@@ -7,6 +7,10 @@ process, so stdio stays connected and the server still has exactly one immutable
     python -m gauntlet_review.launch core --state-root <dir>
     python -m gauntlet_review.launch peer --state-root <dir> [--timeout-seconds N] [--allow-extended-timeout]
     python -m gauntlet_review.launch check
+    python -m gauntlet_review.launch models|model --state-root <dir> ...   (operator commands, see model_cli)
+
+The peer also gets `--model-settings-root <state-root>`, so it reads the operator's model and effort choice
+(<state-root>/peer-model.json, see gauntlet_review.peer_model) for every turn; the launcher has no model flags.
 
 `--timeout-seconds` is the peer's turn deadline, 10 to 1800 seconds. `--allow-extended-timeout` is the operator's
 explicit opt-in to a ceiling of 7200; the launcher forwards it to the adapter and names it in launch.log, and the
@@ -209,12 +213,13 @@ def check_runtime():
                                 f"{name}: {type(error).__name__}") from error
 
 
-def server_argv(role, launch, timeout_seconds, extended_timeout=False):
+def server_argv(role, launch, timeout_seconds, extended_timeout=False, state_root=None):
     common = ["--repo", str(launch.repo), "--state-dir", str(launch.state_dir), "--repository-id", launch.repository_id,
               "--source-ref", launch.source_ref.decode("utf-8"), "--target-ref", launch.target_ref.decode("utf-8")]
     if role == "core":
         return "gauntlet-mcp", [*common, "--participant", "claude-author", "--role", "author"]
-    peer = [*common, "--participant", "claude-peer", "--timeout-seconds", str(timeout_seconds)]
+    settings = ["--model-settings-root", str(state_root)] if state_root is not None else []
+    peer = [*common, *settings, "--participant", "claude-peer", "--timeout-seconds", str(timeout_seconds)]
     return "gauntlet-codex", [*peer, EXTENDED_TIMEOUT_FLAG] if extended_timeout else peer
 
 
@@ -297,7 +302,7 @@ def main(argv=None):
         ceiling = check_peer_timeout(args.timeout_seconds, extended) if args.role == "peer" else None
         launch = derive(Path.cwd(), state_root)
         ensure_private_dir(launch.state_dir, cleanup_failures)
-        prog, server_args = server_argv(args.role, launch, args.timeout_seconds, extended)
+        prog, server_args = server_argv(args.role, launch, args.timeout_seconds, extended, state_root)
         if args.role == "core":
             from gauntlet_review.collaborative.server import main as serve
         else:
