@@ -43,7 +43,7 @@ if (-not $pm.Valid) {
 }
 $dst = "$env:USERPROFILE\.claude\skills"
 New-Item -ItemType Directory -Force $dst | Out-Null
-foreach ($skill in 'gauntlet-review','gauntlet-dev') {
+foreach ($skill in 'gauntlet-review','gauntlet-dev','gauntlet-model') {
     if (Test-Path "$dst\$skill") { Remove-Item -Recurse -Force "$dst\$skill" }
     Copy-Item -Recurse "$src\$skill" "$dst\$skill"
     Write-Host "installed $skill -> $dst\$skill"
