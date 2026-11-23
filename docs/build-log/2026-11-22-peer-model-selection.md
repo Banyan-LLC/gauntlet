@@ -56,6 +56,28 @@ blocking) and two important ones (untested atomic-write failures, `CLAUDE_CONFIG
 session's host-started servers were bound to the main checkout, the gates ran through a
 driver that started the installed launcher in this worktree.
 
-## Verification
+## Verification (2026-11-22, Windows 11, MCP venv Python 3.14.6, SDK and runtime 0.163.0)
 
-Recorded in Task 9 below.
+- Full Python suite from `gauntlet-review/python`: 794 passed, 8 skipped, 1 failed. The failure,
+  `tests/codex_bridge/test_live_driver.py::test_altered_regression_tests_cannot_produce_acceptance_evidence`
+  ("missing test ownership context"), fails the same way on `main` before this work.
+- `pwsh tests/run-tests.ps1`: every file passes except `test-dormant-native.ps1`,
+  `test-dormant-scratch-launcher.ps1`, `test-dormant-scratch.ps1`, `test-source-frame-input.ps1`
+  and `test-source-line-input.ps1` (legacy-harness process-retirement and positive-control
+  assertions this work does not touch). Rerun alone, the two dormant-scratch files pass on this
+  branch and on `main` (their first failures came from running beside the full Python suite);
+  `test-dormant-native.ps1` (117 passed, 2 failed), `test-source-frame-input.ps1` (11 passed,
+  1 failed) and `test-source-line-input.ps1` fail on `main` at 6dbb0b9 as well.
+  `test-install-registration.ps1` 118 passed and the new
+  `test-gauntlet-model-registration.ps1` 12 passed.
+- Live catalog (no model turn), with a scratch state root: `models` listed the real catalog
+  (gpt-6.1-terra marked as Codex's default, gpt-6.1-sol marked current); `model gpt-6-sol --effort
+  high`, a repository override with `--repo`, `model`, `--json` and `--reset` behaved as specified;
+  `gpt-7-imaginary` was `UNKNOWN_MODEL` and `gpt-6-luna --effort ultra` was `EFFORT_NOT_SUPPORTED`.
+  The operator's real state root gained no `peer-model.json`.
+- Live turn, through this branch's peer session server against a scratch clone and scratch state
+  set to gpt-6-sol at high: `codex_status` reported that selection, the turn replied "ready" with
+  the same `peer_model`, and Codex's own session record for that thread shows `"model":"gpt-6-sol"`
+  and `"effort":"high"` (not the native gpt-6.1-sol at xhigh). An unsupported effort and an
+  unknown model written into the file were then refused as `EFFORT_NOT_SUPPORTED` and
+  `MODEL_UNAVAILABLE` with `uncertain: false`, and the conversation stayed `ready`.
