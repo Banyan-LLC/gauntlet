@@ -234,11 +234,10 @@ def test_repository_ids_must_be_slugs(tmp_path, capsys, catalog):
     ["--effort", "high", "--repo", "REPO", "--repository-id", "owner-repo"],
     ["--reset", "--effort", "high"],
     ["gpt-6-luna", "--reset"],
-    ["bad model"],
     ["--effort", "very-high"],
     ["--reset", "everything"],
     ["--unknown"],
-], ids=["repo-and-id", "reset-and-effort", "reset-and-model", "bad-model", "bad-effort", "bad-reset", "unknown"])
+], ids=["repo-and-id", "reset-and-effort", "reset-and-model", "bad-effort", "bad-reset", "unknown"])
 def test_argument_refusals(tmp_path, capsys, catalog, extra):
     root = tmp_path / "state"
     extra = [str(tmp_path) if item == "REPO" else item for item in extra]
@@ -309,3 +308,48 @@ def test_launch_dispatches_the_subcommands(monkeypatch, capsys):
     assert launch.main(["model", "--state-root", "x", "--reset"]) == 0
     assert seen == [["models", "--state-root", "x"], ["model", "--state-root", "x", "--reset"]]
     assert launch.main(["check"]) == 0
+
+
+
+DISPLAYED = Catalog((
+    CatalogModel("gpt-6.1-terra", "GPT-6.1 Terra", True, False, "low", EFFORTS),
+    CatalogModel("gpt-6.1-sol", "GPT-6.1-Sol", False, False, "low", EFFORTS),
+    CatalogModel("twin-a", "Twin", False, False, "low", EFFORTS),
+    CatalogModel("twin-b", "Twin", False, False, "low", EFFORTS),
+), True)
+
+
+def test_codex_display_names_resolve_to_the_slug(tmp_path, capsys, catalog):
+    # R4-F2: the names Codex displays, spaces and capitals included, select the model; the slug is stored.
+    root = tmp_path / "state"
+    catalog.result = DISPLAYED
+    changed = run_json(capsys, "model", "--state-root", str(root), "GPT-6.1 Terra", "--effort", "HIGH")
+    assert changed["settings"] == {"model": "gpt-6.1-terra", "effort": "high"}
+    assert run_json(capsys, "model", "--state-root", str(root), "gpt-6.1   TERRA")["settings"]["model"] == "gpt-6.1-terra"
+    before = settings_bytes(root)
+    err = refused(capsys, "CONFIGURATION_ERROR", "model", "--state-root", str(root), "twin")
+    assert "twin-a" in err and "twin-b" in err
+    refused(capsys, "UNKNOWN_MODEL", "model", "--state-root", str(root), "GPT 7 Imaginary")
+    assert settings_bytes(root) == before
+    code, out, _ = run(capsys, "models", "--state-root", str(root))
+    assert code == 0 and "GPT-6.1 Terra" in out and "GPT-6.1-Sol" in out
+
+
+@pytest.mark.parametrize("failure", ["deep", "root"])
+def test_unreadable_settings_are_refused_without_writing(tmp_path, capsys, catalog, monkeypatch, failure):
+    # R4-F1: exit 2 with MODEL_SETTINGS_INVALID, never a traceback, and nothing written or logged.
+    root = tmp_path / "state"
+    root.mkdir()
+    if failure == "deep":
+        (root / peer_model.SETTINGS_NAME).write_text("[" * 30000 + "]" * 30000)
+    else:
+        peer_model.save(root, peer_model.with_fields(peer_model.EMPTY, None, effort="high"))
+
+        def unreadable(path):
+            raise PermissionError("access denied")
+
+        monkeypatch.setattr(launch, "check_unredirected", unreadable)
+    before = settings_bytes(root)
+    for argv in (("model",), ("model", "gpt-6-luna"), ("models",)):
+        refused(capsys, "MODEL_SETTINGS_INVALID", *argv, "--state-root", str(root))
+    assert settings_bytes(root) == before and log_text(root) == ""

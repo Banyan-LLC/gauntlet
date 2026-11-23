@@ -276,6 +276,8 @@ def load(root):
         check_unredirected(root)
     except LaunchRefused as error:
         raise _invalid(f"{error.code}: {error.detail}") from error
+    except OSError as error:
+        raise _invalid(f"the state root cannot be checked: {error}") from error
     data = read_regular_nofollow(root / SETTINGS_NAME, SETTINGS_BYTES)
     if data is None:
         return EMPTY
@@ -286,6 +288,9 @@ def load(root):
                               parse_constant=_constant)
     except UnicodeError as error:
         raise _invalid("the settings file is not UTF-8") from error
+    except RecursionError as error:
+        # A document within the byte limit can still nest deeply enough to exhaust the parser.
+        raise _invalid("the settings file is nested too deeply") from error
     except ValueError as error:
         raise _invalid(f"the settings file is not JSON: {error}") from error
     return _validate(document)

@@ -432,3 +432,29 @@ def test_an_invalid_result_reserve_is_a_configuration_error(config,reserve):
     with pytest.raises(BridgeError) as error:
         Bridge(replace(config,result_reserve=reserve),Conversation())
     assert error.value.code=="CONFIGURATION_ERROR"
+
+
+
+@pytest.mark.parametrize("failure",["deep","root"])
+async def test_unreadable_settings_refuse_cleanly_and_recover(config,tmp_path,monkeypatch,failure):
+    # R4-F1: parser exhaustion and filesystem errors are MODEL_SETTINGS_INVALID, never an escaping exception.
+    settings=settings_mode(config,tmp_path); root=settings.model_settings_root
+    if failure=="deep":
+        write_settings(root,"[" * 30000 + "]" * 30000)
+    else:
+        write_settings(root,{"version":1,"default":{"effort":"high"}})
+        from gauntlet_review import launch
+        original=launch.check_unredirected
+        def unreadable(path):
+            raise PermissionError("access denied")
+        monkeypatch.setattr(launch,"check_unredirected",unreadable)
+    peer=Conversation(); bridge=Bridge(settings,peer); initial=request(bridge)
+    assert bridge.status()["peer_model"]=={"error":"MODEL_SETTINGS_INVALID"}
+    refused(await bridge.call(initial),"MODEL_SETTINGS_INVALID")
+    assert peer.calls==0 and peer.checks==[] and bridge.status()["state"]=="ready"
+    if failure=="deep":
+        write_settings(root,{"version":1,"default":{"effort":"high"}})
+    else:
+        monkeypatch.setattr(launch,"check_unredirected",original)
+    retried=await bridge.call(initial)
+    assert retried["ok"] and retried["peer_model"]["effort"]=="high" and peer.calls==1

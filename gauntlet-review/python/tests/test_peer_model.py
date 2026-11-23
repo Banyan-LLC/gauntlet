@@ -252,3 +252,20 @@ def test_with_and_without_fields():
         "version": 1, "default": {"effort": "low"}}
     assert peer_model.without_fields(EMPTY, "absent", ("model", "effort")) == EMPTY
     assert peer_model.scope_name(None) == "global" and peer_model.scope_name("r") == "repository:r"
+
+
+def test_deep_nesting_and_root_errors_are_invalid_settings(tmp_path, monkeypatch):
+    # R4-F1: a 60,000-byte document nested 30,000 deep fits the byte limit but exhausts the parser.
+    write(tmp_path, ("[" * 30000 + "]" * 30000).encode())
+    with pytest.raises(SettingsError) as refused:
+        peer_model.load(tmp_path)
+    assert refused.value.code == "MODEL_SETTINGS_INVALID"
+    from gauntlet_review import launch
+
+    def unreadable(path):
+        raise PermissionError("access denied")
+
+    monkeypatch.setattr(launch, "check_unredirected", unreadable)
+    with pytest.raises(SettingsError) as refused:
+        peer_model.load(tmp_path)
+    assert refused.value.code == "MODEL_SETTINGS_INVALID"

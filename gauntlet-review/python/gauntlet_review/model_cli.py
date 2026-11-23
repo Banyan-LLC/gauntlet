@@ -120,6 +120,24 @@ def _save(root, settings):
         raise Refused("STATE_UNAVAILABLE", f"{root}: {type(error).__name__}: {error}") from error
 
 
+def _normalized(text):
+    return " ".join(text.split()).casefold()
+
+
+def _catalog_model(catalog, text):
+    """The catalog model the operator named, by its model name or by the name Codex displays (case, spacing and
+    width of spaces ignored); None when nothing matches. A display name shared by several models is refused."""
+    wanted = _normalized(text)
+    by_model = [item for item in catalog.models if item.model.casefold() == wanted]
+    if by_model:
+        return by_model[0]
+    by_name = [item for item in catalog.models if _normalized(item.display_name) == wanted]
+    if len(by_name) > 1:
+        raise Refused("CONFIGURATION_ERROR", f"{text!r} names more than one Codex model "
+                                             f"({', '.join(item.model for item in by_name)}); use the model name")
+    return by_name[0] if by_name else None
+
+
 def _describe(selection):
     return (f"{selection.model} ({SOURCES[selection.model_source]}), "
             f"effort {selection.effort} ({SOURCES[selection.effort_source]})")
@@ -148,12 +166,14 @@ def _models(argv):
          "hidden": item.hidden, "default_effort": item.default_effort, "efforts": list(item.efforts)}
         for item in models]}
     width = max([len(item.model) for item in models] + [5])
+    named = max([len(item.display_name) for item in models] + [4])
     lines = [f"Peer model (global): {_describe(selection)}", "",
-             f"  {'MODEL':<{width}}  EFFORTS (catalog default effort)"]
+             f"  {'MODEL':<{width}}  {'NAME':<{named}}  EFFORTS (catalog default effort)"]
     for item in models:
         mark = "*" if item.model == selection.model else " "
         notes = (" [Codex default]" if item.catalog_default else "") + (" [hidden]" if item.hidden else "")
-        lines.append(f"{mark} {item.model:<{width}}  {' '.join(item.efforts)} ({item.default_effort}){notes}")
+        lines.append(f"{mark} {item.model:<{width}}  {item.display_name:<{named}}  "
+                     f"{' '.join(item.efforts)} ({item.default_effort}){notes}")
     if not catalog.complete:
         lines.append("(Codex returned only part of its catalog)")
     _emit(args, document, "\n".join(lines))
@@ -190,14 +210,17 @@ def _change(args, root, scope):
     settings = _load(root)
     model = args.model
     effort = args.effort.lower() if args.effort is not None else None
-    if model is not None and not peer_model.MODEL_RE.fullmatch(model):
-        raise Refused("CONFIGURATION_ERROR", f"{model!r} is not a model name")
     if effort is not None and not peer_model.EFFORT_RE.fullmatch(effort):
         raise Refused("CONFIGURATION_ERROR", f"{args.effort!r} is not a reasoning effort")
     catalog = _codex_catalog()
     if model is not None:
-        listed = catalogs.find(catalog, model)
-        model = listed.model if listed is not None else model
+        listed = _catalog_model(catalog, model)
+        if listed is not None:
+            model = listed.model
+        elif not peer_model.MODEL_RE.fullmatch(model) or not catalog.complete:
+            # Not a name Codex lists. A complete catalog proves it unknown; a partial one cannot.
+            raise Refused("UNKNOWN_MODEL" if catalog.complete else "CATALOG_UNAVAILABLE",
+                          f"{model!r} is not in the Codex catalog; run `models` to list them")
     candidate = peer_model.with_fields(settings, scope, model=model, effort=effort)
     selection = peer_model.resolve(candidate, scope)
     code = _unsupported(catalog, selection)

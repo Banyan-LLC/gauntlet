@@ -550,8 +550,9 @@ state root (or with `/gauntlet-model`, below):
   the models Codex hides from its picker.
 - `model MODEL`, `--effort EFFORT` or both set exactly the named fields in the scope (global,
   or one repository with `--repo PATH`, whose ID is derived as the launcher derives it, or
-  `--repository-id ID`, a lowercase slug). Model names match the catalog case-insensitively
-  and are stored as Codex spells them. The scope's resulting model and effort must be in the
+  `--repository-id ID`, a lowercase slug). A model can be given by its name or by the name
+  Codex displays (`GPT-6.1 Terra`), ignoring case and spacing, and is stored as Codex's model
+  name; a display name shared by several models is refused. The scope's resulting model and effort must be in the
   catalog, with that effort supported by that model, or the change is refused
   (`UNKNOWN_MODEL`, `EFFORT_NOT_SUPPORTED`, which lists the model's efforts, or
   `CATALOG_UNAVAILABLE` when Codex cannot be reached or is not signed in). A global change also
