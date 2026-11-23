@@ -9,7 +9,7 @@ from openai_codex.errors import JsonRpcError
 
 from gauntlet_review.codex_bridge import sdk
 from gauntlet_review.codex_bridge.engine import Bridge, BridgeError
-from .test_sdk import Handle, conversation, message, terminal
+from .test_sdk import SELECTION, Handle, conversation, message, terminal
 
 pytestmark = pytest.mark.anyio
 
@@ -94,7 +94,7 @@ async def test_stream_cleanup_keeps_typed_primary_and_both_underlying_errors(con
     failing_stream(monkeypatch, cleanup)
     peer, native = conversation(config, monkeypatch, [original])
     with pytest.raises(BridgeError) as caught:
-        await peer.run("review")
+        await peer.run("review", SELECTION)
     assert (caught.value.code, caught.value.cause) == ("SDK_FAILURE", "rpc")
     assert isinstance(caught.value.__cause__, ExceptionGroup)
     assert list(caught.value.__cause__.exceptions) == [original, cleanup]
@@ -109,7 +109,7 @@ async def test_stream_cleanup_does_not_replace_cancellation(config, monkeypatch)
     failing_stream(monkeypatch, cleanup)
     peer, native = conversation(config, monkeypatch, [original])
     with pytest.raises(asyncio.CancelledError) as caught:
-        await peer.run("review")
+        await peer.run("review", SELECTION)
     assert caught.value is original
     assert cleanup is caught.value.__cause__
     with pytest.raises(BridgeError):
@@ -124,7 +124,7 @@ async def test_stream_interrupt_and_client_close_failures_are_all_retained(confi
     failing_stream(monkeypatch, stream_failure)
     peer, native = conversation(config, monkeypatch, [message()])
     with pytest.raises(BridgeError):
-        await peer.run("review")
+        await peer.run("review", SELECTION)
 
     async def interrupt():
         raise interrupt_failure
